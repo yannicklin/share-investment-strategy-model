@@ -37,6 +37,11 @@ Configuration items include (but are not limited to):
 **Process:**
 - If `rebuild_model = True`:
   - Fetch ASX historical data **from Yahoo Finance via `yfinance`** using `.AX` ticker suffix
+  - **Feature Engineering**: Generate technical indicators including:
+    - Moving Averages (MA5, MA20)
+    - Relative Strength Index (RSI)
+    - MACD (Moving Average Convergence Divergence) and Signal Line
+    - Daily Returns
   - Train the model
   - Save to local model directory
 

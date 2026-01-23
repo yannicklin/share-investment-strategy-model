@@ -18,7 +18,8 @@ The goal is to build a Python-based trading strategy system for the Australian S
 1. **Documentation-First Development**: Always update `asx_ai_trading_system_requirements.md` or relevant documentation before implementing major architectural changes.
 2. **Security Priorities**: NEVER commit API keys or sensitive financial data. Use environment variables or local `.env` files (ensure they are in `.gitignore`).
 3. **Data Integrity**: Strictly follow the `.AX` ticker suffix convention for all ASX stocks (e.g., `BHP.AX`, `CBA.AX`).
-4. **Logic Constraints**: 
+4. **Technical Indicators**: Implement standard indicators (RSI, MACD) to enhance AI feature sets.
+5. **Logic Constraints**: 
    - Enforce strict stop-loss rules.
    - Handle price gaps (selling at actual market price when stop-loss is triggered).
    - Use `yfinance` exclusively for historical data.
@@ -145,5 +146,5 @@ def calculate_roi(initial: float, final: float) -> float:
 - **Model Convergence**: If the AI model fails to converge or produces poor results, check feature scaling and data preprocessing steps.
 
 ---
-*Last Updated: 2026-01-23*
+*Last Updated: 2026-01-23 (Added Technical Indicators)*
 *Note: This is a living document. Update it as project conventions evolve.*
