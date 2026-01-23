@@ -3,6 +3,9 @@ pandas
 numpy
 scikit-learn
 xgboost
+lightgbm
+catboost
+prophet
 streamlit
 plotly
 ruff

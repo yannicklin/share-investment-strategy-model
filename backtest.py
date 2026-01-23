@@ -1,5 +1,6 @@
 """Backtesting engine for evaluating AI trading strategies."""
 
+import pandas as pd
 from typing import List, Dict, Any
 from config import Config
 from buildmodel import ModelBuilder
@@ -48,27 +49,32 @@ class BacktestEngine:
         # or just re-calculate indicators on 'data' to keep it as a DataFrame
         # Redoing indicator logic here to keep DataFrame structure for backtest
         df = data.copy()
-        exp1 = df["Adj Close"].ewm(span=12, adjust=False).mean()
-        exp2 = df["Adj Close"].ewm(span=26, adjust=False).mean()
+
+        # Handle yfinance MultiIndex columns if present
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+
+        exp1 = df["Close"].ewm(span=12, adjust=False).mean()
+        exp2 = df["Close"].ewm(span=26, adjust=False).mean()
         df["MACD"] = exp1 - exp2
         df["Signal_Line"] = df["MACD"].ewm(span=9, adjust=False).mean()
 
-        delta = df["Adj Close"].diff()
+        delta = df["Close"].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         rs = gain / loss
         df["RSI"] = 100 - (100 / (1 + rs))
 
-        df["MA5"] = df["Adj Close"].rolling(window=5).mean()
-        df["MA20"] = df["Adj Close"].rolling(window=20).mean()
-        df["Daily_Return"] = df["Adj Close"].pct_change()
+        df["MA5"] = df["Close"].rolling(window=5).mean()
+        df["MA20"] = df["Close"].rolling(window=20).mean()
+        df["Daily_Return"] = df["Close"].pct_change()
         df = df.dropna()
 
         features = [
             "Open",
             "High",
             "Low",
-            "Adj Close",
+            "Close",
             "Volume",
             "MA5",
             "MA20",
@@ -82,33 +88,70 @@ class BacktestEngine:
         position = 0.0
         buy_price = 0.0
         buy_date = None
+        buy_fees = 0.0
         trades = []
+        equity_history = []
 
         # Iterate through the data day by day
         for i in range(len(df) - 1):
             current_row = df.iloc[i]
             date = df.index[i]
+            current_price = float(current_row["Close"])
+
+            # Record current equity before any potential trades today
+            if position > 0:
+                current_equity = position * current_price
+            else:
+                current_equity = capital
+            equity_history.append({"date": date, "capital": current_equity})
 
             # Feature vector for current day
             X_current = current_row[features].values
-            predicted_next_price = self.model_builder.predict(X_current)
-            current_price = float(current_row["Adj Close"])
+            predicted_next_price = self.model_builder.predict(X_current, date=date)
+            current_price = float(current_row["Close"])
 
             # Logic: If predicted price is higher than current, and we don't have a position
             if position == 0:
                 if predicted_next_price > current_price:
                     # Buy
-                    position = capital / current_price
+                    # Calculate Fees
+                    buy_value = capital
+                    fees = (
+                        (buy_value * self.config.brokerage_rate)
+                        + (buy_value * self.config.clearing_rate)
+                        + self.config.settlement_fee
+                    )
+
+                    net_capital = capital - fees
+                    position = net_capital / current_price
                     buy_price = current_price
                     buy_date = date
+                    buy_fees = fees
                     capital = 0
 
             # Logic: If we have a position, check for sell conditions
             elif position > 0:
-                days_held = (date - buy_date).days
+                # Calculate minimum hold date based on unit and value
+                unit_map = {
+                    "day": "days",
+                    "month": "months",
+                    "quarter": "weeks",
+                    "year": "years",
+                }
 
-                # Check stop-loss (using next day's open if it gaps down)
-                # In backtest, we can check the High/Low of the current day too
+                offset_args = {}
+                if self.config.hold_period_unit == "quarter":
+                    offset_args["weeks"] = 13 * self.config.hold_period_value
+                else:
+                    offset_args[unit_map[self.config.hold_period_unit]] = (
+                        self.config.hold_period_value
+                    )
+
+                assert buy_date is not None
+                min_hold_date = buy_date + pd.DateOffset(**offset_args)
+                is_min_period_passed = date >= min_hold_date
+
+                # Check stop-loss (Always active for safety)
                 low_price = float(current_row["Low"])
                 high_price = float(current_row["High"])
 
@@ -118,24 +161,45 @@ class BacktestEngine:
                 sell_reason = None
                 sell_price = 0.0
 
+                # 1. Stop-Loss (Safety - Always checked)
                 if low_price <= stop_loss_price:
                     sell_reason = "stop-loss"
-                    # Handle price gaps: sell at stop-loss price unless Open is lower
                     sell_price = min(stop_loss_price, float(current_row["Open"]))
-                elif high_price >= take_profit_price:
-                    sell_reason = "take-profit"
-                    sell_price = max(take_profit_price, float(current_row["Open"]))
-                elif days_held >= self.config.max_hold_days:
-                    sell_reason = "max-hold"
-                    sell_price = float(current_row["Adj Close"])
-                elif predicted_next_price < current_price:
-                    sell_reason = "model-exit"
-                    sell_price = float(current_row["Adj Close"])
+
+                # 2. These conditions only apply AFTER the minimum holding period
+                elif is_min_period_passed:
+                    if high_price >= take_profit_price:
+                        sell_reason = "take-profit"
+                        sell_price = max(take_profit_price, float(current_row["Open"]))
+                    elif predicted_next_price < current_price:
+                        sell_reason = "model-exit"
+                        sell_price = float(current_row["Close"])
 
                 if sell_reason:
-                    capital = position * sell_price
-                    profit_loss = capital - (position * buy_price)
-                    profit_pct = (sell_price - buy_price) / buy_price
+                    days_held = (date - buy_date).days
+                    sell_value = position * sell_price
+
+                    # Sell Fees
+                    sell_fees = (
+                        (sell_value * self.config.brokerage_rate)
+                        + (sell_value * self.config.clearing_rate)
+                        + self.config.settlement_fee
+                    )
+
+                    total_fees = buy_fees + sell_fees
+                    gross_profit = sell_value - (position * buy_price) - total_fees
+
+                    # Tax Calculation
+                    tax = 0.0
+                    if gross_profit > 0:
+                        # ATO 12-month rule: 50% discount if held >= 365 days
+                        tax_discount = 0.5 if days_held >= 365 else 1.0
+                        taxable_amount = gross_profit * tax_discount
+                        tax = taxable_amount * self.config.tax_rate
+
+                    capital = sell_value - sell_fees - tax
+                    profit_loss = capital - (position * buy_price + buy_fees)
+                    profit_pct = profit_loss / (position * buy_price + buy_fees)
 
                     trades.append(
                         {
@@ -143,6 +207,8 @@ class BacktestEngine:
                             "buy_price": buy_price,
                             "sell_date": date,
                             "sell_price": sell_price,
+                            "fees": total_fees,
+                            "tax": tax,
                             "profit_loss": profit_loss,
                             "profit_pct": profit_pct,
                             "duration": days_held,
@@ -156,8 +222,14 @@ class BacktestEngine:
         # Final cleanup
         if position > 0:
             last_row = df.iloc[-1]
-            sell_price = float(last_row["Adj Close"])
-            capital = position * sell_price
+            sell_price = float(last_row["Close"])
+            sell_value = position * sell_price
+            sell_fees = (
+                (sell_value * self.config.brokerage_rate)
+                + (sell_value * self.config.clearing_rate)
+                + self.config.settlement_fee
+            )
+            capital = sell_value - sell_fees
             # Don't count as a completed trade for stats if it's still open,
             # or just close it at the end.
 
@@ -176,6 +248,7 @@ class BacktestEngine:
             "roi": roi,
             "final_capital": capital,
             "trades": trades,
+            "equity_history": equity_history,
         }
         self.history.append(results)
         return results

@@ -24,100 +24,65 @@ Configuration items include (but are not limited to):
 - **target_stock_code** — One or more ASX tickers (e.g., `BHP.AX;CBA.AX`)
 - **backtest_year** — Number of years of historical data to backtest
 - **stop_loss_threshold** — E.g., `0.10` → 10% stop-loss
-- **stop_profit_threshold** — E.g., `0.10` → 10% take-profit
-- **model_path** — Local storage path for models
+- **stop_profit_threshold** — E.g., `0.20` → 20% take-profit
 - **init_capital** — Initial backtest capital
-- **max_hold_days** — Maximum holding period per trade
-- **data_source** — **Fixed to `Yahoo Finance (yfinance)`** for ASX historical data
+- **hold_period_unit** — Unit for **minimum** holding period (`day`, `month`, `quarter`, `year`)
+- **hold_period_value** — Value for the chosen unit (e.g., `1` month)
+- **brokerage_rate** — 0.12% per transaction
+- **clearing_rate** — 0.00225% per transaction
+- **settlement_fee** — $1.50 fixed fee per transaction
+- **tax_rate** — 25% capital gains tax rate
+- **model_types** — Multiple algorithm support (`random_forest`, `xgboost`, `lightgbm`, `catboost`, `elastic_net`, `svr`, `prophet`)
 
 ---
 ### 2.2 Model Building Module — `buildmodel.py`
-**Input:** Configuration file, local model files
-
 **Process:**
-- If `rebuild_model = True`:
-  - Fetch ASX historical data **from Yahoo Finance via `yfinance`** using `.AX` ticker suffix
-  - **Feature Engineering**: Generate technical indicators including:
+- **Data Fetching**: Retrieve ASX historical data via `yfinance` with `auto_adjust=True`.
+- **Feature Engineering**: Generate technical indicators:
     - Moving Averages (MA5, MA20)
-    - Relative Strength Index (RSI)
-    - MACD (Moving Average Convergence Divergence) and Signal Line
+    - RSI (Relative Strength Index)
+    - MACD & Signal Line
     - Daily Returns
-  - Train the model
-  - Save to local model directory
-
-- If `rebuild_model = False`:
-  - Load existing model if available
-  - Otherwise, fetch data from **Yahoo Finance (`yfinance`)**, train, and save the model
-
-**Output:** A trained AI model that generates profitable trading recommendations.
+- **Data Preprocessing**: Mandatory **Feature Scaling** using `StandardScaler` to ensure model stability (especially for SVR and ElasticNet).
+- **Model Training**: Support for 7 algorithms (Bagging, Boosting, Linear, Time-Series) via factory pattern.
+- **Persistence**: Save/Load models and scalers with naming convention `{ticker}_{algorithm}_model.joblib`.
 
 ---
 ### 2.3 Backtesting Module — `backtest.py`
-**Input:** Configuration file, ASX OHLCV data
-
 **Process:**
-1. Determine backtest start date based on `backtest_year`
-2. Fetch historical OHLCV **from Yahoo Finance (`yfinance`)**
-3. Feed historical data into the model
-4. Execute model-generated buy/sell actions
-5. Log each transaction:
-   - Buy date & price
-   - Sell date & price
-   - Profit/loss amount
-   - Profit percentage
-   - Holding duration
-   - Exit reason (take-profit / stop-loss / max-hold)
-
-**Output:**
-- Full trade history
-- Performance statistics:
-  - Total number of trades
-  - Win rate (percentage of profitable trades)
-  - ROI based on `init_capital`
-  - Average holding time
+1. Determine backtest start date based on `backtest_year`.
+2. Fetch historical OHLCV data focusing on the `Close` column.
+3. **Execution Logic**:
+    - **Entry**: Buy when AI model predicts positive next-day return.
+    - **Minimum Hold**: Ignore model-exit and take-profit signals until the `min_hold` period expires.
+    - **Exit**: Triggered by Stop-Loss (always active), Take-Profit, Model Prediction, or Period End.
+4. **Financial Accounting**:
+    - **Fees**: Deduct Brokerage, Clearing, and Settlement fees from every buy/sell.
+    - **Taxes**: Apply **ATO 12-Month Rule** (50% CGT discount if held ≥ 365 days).
+5. **Log Transactions**: Record date, price, fees, tax, and **net** profit.
 
 ---
 ### 2.4 UI Module — `ui.py`
-A Streamlit-based dashboard supporting:
-
-- Editing configuration values
-- Triggering backtests
-- Displaying:
-  - Transaction logs
-  - Profitability statistics
-  - Model-generated future trading recommendations (e.g., “Buy BHP at 38.00 AUD, expected +12% return”).
+Streamlit dashboard providing:
+- **Comparison Sidebar**: Multiselect for algorithms and cost sliders.
+- **Summary Dashboard**: Table and bar charts comparing ROI and Win Rate across models, plus a **Multi-line Equity Curve** showing capital growth over time with trade markers.
+- **Detailed Drill-down**: Tabs for each algorithm showing transaction logs and profit trends.
+- **Live Recommendation Engine**: 
+  - Real-time (delayed) signal generation for "Today".
+  - Calculation of expected returns based on the latest closing price.
+  - Consensus scoring across multiple algorithms.
+- **Glossary**: Built-in help for metrics (ROI, Win Rate, Net Profit) and exit reasons.
 
 ---
 ### 2.5 Main Module — `shareinvestment_AImodel.py`
-Coordinates the entire pipeline:
-
-- Load configuration
-- Build or load the model
-- Run the backtest
-- Display results via UI
-
-This module should remain lightweight, delegating logic to submodules.
+Coordinates the pipeline: Load Config -> Build/Load Models -> Run Comparative Backtest -> Display CLI results.
 
 ---
 ## 3. Historical Data Source (ASX)
-**The system will exclusively use _Yahoo Finance_ via the `yfinance` Python library** for ASX historical stock data.
-
-- **Ticker format**: append `.AX` to the symbol (e.g., `BHP.AX`, `CBA.AX`).
-- **Python snippet**:
-
-```python
-import yfinance as yf
-
-def get_asx_data(ticker: str, start: str, end: str):
-    # Return OHLCV DataFrame for an ASX ticker (e.g., 'BHP.AX').
-    return yf.download(ticker, start=start, end=end)  # Open, High, Low, Close, Adj Close, Volume
-```
+Exclusively uses **Yahoo Finance (`yfinance`)**. 
+- **Ticker format**: `{SYMBOL}.AX`.
+- **Adjustment**: Always use `auto_adjust=True` and target the `Close` price for calculations.
 
 ---
 ## 4. Summary
-This document defines the ASX-focused AI trading system. **All historical stock information is retrieved from Yahoo Finance (`yfinance`)**. The system must:
-
-- Train an AI model on ASX historical data
-- Backtest trades with strict rules
-- Provide actionable trading recommendations
-- Offer a simple UI for configuration and result browsing
+This system provides a rigorous, realistic backtesting environment for ASX trading, accounting for both technical AI signals and real-world financial constraints (fees, taxes, and holding preferences).
