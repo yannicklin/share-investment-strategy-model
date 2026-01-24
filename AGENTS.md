@@ -11,7 +11,7 @@ The goal is to build a Python-based trading strategy system for the Australian S
 - `buildmodel.py`: AI model training and persistence.
 - `backtest.py`: Backtesting engine with performance logging.
 - `ui.py`: Streamlit dashboard for configuration and results.
-- `shareinvestment_AImodel.py`: Main application entry point.
+- `ASX_AImodel.py`: Main application entry point.
 
 ## 2. Core Mandates
 
@@ -20,7 +20,7 @@ The goal is to build a Python-based trading strategy system for the Australian S
 3. **Data Integrity**: Use `.AX` ticker suffix. Use `auto_adjust=True` and the `Close` column for all calculations.
 4. **Technical Indicators**: Implement RSI, MACD, and Moving Averages as standard features.
 5. **Model Flexibility**: Support 7 algorithms (Random Forest, XGBoost, LightGBM, CatBoost, ElasticNet, SVR, Prophet) via factory pattern.
-6. **Data Preprocessing**: Always apply `StandardScaler` to ensure consistency across linear and non-linear models.
+6. **Data Preprocessing**: Support both `StandardScaler` and `RobustScaler` to ensure consistency and handle market outliers effectively.
 7. **Comparative Analysis**: Support side-by-side comparison of different algorithms in the UI.
 8. **Realistic Cost Accounting**: Include brokerage (0.12%), clearing (0.00225%), and settlement ($1.5) fees.
 9. **Taxation Logic**: Implement ATO Capital Gains Tax rules (50% discount for holdings >= 12 months).

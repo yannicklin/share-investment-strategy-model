@@ -235,6 +235,13 @@ class BacktestEngine:
 
         total_profit = capital - self.config.init_capital
         roi = total_profit / self.config.init_capital
+
+        # Gross ROI calculation (before fees and tax)
+        gross_profit_sum = sum(
+            [t["profit_loss"] + t["fees"] + t["tax"] for t in trades]
+        )
+        gross_roi = gross_profit_sum / self.config.init_capital
+
         win_rate = (
             len([t for t in trades if t["profit_loss"] > 0]) / len(trades)
             if trades
@@ -246,6 +253,7 @@ class BacktestEngine:
             "total_trades": len(trades),
             "win_rate": win_rate,
             "roi": roi,
+            "gross_roi": gross_roi,
             "final_capital": capital,
             "trades": trades,
             "equity_history": equity_history,

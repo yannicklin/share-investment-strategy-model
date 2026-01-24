@@ -32,6 +32,7 @@ Configuration items include (but are not limited to):
 - **clearing_rate** — 0.00225% per transaction
 - **settlement_fee** — $1.50 fixed fee per transaction
 - **tax_rate** — 25% capital gains tax rate
+- **scaler_type** — Choice of stabilizer (`standard`, `robust`)
 - **model_types** — Multiple algorithm support (`random_forest`, `xgboost`, `lightgbm`, `catboost`, `elastic_net`, `svr`, `prophet`)
 
 ---
@@ -43,7 +44,7 @@ Configuration items include (but are not limited to):
     - RSI (Relative Strength Index)
     - MACD & Signal Line
     - Daily Returns
-- **Data Preprocessing**: Mandatory **Feature Scaling** using `StandardScaler` to ensure model stability (especially for SVR and ElasticNet).
+- **Data Preprocessing**: **Feature Scaling** using either `StandardScaler` (conservative) or `RobustScaler` (handles outliers) based on configuration.
 - **Model Training**: Support for 7 algorithms (Bagging, Boosting, Linear, Time-Series) via factory pattern.
 - **Persistence**: Save/Load models and scalers with naming convention `{ticker}_{algorithm}_model.joblib`.
 
@@ -74,7 +75,7 @@ Streamlit dashboard providing:
 - **Glossary**: Built-in help for metrics (ROI, Win Rate, Net Profit) and exit reasons.
 
 ---
-### 2.5 Main Module — `shareinvestment_AImodel.py`
+### 2.5 Main Module — `ASX_AImodel.py`
 Coordinates the pipeline: Load Config -> Build/Load Models -> Run Comparative Backtest -> Display CLI results.
 
 ---

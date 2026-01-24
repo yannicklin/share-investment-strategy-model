@@ -51,6 +51,13 @@ def run_ui():
         default=["random_forest"],
     )
 
+    config.scaler_type = st.sidebar.radio(
+        "Feature Stabilizer (Scaler)",
+        ["standard", "robust"],
+        index=0,
+        help="StandardScaler: Good for normal data. RobustScaler: Better if the stock has frequent huge price/volume spikes.",
+    )
+
     with st.sidebar.expander("Costs & Taxes"):
         config.brokerage_rate = (
             st.number_input("Brokerage (%)", value=0.12, step=0.01) / 100
@@ -138,8 +145,9 @@ def run_ui():
         with st.expander("ℹ️ Understanding the Metrics & Signals"):
             st.markdown("""
             **Metrics:**
-            - **ROI (Return on Investment):** The total percentage gain or loss on your initial capital after all fees and taxes.
-            - **Win Rate:** The percentage of closed trades that were profitable. 
+            - **Net ROI (Return on Investment):** The final percentage gain or loss on your initial capital after all brokerage fees, clearing fees, settlement fees, and ATO taxes.
+            - **Gross ROI:** The theoretical percentage gain or loss *before* any fees or taxes are deducted. This represents the "raw skill" of the AI model.
+            - **Win Rate:** The percentage of closed trades that were profitable (Gross Profit > 0). 
               *Calculation: (Profitable Trades / Total Trades) * 100*
             - **Profit % (Trade Level):** The net percentage change (after fees and taxes) between the buy and sell points.
 
@@ -163,7 +171,8 @@ def run_ui():
                     summary_data.append(
                         {
                             "Algorithm": m_type,
-                            "ROI": f"{res['roi']:.2%}",
+                            "Net ROI": f"{res['roi']:.2%}",
+                            "Gross ROI": f"{res.get('gross_roi', 0):.2%}",
                             "ROI_val": res["roi"],
                             "Win Rate": f"{res['win_rate']:.2%}",
                             "Trades": res["total_trades"],
@@ -176,7 +185,14 @@ def run_ui():
                 summary_df = pd.DataFrame(summary_data)
                 st.table(
                     summary_df[
-                        ["Algorithm", "ROI", "Win Rate", "Trades", "Final Capital"]
+                        [
+                            "Algorithm",
+                            "Net ROI",
+                            "Gross ROI",
+                            "Win Rate",
+                            "Trades",
+                            "Final Capital",
+                        ]
                     ]
                 )
 
@@ -266,18 +282,23 @@ def run_ui():
                             st.error(res["error"])
                             continue
 
-                        col1, col2, col3 = st.columns(3)
+                        col1, col2, col3, col4 = st.columns(4)
                         col1.metric(
-                            "ROI",
+                            "Net ROI",
                             f"{res['roi']:.2%}",
-                            help="Total return on initial capital.",
+                            help="Final return after all fees and taxes.",
                         )
                         col2.metric(
+                            "Gross ROI",
+                            f"{res.get('gross_roi', 0):.2%}",
+                            help="Theoretical return before fees and taxes.",
+                        )
+                        col3.metric(
                             "Win Rate",
                             f"{res['win_rate']:.2%}",
                             help="Percentage of profitable trades.",
                         )
-                        col3.metric(
+                        col4.metric(
                             "Trades",
                             res["total_trades"],
                             help="Number of completed transactions.",

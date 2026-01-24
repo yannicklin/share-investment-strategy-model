@@ -9,7 +9,7 @@ from typing import Optional, Any
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.svm import SVR
 from sklearn.linear_model import ElasticNet
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, RobustScaler
 
 try:
     from xgboost import XGBRegressor
@@ -54,7 +54,17 @@ class ModelBuilder:
         """
         self.config = config
         self.model: Optional[Any] = None
-        self.scaler: Optional[StandardScaler] = None
+        self.scaler: Optional[Any] = None
+
+    def _init_scaler(self) -> Any:
+        """Initializes the scaler based on configuration scaler_type.
+
+        Returns:
+            Any: Initialized scaler object.
+        """
+        if self.config.scaler_type == "robust":
+            return RobustScaler()
+        return StandardScaler()
 
     def _init_model(self) -> Any:
         """Initializes the model based on configuration model_type.
@@ -189,7 +199,7 @@ class ModelBuilder:
         )
 
         # Scale features
-        self.scaler = StandardScaler()
+        self.scaler = self._init_scaler()
         X_train_scaled = self.scaler.fit_transform(X_train)
 
         self.model = self._init_model()
