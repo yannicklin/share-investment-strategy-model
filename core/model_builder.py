@@ -9,7 +9,7 @@ from typing import Optional, Any
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import StandardScaler, RobustScaler
 from sklearn.model_selection import train_test_split
-from config import Config
+from core.config import Config
 
 # Dynamic imports with availability flags
 try:
@@ -118,7 +118,7 @@ class ModelBuilder:
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         rs = gain / loss
-        df["RSI"] = 100 - (100 / (1 + rs))
+        df["RSI"] = 100 - (100 / (1 + (gain / loss)))
 
         exp1 = df["Close"].ewm(span=12, adjust=False).mean()
         exp2 = df["Close"].ewm(span=26, adjust=False).mean()
@@ -217,19 +217,15 @@ class ModelBuilder:
             return float(self.model.predict(future)["yhat"].iloc[0])
 
         if self.config.model_type == "lstm" and LSTM_AVAILABLE:
-            # LSTM expects (1, 30, 11)
-            # If we got (11,), we can't predict. If we got (30, 11), we are good.
-            if len(current_data.shape) == 1:
-                return 0.0  # Cannot predict LSTM with single day
-            X = self.scaler.transform(current_data)
-            return float(
-                self.model.predict(X.reshape(1, self.sequence_length, -1), verbose=0)[
-                    0
-                ][0]
-            )
+            if len(current_data.shape) == 2:  # (Seq, Features)
+                X = self.scaler.transform(current_data)
+                return float(
+                    self.model.predict(
+                        X.reshape(1, self.sequence_length, -1), verbose=0
+                    )[0][0]
+                )
+            return 0.0
 
-        # Standard models expect (1, 11)
-        # If we got (30, 11), just take the last day [-1]
         if len(current_data.shape) == 2:
             X_input = current_data[-1].reshape(1, -1)
         else:
@@ -243,8 +239,6 @@ class ModelBuilder:
         if data.empty:
             return None
         X, y = self.prepare_features(data)
-
-        # Always return the full sequence (30 days) to accommodate consensus loops
         if len(X) < self.sequence_length:
             return None
         return X[-self.sequence_length :]

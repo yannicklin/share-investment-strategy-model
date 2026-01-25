@@ -1,0 +1,56 @@
+"""Algorithm Comparison view for the ASX AI Trading System."""
+
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+from ui.components import render_trade_details
+
+
+def render_algorithm_comparison(ticker, ticker_res):
+    """Main panel for Model Mode: Comparing AI IQ."""
+    st.header(f"📊 Model Intelligence Comparison: {ticker}")
+
+    summary = []
+    for m_name, res in ticker_res.items():
+        if "error" not in res:
+            summary.append(
+                {
+                    "Algorithm": m_name.upper(),
+                    "Net ROI": res["roi"],
+                    "Total Trades": res["total_trades"],
+                    "Final Capital": res["final_capital"],
+                }
+            )
+
+    if summary:
+        df = pd.DataFrame(summary).sort_values("Net ROI", ascending=False)
+
+        col_table, col_chart = st.columns([1, 1])
+        with col_table:
+            st.subheader("Leaderboard")
+            st.dataframe(
+                df,
+                column_config={
+                    "Net ROI": st.column_config.NumberColumn(format="%.2%"),
+                    "Final Capital": st.column_config.NumberColumn(format="$%.2f"),
+                },
+                hide_index=True,
+                use_container_width=True,
+            )
+
+        with col_chart:
+            fig = px.bar(
+                df,
+                x="Algorithm",
+                y="Net ROI",
+                color="Net ROI",
+                title="Algorithm ROI Performance",
+                color_continuous_scale="RdYlGn",
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+        st.subheader("Individual Model Analysis")
+        tabs = st.tabs([m["Algorithm"] for m in summary])
+        for i, m_info in enumerate(summary):
+            with tabs[i]:
+                render_trade_details(ticker_res[m_info["Algorithm"].lower()])

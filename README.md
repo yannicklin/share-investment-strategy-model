@@ -14,7 +14,11 @@ A Python-based automated trading strategy system designed specifically for the *
     -   **Market Constraints**: Enforces stop-loss rules and minimum holding periods.
     -   **Price Gaps**: Handles scenarios where stop-loss cannot be executed at the exact threshold due to market gaps.
 -   **Data Integration**: Seamlessly fetches historical and real-time data from Yahoo Finance (`yfinance`).
--   **Interactive Dashboard**: A built-in Streamlit UI for comparative analysis, realized equity curves (connecting trade exit points), and daily trade suggestions. Includes automated cache management for consistent data display.
+-   **Interactive Dashboard**: A built-in Streamlit UI for:
+    -   **Algorithm Comparison**: Benchmark 5 AI models for a specific strategy.
+    -   **Strategy Sensitivity (Time-Span)**: Compare ROI across different holding periods using model consensus with a custom **Tie-Breaker** rule.
+    -   **Realized Equity Curves**: Visual tracking of capital growth connecting trade exit points.
+    -   **Daily Recommendations**: AI-generated signals with consensus scoring.
 -   **Performance Metrics**: Track Net ROI, Gross ROI, Win Rate, and **Average Profit per Trade**.
 -   **Feature Engineering**: Includes technical indicators like RSI, MACD, and Moving Averages.
 -   **Customizable Scaling**: Supports both `StandardScaler` and `RobustScaler` for data preprocessing.
@@ -43,7 +47,7 @@ A Python-based automated trading strategy system designed specifically for the *
 ### Streamlit Dashboard (Recommended)
 Launch the interactive dashboard to configure parameters, run backtests, and view AI recommendations:
 ```bash
-streamlit run ui.py
+streamlit run ASX_AImodel.py
 ```
 
 ### Command Line Interface
@@ -70,13 +74,18 @@ System parameters can be adjusted in `config.py` or directly via the Streamlit s
 
 ## 📂 Project Structure
 
--   `ASX_AImodel.py`: Main application entry point.
--   `ui.py`: Streamlit-based dashboard implementation.
--   `backtest.py`: Core backtesting engine logic.
--   `buildmodel.py`: AI model training and feature engineering.
--   `config.py`: Global configuration and parameter management.
--   `models/`: Directory for persistent model storage.
+-   **`core/`**:
+    -   `config.py`: Global settings and defaults (Tickers, Capital, ATO Tax).
+    -   `model_builder.py`: AI model factory (RF, XGB, CatBoost, Prophet, LSTM).
+    -   `backtest_engine.py`: Dual-mode simulation logic.
+-   **`ui/`**:
+    -   `sidebar.py`: Navigation and parameter inputs.
+    -   `algo_view.py`: AI Benchmarking dashboard.
+    -   `strategy_view.py`: Strategy Sensitivity (Consensus) dashboard.
+    -   `components.py`: Shared UI elements (Realized Equity Curve, formatted logs).
+-   `ASX_AImodel.py`: Main Streamlit application entry point.
 -   `tests/`: Unit tests for core logic.
+-   `models/`: Directory for persistent model storage.
 
 ## ⚠️ Disclaimer
 

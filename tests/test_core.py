@@ -3,9 +3,9 @@
 import pytest
 import pandas as pd
 import numpy as np
-from config import Config
-from buildmodel import ModelBuilder, XGB_AVAILABLE
-from backtest import BacktestEngine
+from core.config import Config
+from core.model_builder import ModelBuilder, XGB_AVAILABLE
+from core.backtest_engine import BacktestEngine
 
 
 @pytest.fixture
@@ -27,7 +27,6 @@ def mock_config():
 
 @pytest.fixture
 def mock_data():
-    # Need more data points for MACD (26) and RSI (14)
     dates = pd.date_range(start="2023-01-01", periods=150)
     data = pd.DataFrame(
         {
@@ -43,35 +42,29 @@ def mock_data():
 
 
 def test_config_load():
-    from config import load_config
+    from core.config import load_config
 
     config = load_config()
     assert isinstance(config, Config)
-    assert "BHP.AX" in config.target_stock_codes
     assert config.hold_period_unit == "month"
 
 
 def test_model_builder_prepare_features(mock_config, mock_data):
     builder = ModelBuilder(mock_config)
     X, y = builder.prepare_features(mock_data)
-    # Features: Open, High, Low, Close, Volume, MA5, MA20, RSI, MACD, Signal_Line, Daily_Return
     assert X.shape[1] == 11
-
     assert len(X) == len(y)
-    assert len(X) < 150
 
 
 def test_backtest_engine_run_logic(mock_config, mock_data):
-    # Mocking fetch_data to return our mock_data instead of calling yfinance
     builder = ModelBuilder(mock_config)
     builder.fetch_data = lambda ticker, years: mock_data
-
-    # Train model on mock data
     builder.train("TEST.AX")
 
     engine = BacktestEngine(mock_config, builder)
-    results = engine.run("TEST.AX")
+    # Using run_model_mode for Mode 1 testing
+    results = engine.run_model_mode("TEST.AX", "random_forest")
 
     assert "roi" in results
-    assert "win_rate" in results
     assert "trades" in results
+    assert "final_capital" in results

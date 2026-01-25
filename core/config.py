@@ -48,12 +48,5 @@ class Config:
 
 
 def load_config() -> Config:
-    """Loads configuration settings.
-
-    In a real-world scenario, this might read from a JSON or YAML file.
-    For now, it returns default values.
-
-    Returns:
-        Config: Initialized configuration object.
-    """
+    """Loads configuration settings."""
     return Config()
