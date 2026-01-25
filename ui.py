@@ -18,15 +18,106 @@ def run_ui():
     config = load_config()
 
     ticker_input = st.sidebar.text_input(
-        "Target Tickers (semicolon separated)", "BHP.AX;CBA.AX"
+        "Target Tickers (semicolon separated)", ";".join(config.target_stock_codes)
     )
     config.target_stock_codes = [t.strip() for t in ticker_input.split(";")]
 
-    config.backtest_years = st.sidebar.slider("Backtest Years", 1, 10, 5)
-    config.init_capital = st.sidebar.number_input("Initial Capital", value=100000.0)
-    config.stop_loss_threshold = st.sidebar.slider(
-        "Stop-Loss Threshold", 0.01, 0.50, 0.10
+    config.backtest_years = st.sidebar.slider(
+        "Backtest Years", 1, 10, config.backtest_years
     )
+    config.init_capital = st.sidebar.number_input(
+        "Initial Capital", value=config.init_capital
+    )
+    config.stop_loss_threshold = st.sidebar.slider(
+        "Stop-Loss Threshold", 0.01, 0.50, config.stop_loss_threshold
+    )
+    config.stop_profit_threshold = st.sidebar.slider(
+        "Take-Profit Threshold", 0.01, 1.0, config.stop_profit_threshold
+    )
+
+    col_unit, col_val = st.sidebar.columns([2, 1])
+    unit_options = ["day", "month", "quarter", "year"]
+    unit_index = (
+        unit_options.index(config.hold_period_unit)
+        if config.hold_period_unit in unit_options
+        else 1
+    )
+    config.hold_period_unit = col_unit.selectbox(
+        "Min Hold Unit", unit_options, index=unit_index
+    )
+    config.hold_period_value = col_val.number_input(
+        "Val", value=config.hold_period_value, min_value=1
+    )
+
+    config.model_types = st.sidebar.multiselect(
+        "AI Algorithms to Compare",
+        [
+            "random_forest",
+            "xgboost",
+            "catboost",
+            "prophet",
+            "lstm",
+        ],
+        default=config.model_types,
+    )
+
+    scaler_options = ["standard", "robust"]
+    scaler_index = (
+        scaler_options.index(config.scaler_type)
+        if config.scaler_type in scaler_options
+        else 0
+    )
+    config.scaler_type = st.sidebar.radio(
+        "Feature Stabilizer (Scaler)",
+        scaler_options,
+        index=scaler_index,
+        help="StandardScaler: Good for normal data. RobustScaler: Better if the stock has frequent huge price/volume spikes.",
+    )
+
+    with st.sidebar.expander("Costs & Taxes"):
+        profile_options = ["default", "cmc_markets"]
+        profile_index = (
+            profile_options.index(config.cost_profile)
+            if config.cost_profile in profile_options
+            else 0
+        )
+        config.cost_profile = st.selectbox(
+            "Cost Profile (Broker)",
+            profile_options,
+            index=profile_index,
+            help="Default: 0.12% brokerage + clearing/settlement. CMC: $11 or 0.10% flat.",
+        )
+
+        if config.cost_profile == "default":
+            config.brokerage_rate = (
+                st.number_input(
+                    "Brokerage (%)", value=config.brokerage_rate * 100, step=0.01
+                )
+                / 100
+            )
+            config.clearing_rate = (
+                st.number_input(
+                    "Clearing (%)",
+                    value=config.clearing_rate * 100,
+                    step=0.0001,
+                    format="%.5f",
+                )
+                / 100
+            )
+            config.settlement_fee = st.number_input(
+                "Settlement ($)", value=config.settlement_fee
+            )
+        else:
+            st.info("CMC Markets: Min $11 or 0.10%. No separate clearing/settlement.")
+
+        st.markdown("---")
+        config.annual_income = st.number_input(
+            "Annual Income (excl. Investment)",
+            value=config.annual_income,
+            step=5000.0,
+            help="Used to calculate marginal ATO tax brackets (2024-25 rates).",
+        )
+
     config.stop_profit_threshold = st.sidebar.slider(
         "Take-Profit Threshold", 0.01, 1.0, 0.20
     )
@@ -42,11 +133,9 @@ def run_ui():
         [
             "random_forest",
             "xgboost",
-            "lightgbm",
             "catboost",
-            "elastic_net",
-            "svr",
             "prophet",
+            "lstm",
         ],
         default=["random_forest"],
     )
@@ -59,36 +148,54 @@ def run_ui():
     )
 
     with st.sidebar.expander("Costs & Taxes"):
-        config.brokerage_rate = (
-            st.number_input("Brokerage (%)", value=0.12, step=0.01) / 100
+        config.cost_profile = st.selectbox(
+            "Cost Profile (Broker)",
+            ["default", "cmc_markets"],
+            help="Default: 0.12% brokerage + clearing/settlement. CMC: $11 or 0.10% flat.",
         )
-        config.clearing_rate = (
-            st.number_input("Clearing (%)", value=0.00225, step=0.0001, format="%.5f")
-            / 100
+
+        if config.cost_profile == "default":
+            config.brokerage_rate = (
+                st.number_input("Brokerage (%)", value=0.12, step=0.01) / 100
+            )
+            config.clearing_rate = (
+                st.number_input(
+                    "Clearing (%)", value=0.00225, step=0.0001, format="%.5f"
+                )
+                / 100
+            )
+            config.settlement_fee = st.number_input("Settlement ($)", value=1.5)
+        else:
+            st.info("CMC Markets: Min $11 or 0.10%. No separate clearing/settlement.")
+
+        st.markdown("---")
+        config.annual_income = st.number_input(
+            "Annual Income (excl. Investment)",
+            value=90000.0,
+            step=5000.0,
+            help="Used to calculate marginal ATO tax brackets (2024-25 rates).",
         )
-        config.settlement_fee = st.number_input("Settlement ($)", value=1.5)
-        config.tax_rate = st.number_input("Tax Rate (%)", value=25.0) / 100
 
     config.rebuild_model = st.sidebar.checkbox("Rebuild AI Model", value=True)
 
-    if st.sidebar.button("🗑️ Clear Cache"):
-        for key in ["results", "suggestions"]:
-            if key in st.session_state:
-                del st.session_state[key]
-        st.rerun()
-
     if st.sidebar.button("💡 Generate Live Suggestions"):
+        # Automatically clear old backtest results when generating new suggestions
+        if "results" in st.session_state:
+            del st.session_state["results"]
+
         suggestions = []
         for ticker in config.target_stock_codes:
             consensus_votes = 0
             total_expected_return = 0.0
 
-            # Use all selected models to reach consensus
+            # Always fetch the 30-day sequence to be safe for LSTM
+            # (Standard models will automatically take the last day [-1] via the new predict logic)
             builder = ModelBuilder(config)
             latest_features = builder.get_latest_features(ticker)
 
             if latest_features is not None:
-                current_price = latest_features[3]  # Index of 'Close'
+                # Latest price is index 3 ('Close') of the LAST row
+                current_price = float(latest_features[-1, 3])
                 for m_type in config.model_types:
                     config.model_type = m_type
                     builder.load_or_build(ticker)
@@ -124,6 +231,10 @@ def run_ui():
         )
 
     if st.sidebar.button("🚀 Run Comparison Backtest"):
+        # Automatically clear old suggestions when running a new backtest
+        if "suggestions" in st.session_state:
+            del st.session_state["suggestions"]
+
         all_results = {}
         for ticker in config.target_stock_codes:
             ticker_results = {}
@@ -152,9 +263,9 @@ def run_ui():
             - **Profit % (Trade Level):** The net percentage change (after fees and taxes) between the buy and sell points.
 
             **Costs & Taxes:**
-            - **Fees:** Total transaction costs (Brokerage + Clearing + Settlement) for both entry and exit.
-            - **Tax (ATO):** Capital Gains Tax calculated on net profit. 
-              *Note: Includes 50% discount for holdings >= 12 months.*
+            - **Fees:** Total transaction costs (Brokerage + Clearing + Settlement) for both entry and exit. Includes CMC Markets profiles.
+            - **Tax (ATO):** Marginal Capital Gains Tax calculated using 2024-25 Individual Income Tax Brackets. 
+              *Note: Includes 50% discount for holdings >= 12 months. Calculated based on your provided annual income.*
             - **stop-loss:** Automated safety exit because the stock price dropped below your risk threshold.
             - **take-profit:** Exit because the stock reached your desired profit target.
             - **model-exit:** The AI predicted a downward price trend for the next day, signaling it's time to sell.
@@ -167,7 +278,10 @@ def run_ui():
             # Comparison Summary View
             summary_data = []
             for m_type, res in model_res.items():
-                if "error" not in res:
+                if "error" not in res and all(
+                    k in res
+                    for k in ["roi", "win_rate", "total_trades", "final_capital"]
+                ):
                     summary_data.append(
                         {
                             "Algorithm": m_type,
@@ -196,82 +310,72 @@ def run_ui():
                     ]
                 )
 
-                # 2. Capital Growth Over Time (Multi-Line Chart with Trade Dots)
+                # 2. Capital Growth Over Time (Lines connecting Trade Points)
                 st.subheader(f"Capital Growth Comparison - {ticker}")
 
-                # Combine equity history from all models
                 combined_equity = []
-                combined_trades = []
 
                 for m_type, res in model_res.items():
-                    if "error" not in res and "equity_history" in res:
-                        # Add equity line data
-                        hist_df = pd.DataFrame(res["equity_history"])
-                        hist_df["Algorithm"] = m_type
-                        combined_equity.append(hist_df)
+                    if "error" not in res:
+                        # Start with initial capital
+                        start_date = None
+                        if "equity_history" in res and res["equity_history"]:
+                            start_date = res["equity_history"][0]["date"]
 
-                        # Add trade dot data
+                        points = []
+                        if start_date:
+                            points.append(
+                                {
+                                    "date": pd.to_datetime(start_date).date(),
+                                    "capital": round(config.init_capital, 2),
+                                    "Algorithm": m_type,
+                                }
+                            )
+
                         if res.get("trades"):
-                            t_df = pd.DataFrame(res["trades"])
-                            trade_dots = []
-                            for _, t in t_df.iterrows():
-                                # Safe access to equity_history
-                                history = res.get("equity_history", [])
-                                capital_at_date = next(
-                                    (
-                                        e["capital"]
-                                        for e in reversed(history)
-                                        if e["date"] <= t["sell_date"]
-                                    ),
-                                    config.init_capital,
-                                )
-                                trade_dots.append(
+                            for t in res["trades"]:
+                                points.append(
                                     {
-                                        "date": t["sell_date"],
-                                        "capital": capital_at_date,
+                                        "date": pd.to_datetime(t["sell_date"]).date(),
+                                        "capital": round(
+                                            t.get(
+                                                "cumulative_capital",
+                                                config.init_capital,
+                                            ),
+                                            2,
+                                        ),
                                         "Algorithm": m_type,
                                     }
                                 )
-                            if trade_dots:
-                                combined_trades.append(pd.DataFrame(trade_dots))
+
+                        # Add final capital point at the end of backtest if not already there
+                        if "equity_history" in res and res["equity_history"]:
+                            end_date = res["equity_history"][-1]["date"]
+                            points.append(
+                                {
+                                    "date": pd.to_datetime(end_date).date(),
+                                    "capital": round(res["final_capital"], 2),
+                                    "Algorithm": m_type,
+                                }
+                            )
+
+                        if points:
+                            combined_equity.append(pd.DataFrame(points))
 
                 if combined_equity:
                     equity_df = pd.concat(combined_equity)
 
-                    # Create the line chart
+                    # Create the line chart connecting trade points
                     fig_growth = px.line(
                         equity_df,
                         x="date",
                         y="capital",
                         color="Algorithm",
-                        title=f"Net Portfolio Value Over Time ({ticker})",
+                        markers=True,
+                        title=f"Portfolio Value Over Time (Realized Trades - {ticker})",
                         labels={"capital": "Total Capital (AUD)", "date": "Date"},
                     )
-
-                    # Add trade dots if they exist
-                    if combined_trades:
-                        trades_dots_df = pd.concat(combined_trades)
-                        fig_growth.add_scatter(
-                            x=trades_dots_df["date"],
-                            y=trades_dots_df["capital"],
-                            mode="markers",
-                            marker=dict(size=8, symbol="circle"),
-                            name="Trades",
-                            showlegend=True,
-                            hoverinfo="skip",  # Lines already show the data
-                        )
-
-                    st.plotly_chart(fig_growth, use_container_width=True)
-
-                # 3. ROI Comparison Bar Chart
-                fig_roi = px.bar(
-                    summary_df,
-                    x="Algorithm",
-                    y="ROI_val",
-                    title=f"Final ROI Comparison - {ticker}",
-                    labels={"ROI_val": "Return on Investment"},
-                )
-                st.plotly_chart(fig_roi)
+                    st.plotly_chart(fig_growth, width="stretch")
 
                 # Detail View with Tabs
                 st.subheader("Detailed Performance")
@@ -282,7 +386,13 @@ def run_ui():
                             st.error(res["error"])
                             continue
 
-                        col1, col2, col3, col4 = st.columns(4)
+                        avg_profit = 0.0
+                        if res.get("trades"):
+                            avg_profit = sum(
+                                t["profit_pct"] for t in res["trades"]
+                            ) / len(res["trades"])
+
+                        col1, col2, col3, col4, col5 = st.columns(5)
                         col1.metric(
                             "Net ROI",
                             f"{res['roi']:.2%}",
@@ -299,6 +409,11 @@ def run_ui():
                             help="Percentage of profitable trades.",
                         )
                         col4.metric(
+                            "Avg Profit/Trade",
+                            f"{avg_profit:.2%}",
+                            help="Average net profit percentage per closed position.",
+                        )
+                        col5.metric(
                             "Trades",
                             res["total_trades"],
                             help="Number of completed transactions.",
@@ -306,23 +421,27 @@ def run_ui():
 
                         if res["trades"]:
                             trades_df = pd.DataFrame(res["trades"])
+
+                            # Convert dates to date-only for display
+                            for col in ["buy_date", "sell_date"]:
+                                if col in trades_df.columns:
+                                    trades_df[col] = pd.to_datetime(
+                                        trades_df[col]
+                                    ).dt.date
+
                             st.write("#### Transaction Log")
                             # Format financial columns
                             format_cols = {
+                                "buy_price": "{:.2f}",
+                                "sell_price": "{:.2f}",
                                 "fees": "{:.2f}",
                                 "tax": "{:.2f}",
                                 "profit_loss": "{:.2f}",
                                 "profit_pct": "{:.2%}",
+                                "cumulative_capital": "{:.2f}",
                             }
                             st.dataframe(trades_df.style.format(format_cols))
 
-                            fig_detail = px.line(
-                                trades_df,
-                                x="sell_date",
-                                y="profit_pct",
-                                title=f"Profit % Trend - {m_type}",
-                            )
-                            st.plotly_chart(fig_detail)
             else:
                 st.warning(f"No valid results for {ticker}")
 

@@ -20,6 +20,32 @@ class BacktestEngine:
         self.model_builder = model_builder
         self.history: List[Dict[str, Any]] = []
 
+    def calculate_fees(self, trade_value: float) -> float:
+        """Calculates transaction fees based on the selected cost profile."""
+        if self.config.cost_profile == "cmc_markets":
+            # CMC Markets: Greater of $11 or 0.10%, no clearing/settlement
+            return max(11.0, trade_value * 0.0010)
+        else:
+            # Default: Brokerage % + Clearing % + Settlement Fee
+            return (
+                (trade_value * self.config.brokerage_rate)
+                + (trade_value * self.config.clearing_rate)
+                + self.config.settlement_fee
+            )
+
+    def calculate_ato_tax(self, income: float) -> float:
+        """Calculates ATO individual income tax for 2024-25."""
+        if income <= 18200:
+            return 0
+        elif income <= 45000:
+            return (income - 18200) * 0.16
+        elif income <= 135000:
+            return 4288 + (income - 45000) * 0.30
+        elif income <= 190000:
+            return 31288 + (income - 135000) * 0.37
+        else:
+            return 51638 + (income - 190000) * 0.45
+
     def run(self, ticker: str) -> Dict[str, Any]:
         """Runs the backtest for a specific ticker.
 
@@ -106,8 +132,18 @@ class BacktestEngine:
             equity_history.append({"date": date, "capital": current_equity})
 
             # Feature vector for current day
-            X_current = current_row[features].values
-            predicted_next_price = self.model_builder.predict(X_current, date=date)
+            if self.config.model_type == "lstm":
+                # LSTM needs a sequence of previous days
+                seq_len = getattr(self.model_builder, "sequence_length", 30)
+                if i < seq_len:
+                    predicted_next_price = 0.0  # Not enough data for prediction
+                else:
+                    X_seq = df.iloc[i - seq_len + 1 : i + 1][features].values
+                    predicted_next_price = self.model_builder.predict(X_seq, date=date)
+            else:
+                X_current = current_row[features].values
+                predicted_next_price = self.model_builder.predict(X_current, date=date)
+
             current_price = float(current_row["Close"])
 
             # Logic: If predicted price is higher than current, and we don't have a position
@@ -116,11 +152,7 @@ class BacktestEngine:
                     # Buy
                     # Calculate Fees
                     buy_value = capital
-                    fees = (
-                        (buy_value * self.config.brokerage_rate)
-                        + (buy_value * self.config.clearing_rate)
-                        + self.config.settlement_fee
-                    )
+                    fees = self.calculate_fees(buy_value)
 
                     net_capital = capital - fees
                     position = net_capital / current_price
@@ -180,11 +212,7 @@ class BacktestEngine:
                     sell_value = position * sell_price
 
                     # Sell Fees
-                    sell_fees = (
-                        (sell_value * self.config.brokerage_rate)
-                        + (sell_value * self.config.clearing_rate)
-                        + self.config.settlement_fee
-                    )
+                    sell_fees = self.calculate_fees(sell_value)
 
                     total_fees = buy_fees + sell_fees
                     gross_profit = sell_value - (position * buy_price) - total_fees
@@ -194,8 +222,14 @@ class BacktestEngine:
                     if gross_profit > 0:
                         # ATO 12-month rule: 50% discount if held >= 365 days
                         tax_discount = 0.5 if days_held >= 365 else 1.0
-                        taxable_amount = gross_profit * tax_discount
-                        tax = taxable_amount * self.config.tax_rate
+                        taxable_gain = gross_profit * tax_discount
+
+                        # Calculate marginal tax on the taxable gain
+                        tax_base = self.calculate_ato_tax(self.config.annual_income)
+                        tax_with_gain = self.calculate_ato_tax(
+                            self.config.annual_income + taxable_gain
+                        )
+                        tax = tax_with_gain - tax_base
 
                     capital = sell_value - sell_fees - tax
                     profit_loss = capital - (position * buy_price + buy_fees)
@@ -211,6 +245,7 @@ class BacktestEngine:
                             "tax": tax,
                             "profit_loss": profit_loss,
                             "profit_pct": profit_pct,
+                            "cumulative_capital": capital,
                             "duration": days_held,
                             "reason": sell_reason,
                         }
@@ -224,11 +259,7 @@ class BacktestEngine:
             last_row = df.iloc[-1]
             sell_price = float(last_row["Close"])
             sell_value = position * sell_price
-            sell_fees = (
-                (sell_value * self.config.brokerage_rate)
-                + (sell_value * self.config.clearing_rate)
-                + self.config.settlement_fee
-            )
+            sell_fees = self.calculate_fees(sell_value)
             capital = sell_value - sell_fees
             # Don't count as a completed trade for stats if it's still open,
             # or just close it at the end.

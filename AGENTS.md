@@ -19,7 +19,7 @@ The goal is to build a Python-based trading strategy system for the Australian S
 2. **Security Priorities**: NEVER commit API keys or sensitive financial data.
 3. **Data Integrity**: Use `.AX` ticker suffix. Use `auto_adjust=True` and the `Close` column for all calculations.
 4. **Technical Indicators**: Implement RSI, MACD, and Moving Averages as standard features.
-5. **Model Flexibility**: Support 7 algorithms (Random Forest, XGBoost, LightGBM, CatBoost, ElasticNet, SVR, Prophet) via factory pattern.
+5. **Model Flexibility**: Support 5 algorithms (Random Forest, XGBoost, CatBoost, Prophet, LSTM) via factory pattern.
 6. **Data Preprocessing**: Support both `StandardScaler` and `RobustScaler` to ensure consistency and handle market outliers effectively.
 7. **Comparative Analysis**: Support side-by-side comparison of different algorithms in the UI.
 8. **Realistic Cost Accounting**: Include brokerage (0.12%), clearing (0.00225%), and settlement ($1.5) fees.
@@ -32,5 +32,5 @@ The goal is to build a Python-based trading strategy system for the Australian S
 ...
 
 ---
-*Last Updated: 2026-01-24 (Finalized 7-Algorithm Suite & Scaling)*
+*Last Updated: 2026-01-24 (Finalized 5-Algorithm Suite & Scaling)*
 *Note: This is a living document. Update it as project conventions evolve.*

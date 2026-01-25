@@ -28,12 +28,14 @@ Configuration items include (but are not limited to):
 - **init_capital** — Initial backtest capital
 - **hold_period_unit** — Unit for **minimum** holding period (`day`, `month`, `quarter`, `year`)
 - **hold_period_value** — Value for the chosen unit (e.g., `1` month)
-- **brokerage_rate** — 0.12% per transaction
-- **clearing_rate** — 0.00225% per transaction
-- **settlement_fee** — $1.50 fixed fee per transaction
-- **tax_rate** — 25% capital gains tax rate
+- **brokerage_rate** — 0.12% per transaction (Default)
+- **clearing_rate** — 0.00225% per transaction (Default)
+- **settlement_fee** — $1.50 fixed fee per transaction (Default)
+- **cost_profile** — Choice between `default` and `cmc_markets`
+- **annual_income** — Base annual income for marginal tax bracket calculation
+- **tax_rate** — (Deprecated) Replaced by ATO 2024-25 bracket logic
 - **scaler_type** — Choice of stabilizer (`standard`, `robust`)
-- **model_types** — Multiple algorithm support (`random_forest`, `xgboost`, `lightgbm`, `catboost`, `elastic_net`, `svr`, `prophet`)
+- **model_types** — Multiple algorithm support (`random_forest`, `xgboost`, `catboost`, `prophet`, `lstm`)
 
 ---
 ### 2.2 Model Building Module — `buildmodel.py`
@@ -45,7 +47,7 @@ Configuration items include (but are not limited to):
     - MACD & Signal Line
     - Daily Returns
 - **Data Preprocessing**: **Feature Scaling** using either `StandardScaler` (conservative) or `RobustScaler` (handles outliers) based on configuration.
-- **Model Training**: Support for 7 algorithms (Bagging, Boosting, Linear, Time-Series) via factory pattern.
+- **Model Training**: Support for 5 algorithms (Bagging, Boosting, Time-Series) via factory pattern.
 - **Persistence**: Save/Load models and scalers with naming convention `{ticker}_{algorithm}_model.joblib`.
 
 ---
@@ -58,19 +60,19 @@ Configuration items include (but are not limited to):
     - **Minimum Hold**: Ignore model-exit and take-profit signals until the `min_hold` period expires.
     - **Exit**: Triggered by Stop-Loss (always active), Take-Profit, Model Prediction, or Period End.
 4. **Financial Accounting**:
-    - **Fees**: Deduct Brokerage, Clearing, and Settlement fees from every buy/sell.
-    - **Taxes**: Apply **ATO 12-Month Rule** (50% CGT discount if held ≥ 365 days).
+    - **Fees**: Deduct Brokerage, Clearing, and Settlement fees. Support for **CMC Markets** ($11 or 0.10%).
+    - **Taxes**: Apply **ATO 2024-25 Individual Tax Brackets**. Includes 12-Month Rule (50% CGT discount if held ≥ 365 days). Tax is calculated as the marginal increase in liability based on the user's `annual_income`.
 5. **Log Transactions**: Record date, price, fees, tax, and **net** profit.
 
 ---
 ### 2.4 UI Module — `ui.py`
 Streamlit dashboard providing:
 - **Comparison Sidebar**: Multiselect for algorithms and cost sliders.
-- **Summary Dashboard**: Table and bar charts comparing ROI and Win Rate across models, plus a **Multi-line Equity Curve** showing capital growth over time with trade markers.
-- **Detailed Drill-down**: Tabs for each algorithm showing transaction logs and profit trends.
+- **Summary Dashboard**: Metrics table comparing ROI and Win Rate across models, plus a **Realized Equity Curve** connecting trade exit points to show actual capital growth over time.
+- **Detailed Drill-down**: Tabs for each algorithm showing core metrics (ROI, Win Rate, Avg Profit/Trade) and transaction logs.
 - **Live Recommendation Engine**: 
   - Real-time (delayed) signal generation for "Today".
-  - Calculation of expected returns based on the latest closing price.
+  - Automated state management: Running a backtest clears previous recommendations, and vice-versa.
   - Consensus scoring across multiple algorithms.
 - **Glossary**: Built-in help for metrics (ROI, Win Rate, Net Profit) and exit reasons.
 
