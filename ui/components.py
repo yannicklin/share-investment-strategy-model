@@ -16,7 +16,7 @@ def render_trade_details(res):
         trade_points = [
             {
                 "date": pd.to_datetime(t["sell_date"]).date(),
-                "capital": t["cumulative_capital"],
+                "capital": round(float(t["cumulative_capital"]), 2),
             }
             for t in res["trades"]
         ]
@@ -40,6 +40,13 @@ def render_trade_details(res):
         # 3. Log
         st.write("#### Detailed Transaction Log")
         log_df = pd.DataFrame(res["trades"])
+
+        # Round and format values in the dataframe for consistency
+        if "profit_pct" in log_df.columns:
+            log_df["profit_pct"] = log_df["profit_pct"].astype(float)
+        if "cumulative_capital" in log_df.columns:
+            log_df["cumulative_capital"] = log_df["cumulative_capital"].astype(float)
+
         # Format dates
         for d_col in ["buy_date", "sell_date"]:
             if d_col in log_df.columns:
@@ -48,13 +55,13 @@ def render_trade_details(res):
         st.dataframe(
             log_df,
             column_config={
-                "buy_price": st.column_config.NumberColumn("Buy", format="$%.2f"),
-                "sell_price": st.column_config.NumberColumn("Sell", format="$%.2f"),
-                "fees": st.column_config.NumberColumn("Fees", format="$%.2f"),
-                "tax": st.column_config.NumberColumn("Tax", format="$%.2f"),
+                "buy_price": st.column_config.NumberColumn("Buy", format="$%,.2f"),
+                "sell_price": st.column_config.NumberColumn("Sell", format="$%,.2f"),
+                "fees": st.column_config.NumberColumn("Fees", format="$%,.2f"),
+                "tax": st.column_config.NumberColumn("Tax", format="$%,.2f"),
                 "profit_pct": st.column_config.NumberColumn("P/L %", format="%.2%"),
                 "cumulative_capital": st.column_config.NumberColumn(
-                    "Portfolio", format="$%.2f"
+                    "Portfolio", format="$%,.2f"
                 ),
                 "duration": "Days",
                 "reason": "Exit Reason",
@@ -62,6 +69,7 @@ def render_trade_details(res):
             hide_index=True,
             use_container_width=True,
         )
+
     else:
         st.warning("No trades executed during this period.")
 

@@ -70,7 +70,7 @@ def main():
                     suggestions.append(
                         {
                             "Ticker": ticker,
-                            "Current Price": f"${current_price:.2f}",
+                            "Current Price": f"${current_price:,.2f}",
                             "Expected Return": f"{avg_return:.2%}",
                             "Consensus": f"{votes}/{len(config.model_types)} Models",
                             "Signal": "🟢 BUY" if is_bullish else "🟡 WAIT/HOLD",
@@ -82,7 +82,15 @@ def main():
     if "suggestions" in st.session_state:
         st.header("🚀 AI Daily Recommendations")
         suggest_df = pd.DataFrame(st.session_state["suggestions"])
-        st.table(suggest_df)
+        st.dataframe(
+            suggest_df,
+            column_config={
+                "Current Price": st.column_config.TextColumn("Current Price"),
+                "Expected Return": st.column_config.TextColumn("Expected Return"),
+            },
+            hide_index=True,
+            use_container_width=True,
+        )
         st.info(
             "Signals are based on the latest available market close and your trained models."
         )
@@ -108,11 +116,12 @@ def main():
                     builder.load_or_build(ticker)
                 config.rebuild_model = False
 
-            if mode == "Algorithm Comparison":
+            if mode == "Models Comparison":
                 for m_type in config.model_types:
                     with st.spinner(f"Testing {ticker} with {m_type}..."):
                         ticker_results[m_type] = engine.run_model_mode(ticker, m_type)
             else:
+                # Mode 2: Time-Span Comparison
                 for p_name in test_periods:
                     with st.spinner(f"Testing {ticker} with {p_name} hold..."):
                         unit, val = period_map[p_name]
@@ -134,7 +143,7 @@ def main():
         active_mode = st.session_state["active_mode"]
 
         for ticker, ticker_res in results.items():
-            if active_mode == "Algorithm Comparison":
+            if active_mode == "Models Comparison":
                 render_algorithm_comparison(ticker, ticker_res)
             else:
                 render_strategy_sensitivity(ticker, ticker_res)

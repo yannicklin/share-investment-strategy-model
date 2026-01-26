@@ -8,7 +8,7 @@ from ui.components import render_trade_details
 
 def render_algorithm_comparison(ticker, ticker_res):
     """Main panel for Model Mode: Comparing AI IQ."""
-    st.header(f"📊 Model Intelligence Comparison: {ticker}")
+    st.header(f"📊 Models Comparison: {ticker}")
 
     summary = []
     for m_name, res in ticker_res.items():
@@ -16,9 +16,9 @@ def render_algorithm_comparison(ticker, ticker_res):
             summary.append(
                 {
                     "Algorithm": m_name.upper(),
-                    "Net ROI": res["roi"],
+                    "Net ROI": round(float(res["roi"]), 4),
                     "Total Trades": res["total_trades"],
-                    "Final Capital": res["final_capital"],
+                    "Final Capital": round(float(res["final_capital"]), 2),
                 }
             )
 
@@ -32,7 +32,7 @@ def render_algorithm_comparison(ticker, ticker_res):
                 df,
                 column_config={
                     "Net ROI": st.column_config.NumberColumn(format="%.2%"),
-                    "Final Capital": st.column_config.NumberColumn(format="$%.2f"),
+                    "Final Capital": st.column_config.NumberColumn(format="$%,.2f"),
                 },
                 hide_index=True,
                 use_container_width=True,

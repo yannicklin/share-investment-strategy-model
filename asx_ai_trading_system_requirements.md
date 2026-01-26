@@ -23,14 +23,17 @@ The model may buy even if projected returns do not meet take-profit thresholds, 
 - **`config.py`** — Centralized configuration management (tickers, capital, ATO tax brackets).
 - **`model_builder.py`** — AI factory supporting 5 algorithms (Random Forest, XGBoost, CatBoost, Prophet, LSTM) with automated scaling and sequential processing for LSTM.
 - **`backtest_engine.py`** — Dual-mode simulation engine:
-    - **Mode 1 (Algorithm Comparison)**: Benchmarks individual AI performance for a fixed strategy.
-    - **Mode 2 (Strategy Sensitivity - Time-Span)**: Evaluates holding period efficiency using a **Multi-Model Consensus** (majority vote).
+    - **Mode 1 (Models Comparison)**: Benchmarks individual AI performance for a fixed strategy.
+    - **Mode 2 (Time-Span Comparison)**: Evaluates holding period efficiency using a **Multi-Model Consensus** (majority vote).
         - **Tie-Breaker Rule**: In the event of a 50/50 vote split, a user-selected Tie-Breaker model makes the final decision.
 
 #### 2.2 UI Modules (`ui/`)
-- **`sidebar.py`** — Mode-switching (via Toggle) and shared parameter controls. Includes dynamic Tie-Breaker selection for Mode 2.
-- **`algo_view.py`** — Renders the AI performance leaderboard and individual model drill-downs.
-- **`strategy_view.py`** — Renders the holding period sensitivity analysis and consensus-driven equity paths.
+- **`sidebar.py`** — Analysis mode selection via a **Segmented Button Switch** (Models vs. Time-Span). Includes three configuration sections:
+    - **Global Settings**: Shared parameters (Tickers, Capital, Risk thresholds).
+    - **Mode-Specific Settings**: Context-aware fields (Fixed strategy for Models Comparison; AI Committee & Tie-Breaker for Time-Span Comparison).
+    - **Preprocessing & Accounting**: Scaler type, costs, and taxes.
+- **`algo_view.py`** — Renders the **Models Comparison** leaderboard and individual model deep-dives.
+- **`strategy_view.py`** — Renders the **Time-Span Comparison** ROI bar charts and consensus equity paths.
 - **`components.py`** — Shared dashboard elements including the **Realized Equity Curve**, formatted transaction logs, and the financial glossary.
 
 ### 2.3 Main Module — `ASX_AImodel.py`

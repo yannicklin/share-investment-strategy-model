@@ -14,9 +14,9 @@ A Python-based automated trading strategy system designed specifically for the *
     -   **Market Constraints**: Enforces stop-loss rules and minimum holding periods.
     -   **Price Gaps**: Handles scenarios where stop-loss cannot be executed at the exact threshold due to market gaps.
 -   **Data Integration**: Seamlessly fetches historical and real-time data from Yahoo Finance (`yfinance`).
--   **Interactive Dashboard**: A built-in Streamlit UI for:
-    -   **Algorithm Comparison**: Benchmark 5 AI models for a specific strategy.
-    -   **Strategy Sensitivity (Time-Span)**: Compare ROI across different holding periods using model consensus with a custom **Tie-Breaker** rule.
+-   **Interactive Dashboard**: A built-in Streamlit UI featuring a **Segmented Selection Switch** for:
+    -   **Models Comparison**: Benchmark 5 AI models for a specific fixed strategy.
+    -   **Time-Span Comparison**: Compare ROI across different holding periods using model consensus with a custom **Tie-Breaker** rule.
     -   **Realized Equity Curves**: Visual tracking of capital growth connecting trade exit points.
     -   **Daily Recommendations**: AI-generated signals with consensus scoring.
 -   **Performance Metrics**: Track Net ROI, Gross ROI, Win Rate, and **Average Profit per Trade**.

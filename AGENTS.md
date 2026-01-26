@@ -21,8 +21,8 @@ The goal is to build a Python-based trading strategy system for the Australian S
 4. **Technical Indicators**: Implement RSI, MACD, and Moving Averages as standard features.
 5. **Model Flexibility**: Support 5 algorithms (Random Forest, XGBoost, CatBoost, Prophet, LSTM) via factory pattern.
 6. **Dual-Mode Analysis**:
-   - **Mode 1**: Compare algorithms for a fixed strategy.
-   - **Mode 2**: **Strategy Sensitivity (Time-Span)** — Compare strategy timing (holding periods) using multi-model **Consensus**.
+   - **Mode 1**: Compare algorithms for a fixed strategy (Models Comparison).
+   - **Mode 2**: Compare strategy timing/holding periods (Time-Span Comparison) using multi-model **Consensus**.
    - **Tie-Breaker**: Always implement a configurable tie-breaker for even-numbered model selections.
 7. **Data Preprocessing**: Support both `StandardScaler` and `RobustScaler` to ensure consistency and handle market outliers effectively.
 8. **Performance Optimization**: Use `st.session_state` in the UI to cache results.

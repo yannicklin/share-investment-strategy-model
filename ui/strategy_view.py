@@ -8,7 +8,7 @@ from ui.components import render_trade_details
 
 def render_strategy_sensitivity(ticker, ticker_res):
     """Main panel for Strategy Mode: Comparing Holding Times."""
-    st.header(f"⏳ Time-Span Sensitivity Analysis: {ticker}")
+    st.header(f"⏳ Time-Span Comparison: {ticker}")
     st.info("Decision Engine: Consensus (Majority Vote) of selected AI models.")
 
     summary = []
@@ -19,9 +19,9 @@ def render_strategy_sensitivity(ticker, ticker_res):
             summary.append(
                 {
                     "Hold Period": p_name,
-                    "Net ROI": res["roi"],
+                    "Net ROI": round(float(res["roi"]), 4),
                     "Total Trades": res["total_trades"],
-                    "Final Portfolio": res["final_capital"],
+                    "Final Portfolio": round(float(res["final_capital"]), 2),
                 }
             )
         elif res and "error" in res:
@@ -53,7 +53,7 @@ def render_strategy_sensitivity(ticker, ticker_res):
             column_config={
                 "Net ROI": st.column_config.NumberColumn("ROI", format="%.2%"),
                 "Final Portfolio": st.column_config.NumberColumn(
-                    "Final Value", format="$%.2f"
+                    "Final Value", format="$%,.2f"
                 ),
                 "Total Trades": "Trades",
             },
