@@ -17,12 +17,11 @@ A Python-based automated trading strategy system designed specifically for the *
 -   **Interactive Dashboard**: A built-in Streamlit UI featuring a **Segmented Selection Switch** for:
     -   **Models Comparison**: Benchmark 5 AI models for a specific fixed strategy.
     -   **Time-Span Comparison**: Compare ROI across different holding periods using model consensus with a custom **Tie-Breaker** rule.
-    -   **Super Stars Scanner**: Scan entire market indices (ASX 200, All Ords, etc.) to find the top 10 most profitable stocks for your strategy.
+    -   **Super Stars Scanner**: Scan entire market indices (**ASX 50**, **ASX 200**) to find the top 10 most profitable stocks using consensus logic.
     -   **Realized Equity Curves**: Visual tracking of capital growth connecting trade exit points.
     -   **Daily Recommendations**: AI-generated signals with consensus scoring.
--   **Performance Metrics**: Track Net ROI, Gross ROI, Win Rate, and **Average Profit per Trade**.
--   **Feature Engineering**: Includes technical indicators like RSI, MACD, and Moving Averages.
--   **Customizable Scaling**: Supports both `StandardScaler` and `RobustScaler` for data preprocessing.
+-   **Performance Metrics**: Track Net ROI, Win Rate, and Total Trades with standardized **2-decimal precision**.
+-   **T+1 Reinvestment Logic**: Simulates realistic brokerage cash flow where capital from a sale is available for the next trading day.
 
 ## 🛠️ Installation
 
@@ -32,59 +31,42 @@ A Python-based automated trading strategy system designed specifically for the *
     cd share-investment-strategy-model
     ```
 
-2.  **Create a virtual environment** (recommended):
+2.  **Using `uv` (Recommended)**:
+    This project is optimized for `uv`. Install dependencies and run in one go:
+    ```bash
+    uv run streamlit run ASX_AImodel.py
+    ```
+
+3.  **Manual Installation**:
     ```bash
     python -m venv venv
     source venv/bin/activate  # On Windows: venv\Scripts\activate
-    ```
-
-3.  **Install dependencies**:
-    ```bash
     pip install -r requirements.txt
     ```
 
 ## 💻 Usage
 
-### Streamlit Dashboard (Recommended)
+### Streamlit Dashboard
 Launch the interactive dashboard to configure parameters, run backtests, and view AI recommendations:
 ```bash
-streamlit run ASX_AImodel.py
+uv run streamlit run ASX_AImodel.py
 ```
-
-### Command Line Interface
-Run the main pipeline (training and backtesting) for tickers specified in `config.py`:
-```bash
-python ASX_AImodel.py
-```
-
-## 🧪 Testing
-
-The project uses `pytest` for unit testing. To run the tests:
-```bash
-pytest
-```
-
-## ⚙️ Configuration
-
-System parameters can be adjusted in `config.py` or directly via the Streamlit sidebar:
--   `target_stock_code`: ASX tickers (e.g., `BHP.AX`, `CBA.AX`).
--   `init_capital`: Starting investment amount.
--   `stop_loss_threshold`: Percentage drop to trigger a safety exit.
--   `hold_period_unit`/`value`: Minimum duration to hold a position before non-safety exits.
--   `scaler_type`: Choose between `standard` or `robust` scaling.
 
 ## 📂 Project Structure
 
 -   **`core/`**:
     -   `config.py`: Global settings and defaults (Tickers, Capital, ATO Tax).
     -   `model_builder.py`: AI model factory (RF, XGB, CatBoost, Prophet, LSTM).
-    -   `backtest_engine.py`: Dual-mode simulation logic.
+    -   `backtest_engine.py`: Dual-mode simulation logic with consensus voting.
+    -   `index_manager.py`: Reliable constituent fetcher for market indices.
 -   **`ui/`**:
     -   `sidebar.py`: Navigation and parameter inputs.
     -   `algo_view.py`: AI Benchmarking dashboard.
     -   `strategy_view.py`: Strategy Sensitivity (Consensus) dashboard.
+    -   `stars_view.py`: Index-wide "Super Stars" ranking view.
     -   `components.py`: Shared UI elements (Realized Equity Curve, formatted logs).
 -   `ASX_AImodel.py`: Main Streamlit application entry point.
+
 -   `tests/`: Unit tests for core logic.
 -   `models/`: Directory for persistent model storage.
 

@@ -25,21 +25,19 @@ The model may buy even if projected returns do not meet take-profit thresholds, 
         - **Tie-Breaker Rule**: In the event of a 50/50 vote split, a user-selected Tie-Breaker model makes the final decision.
     - **Mode 3 (Find Super Stars)**: Scans US market indexes to identify the **Top 10** high-profit stocks.
         - **Index Support**: S&P 500, Nasdaq 100, Dow Jones 30, and Russell 2000.
-        - **Trustable Data Sources**: Fetch constituents from authoritative sources (e.g., Wikipedia's real-time maintained tables or official ETF holding CSVs like iShares/Vanguard).
+        - **Trustable Data Sources**: Fetch constituents from authoritative sources (e.g., Wikipedia's real-time maintained tables or official ETF holding CSVs).
+        - **Consensus Analysis**: Ranks stocks using the multi-model consensus strategy.
 
 #### 2.2 UI Modules (`ui/`)
-- **`sidebar.py`** — Analysis mode selection via a **Segmented Button Switch** (Models vs. Time-Span). Includes three configuration sections:
-    - **Global Settings**: Shared parameters (Tickers, Capital in USD, Risk thresholds).
-    - **Mode-Specific Settings**: Context-aware fields (Fixed strategy for Models Comparison; AI Committee & Tie-Breaker for Time-Span Comparison).
-    - **Preprocessing & Accounting**: Scaler type, costs, and US taxes.
-- **`algo_view.py`** — Renders the **Models Comparison** leaderboard and individual model deep-dives.
-- **`strategy_view.py`** — Renders the **Time-Span Comparison** ROI bar charts and consensus equity paths.
-
-- **`components.py`** — Shared dashboard elements including the **Realized Equity Curve**, formatted transaction logs (USD), and the US financial glossary.
+- **`sidebar.py`** — Analysis mode selection via a **Segmented Button Switch** (Models vs. Time-Span vs. Super Stars).
+- **`algo_view.py`** — Renders the **Models Comparison** leaderboard.
+- **`strategy_view.py`** — Renders the **Time-Span Comparison** dashboard.
+- **`stars_view.py`** — Renders the **Super Stars** leaderboard (Hall of Fame).
+- **`components.py`** — Shared dashboard elements including the **Realized Equity Curve**, transaction logs with 2-decimal precision, and US financial glossary.
 
 ---
 
-## 3. Financial Accounting (USA Specifics)
+## 3. Financial Accounting & Reinvestment
 
 ### 3.1 Fee Structures
 The system supports US-specific broker profiles:
@@ -55,6 +53,10 @@ The system supports US-specific broker profiles:
 Federal Capital Gains Tax calculation based on holding period:
 - **Short-Term (Held < 365 days)**: Taxed as ordinary income (Marginal Rate based on user's annual income).
 - **Long-Term (Held ≥ 365 days)**: Tiered rates based on income (typically 0%, 15%, or 20%).
+
+### 3.3 Reinvestment & Settlement
+- **Settlement Logic**: Backtesting assumes a **T+1 reinvestment** cycle (capital available the next business day after a sale), providing a realistic simulation of US brokerage cash flow.
+- **Signal-Driven Entry**: Reinvestment only occurs when the **AI Consensus** triggers a "BUY" signal.
 
 ---
 
