@@ -32,10 +32,11 @@ def render_trade_details(res):
         st.plotly_chart(fig_curve, use_container_width=True)
 
         # 2. Statistics
-        c1, c2, c3 = st.columns(3)
+        c1, c2, c3, c4 = st.columns(4)
         c1.metric("Final Capital", f"${res['final_capital']:,.2f}")
         c2.metric("Total ROI", f"{res['roi']:.2%}")
-        c3.metric("Trades", res["total_trades"])
+        c3.metric("Win Rate", f"{res.get('win_rate', 0):.2%}")
+        c4.metric("Trades", res["total_trades"])
 
         # 3. Log
         st.write("#### Detailed Transaction Log")
@@ -55,15 +56,15 @@ def render_trade_details(res):
         st.dataframe(
             log_df,
             column_config={
-                "buy_price": st.column_config.NumberColumn("Buy", format="$%,.2f"),
-                "sell_price": st.column_config.NumberColumn("Sell", format="$%,.2f"),
-                "fees": st.column_config.NumberColumn("Fees", format="$%,.2f"),
-                "tax": st.column_config.NumberColumn("Tax", format="$%,.2f"),
-                "profit_pct": st.column_config.NumberColumn("P/L %", format="%.2%"),
+                "buy_price": st.column_config.NumberColumn("Buy", format="$0,0.00"),
+                "sell_price": st.column_config.NumberColumn("Sell", format="$0,0.00"),
+                "fees": st.column_config.NumberColumn("Fees", format="$0,0.00"),
+                "tax": st.column_config.NumberColumn("Tax", format="$0,0.00"),
+                "profit_pct": st.column_config.NumberColumn("P/L %", format="0.00%"),
                 "cumulative_capital": st.column_config.NumberColumn(
-                    "Portfolio", format="$%,.2f"
+                    "Portfolio", format="$0,0.00"
                 ),
-                "duration": "Days",
+                "duration": st.column_config.NumberColumn("Days", format="0"),
                 "reason": "Exit Reason",
             },
             hide_index=True,

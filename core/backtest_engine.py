@@ -173,9 +173,17 @@ class BacktestEngine:
                     position = 0
 
         final_cap = position * float(df.iloc[-1]["Close"]) if position > 0 else capital
+
+        # Calculate Win Rate
+        win_rate = 0.0
+        if trades:
+            wins = sum(1 for t in trades if t["profit_pct"] > 0)
+            win_rate = wins / len(trades)
+
         return {
             "roi": (final_cap - self.config.init_capital) / self.config.init_capital,
             "final_capital": final_cap,
+            "win_rate": win_rate,
             "total_trades": len(trades),
             "trades": trades,
             "equity_history": equity_history,
@@ -206,39 +214,48 @@ class BacktestEngine:
         self, ticker: str, models: List[str], tie_breaker: Optional[str] = None
     ) -> Dict[str, Any]:
         """Mode 2: Evaluate strategy sensitivity using multi-model consensus."""
-        for m in models:
-            self.config.model_type = m
+        # Pre-load all models and scalers into memory
+        model_instances = {}
+        for m_type in models:
+            self.config.model_type = m_type
             self.model_builder.load_or_build(ticker)
+            model_instances[m_type] = (
+                self.model_builder.model,
+                self.model_builder.scaler,
+            )
 
         def signal(i, df, features):
             votes = 0
             current_price = float(df.iloc[i]["Close"])
             tie_breaker_bullish = False
-
-            # If no tie breaker provided, fallback to first in list
             tb_model = tie_breaker if tie_breaker else models[0]
 
-            for idx, m in enumerate(models):
-                self.config.model_type = m
-                pred = 0.0
-                if m == "lstm":
-                    if i >= 30:
+            for m_type in models:
+                # Restore model state for prediction
+                self.model_builder.model, self.model_builder.scaler = model_instances[
+                    m_type
+                ]
+                self.config.model_type = m_type
+
+                if m_type == "lstm":
+                    if i < 30:
+                        is_m_bullish = False
+                    else:
                         pred = self.model_builder.predict(
                             df.iloc[i - 29 : i + 1][features].values, date=df.index[i]
                         )
+                        is_m_bullish = pred > current_price
                 else:
                     pred = self.model_builder.predict(
                         df.iloc[i][features].values, date=df.index[i]
                     )
+                    is_m_bullish = pred > current_price
 
-                is_m_bullish = pred > current_price
                 if is_m_bullish:
                     votes += 1
-
-                if m == tb_model:
+                if m_type == tb_model:
                     tie_breaker_bullish = is_m_bullish
 
-            # Majority vote logic with tie-breaker
             if votes > (len(models) / 2):
                 return True
             if votes == (len(models) / 2):

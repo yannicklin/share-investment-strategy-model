@@ -23,9 +23,11 @@ The goal is to build a Python-based trading strategy system for the Australian S
 6. **Dual-Mode Analysis**:
    - **Mode 1**: Compare algorithms for a fixed strategy (Models Comparison).
    - **Mode 2**: Compare strategy timing/holding periods (Time-Span Comparison) using multi-model **Consensus**.
-   - **Tie-Breaker**: Always implement a configurable tie-breaker for even-numbered model selections.
-7. **Data Preprocessing**: Support both `StandardScaler` and `RobustScaler` to ensure consistency and handle market outliers effectively.
-8. **Performance Optimization**: Use `st.session_state` in the UI to cache results.
+   - **Mode 3**: **Super Stars Scanner** — Benchmarking entire indexes to find top-performing individual stocks.
+7. **Index Management**: Always maintain an automated way to refresh stock symbols from live market lists (e.g., `index_manager.py`).
+8. **Data Preprocessing**: Support both `StandardScaler` and `RobustScaler` to ensure consistency and handle market outliers effectively.
+9. **Performance Optimization**: Use `st.session_state` in the UI to cache results.
+
 
 ...
 

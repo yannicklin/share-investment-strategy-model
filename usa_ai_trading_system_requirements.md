@@ -23,6 +23,9 @@ The model may buy even if projected returns do not meet take-profit thresholds, 
     - **Mode 1 (Models Comparison)**: Benchmarks individual AI performance for a fixed strategy.
     - **Mode 2 (Time-Span Comparison)**: Evaluates holding period efficiency using a **Multi-Model Consensus** (majority vote).
         - **Tie-Breaker Rule**: In the event of a 50/50 vote split, a user-selected Tie-Breaker model makes the final decision.
+    - **Mode 3 (Find Super Stars)**: Scans US market indexes to identify the **Top 10** high-profit stocks.
+        - **Index Support**: S&P 500, Nasdaq 100, Dow Jones 30, and Russell 2000.
+        - **Trustable Data Sources**: Fetch constituents from authoritative sources (e.g., Wikipedia's real-time maintained tables or official ETF holding CSVs like iShares/Vanguard).
 
 #### 2.2 UI Modules (`ui/`)
 - **`sidebar.py`** — Analysis mode selection via a **Segmented Button Switch** (Models vs. Time-Span). Includes three configuration sections:

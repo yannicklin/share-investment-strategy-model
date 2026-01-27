@@ -26,6 +26,9 @@ The model may buy even if projected returns do not meet take-profit thresholds, 
     - **Mode 1 (Models Comparison)**: Benchmarks individual AI performance for a fixed strategy.
     - **Mode 2 (Time-Span Comparison)**: Evaluates holding period efficiency using a **Multi-Model Consensus** (majority vote).
         - **Tie-Breaker Rule**: In the event of a 50/50 vote split, a user-selected Tie-Breaker model makes the final decision.
+    - **Mode 3 (Find Super Stars)**: Scans entire market indexes to identify the **Top 10** performers for a chosen timeframe.
+        - **Index Support**: Includes ASX 50, ASX 200, Small Ordinaries, and All Ordinaries.
+        - **Live Updates**: Built-in constituent manager to refresh index lists from live market data.
 
 #### 2.2 UI Modules (`ui/`)
 - **`sidebar.py`** — Analysis mode selection via a **Segmented Button Switch** (Models vs. Time-Span). Includes three configuration sections:

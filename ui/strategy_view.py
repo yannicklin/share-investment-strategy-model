@@ -19,9 +19,10 @@ def render_strategy_sensitivity(ticker, ticker_res):
             summary.append(
                 {
                     "Hold Period": p_name,
-                    "Net ROI": round(float(res["roi"]), 4),
+                    "Net ROI": float(res["roi"]),
+                    "Win Rate": float(res.get("win_rate", 0)),
                     "Total Trades": res["total_trades"],
-                    "Final Portfolio": round(float(res["final_capital"]), 2),
+                    "Final Portfolio": float(res["final_capital"]),
                 }
             )
         elif res and "error" in res:
@@ -51,9 +52,10 @@ def render_strategy_sensitivity(ticker, ticker_res):
         st.dataframe(
             df,
             column_config={
-                "Net ROI": st.column_config.NumberColumn("ROI", format="%.2%"),
+                "Net ROI": st.column_config.NumberColumn("ROI", format="0.00%"),
+                "Win Rate": st.column_config.NumberColumn("Win Rate", format="0.00%"),
                 "Final Portfolio": st.column_config.NumberColumn(
-                    "Final Value", format="$%,.2f"
+                    "Final Value", format="$0,0.00"
                 ),
                 "Total Trades": "Trades",
             },

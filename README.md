@@ -17,6 +17,7 @@ A Python-based automated trading strategy system designed specifically for the *
 -   **Interactive Dashboard**: A built-in Streamlit UI featuring a **Segmented Selection Switch** for:
     -   **Models Comparison**: Benchmark 5 AI models for a specific fixed strategy.
     -   **Time-Span Comparison**: Compare ROI across different holding periods using model consensus with a custom **Tie-Breaker** rule.
+    -   **Super Stars Scanner**: Scan entire market indices (ASX 200, All Ords, etc.) to find the top 10 most profitable stocks for your strategy.
     -   **Realized Equity Curves**: Visual tracking of capital growth connecting trade exit points.
     -   **Daily Recommendations**: AI-generated signals with consensus scoring.
 -   **Performance Metrics**: Track Net ROI, Gross ROI, Win Rate, and **Average Profit per Trade**.

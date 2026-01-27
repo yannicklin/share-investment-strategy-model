@@ -2,6 +2,7 @@
 
 import streamlit as st
 from core.config import Config
+from core.index_manager import load_index_constituents, update_index_data
 
 
 def render_sidebar(config: Config):
@@ -9,28 +10,55 @@ def render_sidebar(config: Config):
 
     st.sidebar.header("Analysis Mode")
 
-    # Shortening labels to ensure they fit on one horizontal line in the sidebar
-    modes = ["Models", "Time-Span"]
+    # The 3-way toggle (Segmented Switch)
+    modes = ["Models", "Time-Span", "Super Stars"]
 
     analysis_mode_short = st.sidebar.segmented_control(
         "Workflow Selection",
         options=modes,
         default="Models",
         label_visibility="collapsed",
-        help="Toggle between benchmarking AI models and analyzing holding periods.",
+        help="Models: Compare AI algorithms. Time-Span: Find best period. Super Stars: Find top 10 stocks.",
     )
 
-    # Map back to full names for logic consistency
-    mode_map = {"Models": "Models Comparison", "Time-Span": "Time-Span Comparison"}
-    analysis_mode = mode_map.get(analysis_mode_short, "Models Comparison")
+    # Map back to full names
+    mode_map = {
+        "Models": "Models Comparison",
+        "Time-Span": "Time-Span Comparison",
+        "Super Stars": "Find Super Stars",
+    }
+    short_val = str(analysis_mode_short) if analysis_mode_short else "Models"
+    analysis_mode = mode_map.get(short_val, "Models Comparison")
+    index_choice = None
 
-    # --- 1. SHARED CONFIGURATION ---
+    # --- 1. SHARED GLOBAL SETTINGS ---
     st.sidebar.header("Global Settings")
 
-    ticker_input = st.sidebar.text_input(
-        "Target Tickers (semicolon separated)", ";".join(config.target_stock_codes)
-    )
-    config.target_stock_codes = [t.strip() for t in ticker_input.split(";")]
+    if analysis_mode != "Find Super Stars":
+        ticker_input = st.sidebar.text_input(
+            "Target Tickers (semicolon separated)", ";".join(config.target_stock_codes)
+        )
+        config.target_stock_codes = [t.strip() for t in ticker_input.split(";")]
+    else:
+        # Super Star Index Choice
+        st.sidebar.subheader("Index Selection")
+        index_data = load_index_constituents()
+        index_choice = st.sidebar.selectbox(
+            "Select Index to Scan",
+            list(index_data.keys()),
+            help="ASX 50: Blue Chips. ASX 200: Benchmark index.",
+        )
+
+        if st.sidebar.button("🔄 Update Index Constituents"):
+            with st.spinner("Fetching latest market data..."):
+                results = update_index_data()
+                st.sidebar.success("Updated!")
+                for idx, msg in results.items():
+                    st.sidebar.caption(f"{idx}: {msg}")
+                # Reload data immediately after update
+                index_data = load_index_constituents()
+
+        config.target_stock_codes = index_data.get(index_choice, [])
 
     config.backtest_years = st.sidebar.slider(
         "Backtest Years", 1, 10, config.backtest_years
@@ -39,7 +67,6 @@ def render_sidebar(config: Config):
         "Initial Capital", value=float(config.init_capital), format="%.2f", step=100.0
     )
 
-    # Risk Thresholds
     config.stop_loss_threshold = st.sidebar.slider(
         "Stop-Loss Threshold", 0.01, 0.50, config.stop_loss_threshold
     )
@@ -51,62 +78,64 @@ def render_sidebar(config: Config):
     st.sidebar.header(f"{analysis_mode} Settings")
 
     test_periods = []
-    period_map = {}
+    period_map = {
+        "1 day": ("day", 1),
+        "1 week": ("day", 7),
+        "2 weeks": ("day", 14),
+        "1 month": ("month", 1),
+        "3 months": ("month", 3),
+        "1 quarter": ("month", 3),
+        "6 months": ("month", 6),
+        "1 year": ("year", 1),
+    }
     tie_breaker = None
 
     if analysis_mode == "Models Comparison":
-        # Strategy fields only relevant when comparing models
         col_unit, col_val = st.sidebar.columns([2, 1])
         unit_options = ["day", "month", "quarter", "year"]
-        unit_index = (
-            unit_options.index(config.hold_period_unit)
-            if config.hold_period_unit in unit_options
-            else 1
-        )
         config.hold_period_unit = col_unit.selectbox(
-            "Strategy Hold Unit", unit_options, index=unit_index
+            "Strategy Hold Unit", unit_options, index=1
         )
-        config.hold_period_value = col_val.number_input(
-            "Val", value=config.hold_period_value, min_value=1
-        )
-
+        config.hold_period_value = col_val.number_input("Val", value=1, min_value=1)
         config.model_types = st.sidebar.multiselect(
             "AI Algorithms to Benchmark",
             ["random_forest", "xgboost", "catboost", "prophet", "lstm"],
             default=config.model_types,
         )
-    else:
-        # Time-Span Comparison Fields
+
+    elif analysis_mode == "Time-Span Comparison":
         config.model_types = st.sidebar.multiselect(
             "Select AI Committee",
             ["random_forest", "xgboost", "catboost", "prophet", "lstm"],
             default=["random_forest", "catboost"],
         )
-
-        # Tie-breaker only for consensus mode with even numbers
         if len(config.model_types) > 0 and len(config.model_types) % 2 == 0:
             tie_breaker = st.sidebar.selectbox(
-                "⚖️ Consensus Tie-Breaker",
-                config.model_types,
-                help="If the AI committee is split 50/50, this model makes the final decision.",
+                "⚖️ Consensus Tie-Breaker", config.model_types
             )
-
         test_periods = st.sidebar.multiselect(
             "Time-Spans to Evaluate",
-            ["1 day", "1 week", "2 weeks", "1 month", "3 months", "6 months", "1 year"],
+            ["1 day", "1 week", "1 month", "3 months", "1 year"],
             default=["1 day", "1 month", "1 year"],
         )
-        period_map = {
-            "1 day": ("day", 1),
-            "1 week": ("day", 7),
-            "2 weeks": ("day", 14),
-            "1 month": ("month", 1),
-            "3 months": ("month", 3),
-            "6 months": ("month", 6),
-            "1 year": ("year", 1),
-        }
 
-    # Data Preprocessing & Accounting (Always at bottom)
+    else:
+        # Find Super Stars (Mode 3)
+        config.model_types = st.sidebar.multiselect(
+            "Select AI Committee",
+            ["random_forest", "xgboost", "catboost", "prophet", "lstm"],
+            default=["random_forest", "catboost"],
+        )
+        if len(config.model_types) > 0 and len(config.model_types) % 2 == 0:
+            tie_breaker = st.sidebar.selectbox(
+                "⚖️ Consensus Tie-Breaker", config.model_types
+            )
+        star_period = st.sidebar.selectbox(
+            "Strategy Time-Span", ["1 month", "1 quarter", "1 year"], index=0
+        )
+        test_periods = [star_period]
+
+    # --- 3. PREPROCESSING & ACCOUNTING ---
     st.sidebar.markdown("---")
     config.scaler_type = st.sidebar.radio(
         "Feature Scaler",
@@ -134,4 +163,11 @@ def render_sidebar(config: Config):
     st.sidebar.markdown("---")
     gen_suggestions = st.sidebar.button("💡 Generate Live Suggestions")
 
-    return analysis_mode, test_periods, period_map, gen_suggestions, tie_breaker
+    return (
+        analysis_mode,
+        test_periods,
+        period_map,
+        gen_suggestions,
+        tie_breaker,
+        index_choice,
+    )

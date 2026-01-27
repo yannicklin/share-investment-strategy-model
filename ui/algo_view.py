@@ -16,9 +16,10 @@ def render_algorithm_comparison(ticker, ticker_res):
             summary.append(
                 {
                     "Algorithm": m_name.upper(),
-                    "Net ROI": round(float(res["roi"]), 4),
+                    "Net ROI": float(res["roi"]),
+                    "Win Rate": float(res.get("win_rate", 0)),
                     "Total Trades": res["total_trades"],
-                    "Final Capital": round(float(res["final_capital"]), 2),
+                    "Final Capital": float(res["final_capital"]),
                 }
             )
 
@@ -31,8 +32,9 @@ def render_algorithm_comparison(ticker, ticker_res):
             st.dataframe(
                 df,
                 column_config={
-                    "Net ROI": st.column_config.NumberColumn(format="%.2%"),
-                    "Final Capital": st.column_config.NumberColumn(format="$%,.2f"),
+                    "Net ROI": st.column_config.NumberColumn(format="0.00%"),
+                    "Win Rate": st.column_config.NumberColumn(format="0.00%"),
+                    "Final Capital": st.column_config.NumberColumn(format="$0,0.00"),
                 },
                 hide_index=True,
                 use_container_width=True,
