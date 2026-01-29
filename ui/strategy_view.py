@@ -1,4 +1,12 @@
-"""Strategy Sensitivity view for the ASX AI Trading System."""
+"""
+ASX AI Trading System - Strategy Sensitivity View
+
+Purpose: Streamlit view for comparing trading strategies across different
+holding periods using consensus AI predictions.
+
+Author: Yannick
+Copyright (c) 2026 Yannick
+"""
 
 import streamlit as st
 import pandas as pd

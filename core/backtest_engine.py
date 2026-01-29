@@ -1,4 +1,12 @@
-"""Backtesting engine for evaluating AI trading strategies."""
+"""
+ASX AI Trading System - Backtesting Engine
+
+Purpose: Simulates trading strategies on historical data with realistic
+constraints (fees, taxes, price gaps, T+1 settlement).
+
+Author: Yannick
+Copyright (c) 2026 Yannick
+"""
 
 import pandas as pd
 import numpy as np

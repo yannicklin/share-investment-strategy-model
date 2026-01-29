@@ -1,4 +1,12 @@
-"""Model building module for training and loading AI investment models."""
+"""
+ASX AI Trading System - Model Builder
+
+Purpose: Factory for creating and training machine learning models with
+standardized interfaces for prediction and backtesting.
+
+Author: Yannick
+Copyright (c) 2026 Yannick
+"""
 
 import os
 import joblib

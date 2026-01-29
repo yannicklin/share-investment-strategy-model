@@ -1,0 +1,137 @@
+# Cline AI Rules for ASX AI Trading System
+
+## 🎯 MANDATORY: Read SOUL.md First
+
+**Before making ANY code changes, read SOUL.md to understand:**
+- Project philosophy and core values (Data-Driven, Realism, Transparency)
+- Architectural principles (Modularity, Factory Pattern, Consensus Logic)
+- Security-first mindset and financial safety standards
+- Development journey and lessons learned
+- Code attribution requirements
+
+**All contributions MUST align with SOUL.md principles. Non-compliance = rejected work.**
+
+---
+
+## Project Overview
+
+**Name**: ASX AI Trading Strategy System  
+**Type**: Python/Streamlit Machine Learning Application  
+**Stack**: Python 3.x, pandas, scikit-learn, yfinance, xgboost, prophet, tensorflow, streamlit
+
+---
+
+## Critical Development Rules
+
+### 1. Documentation-First Development
+- **ALWAYS** update `asx_ai_trading_system_requirements.md` before coding
+- **NEVER** implement features without documentation updates
+- **VERIFY** changes align with existing requirements
+
+### 2. Preserve Backtesting Realism
+- **MUST** include CMC Markets fees: max($11, 0.10% × trade value)
+- **MUST** apply ATO 2024-25 tax brackets with 50% CGT discount
+- **MUST** handle price gaps for stop-loss (use open price)
+- **MUST** implement T+1 reinvestment logic (no same-day reallocation)
+- **MUST** use 2-decimal precision for ROI/Win Rate
+
+### 3. Multi-Model Consensus Architecture
+- **MAINTAIN** factory pattern with 5 algorithms (Random Forest, XGBoost, CatBoost, Prophet, LSTM)
+- **PRESERVE** majority vote consensus (≥3/5 models for signal)
+- **KEEP** tie-breaker mechanism (user-selectable model)
+- **ENSURE** model availability checks (XGB/CatBoost/Prophet/LSTM optional)
+
+### 4. Data Integrity
+- **USE** `.AX` suffix for all ASX tickers
+- **USE** `auto_adjust=True` and `Close` column for calculations
+- **IMPLEMENT** RSI, MACD, Moving Averages as standard features
+- **SUPPORT** both `StandardScaler` and `RobustScaler`
+
+### 5. Security & Safety
+- **NEVER** commit API keys or credentials
+- **NEVER** make financial claims without disclaimers
+- **ALWAYS** validate user inputs
+- **ALWAYS** test with real ASX ticker data
+
+### 6. Code Attribution
+**All new Python files MUST include copyright header:**
+```python
+"""
+ASX AI Trading System - [Module Name]
+
+Purpose: [Brief description]
+
+Author: Yannick
+Created: January 2026
+Copyright (c) 2026 Yannick
+"""
+```
+
+---
+
+## File Structure
+
+```
+share-investment-strategy-model/
+├── ASX_AImodel.py          # Main Streamlit app
+├── core/                   # Business logic (config, models, backtesting, indices)
+├── ui/                     # Streamlit components (sidebar, views, components)
+└── tests/                  # Unit tests
+```
+
+**Separation Rules**:
+- Keep business logic in `core/`
+- Keep UI logic in `ui/`
+- Don't mix UI and business logic
+
+---
+
+## Code Style
+
+- **PEP 8**: Follow Python style guidelines
+- **Type Hints**: Use for function signatures
+- **Docstrings**: Required for all public functions
+- **Imports**: Organize (stdlib → third-party → local)
+
+---
+
+## Testing Requirements
+
+**Before Committing**:
+1. Test with real ASX tickers (e.g., CBA.AX, BHP.AX)
+2. Verify all 3 modes work (Models, Time-Span, Super Stars)
+3. Check performance with ASX 50/200 indices
+4. Validate fee/tax calculations produce realistic results
+5. Ensure consensus logic produces sensible recommendations
+
+---
+
+## References
+
+- **[SOUL.md](SOUL.md)** - Project philosophy (READ FIRST)
+- **[AUTHORS.md](AUTHORS.md)** - Contributors
+- **[CODE_HEADERS.md](CODE_HEADERS.md)** - Attribution templates
+- **[AGENTS.md](AGENTS.md)** - AI development guidelines
+
+---
+
+## Anti-Patterns to Avoid
+
+❌ **Don't**:
+- Remove fee/tax calculations
+- Hardcode single model predictions
+- Ignore consensus logic
+- Mix UI and business logic
+- Commit without testing with real data
+
+✅ **Do**:
+- Update requirements documentation first
+- Preserve backtesting realism
+- Test with real ASX tickers
+- Add proper copyright headers
+- Follow existing architectural patterns
+
+---
+
+**Last Updated**: January 29, 2026  
+**Copyright**: (c) 2026 Yannick

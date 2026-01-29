@@ -75,4 +75,29 @@ uv run streamlit run ASX_AImodel.py
 This software is for educational and research purposes only. It is **not** financial advice. Trading stocks involves significant risk of loss. Always perform your own due diligence and consult with a licensed financial advisor before making any investment decisions. The developers of this system are not responsible for any financial losses incurred through its use.
 
 ---
-*Developed for ASX Trading Analysis.*
+
+## 📚 Attribution & Project Documentation
+
+### Core Documentation
+- **[SOUL.md](SOUL.md)** - Project philosophy, values, and architectural principles
+- **[AUTHORS.md](AUTHORS.md)** - Contributors, acknowledgments, and technology credits
+- **[CODE_HEADERS.md](CODE_HEADERS.md)** - Code attribution templates and current status
+
+### AI Assistant Development
+- **[AGENTS.md](AGENTS.md)** - Comprehensive AI development guidelines
+- **[.cursorrules](.cursorrules)** - Cursor AI configuration
+- **[.clinerules](.clinerules)** - Cline AI configuration
+- **[.aiderignore](.aiderignore)** - Aider AI configuration
+
+### License & Copyright
+
+**Copyright**: (c) 2026 Yannick  
+**License**: MIT License (see [LICENSE](LICENSE))  
+**Attribution**: All source code files include copyright headers per `CODE_HEADERS.md`
+
+**Current Attribution Status**: 100% coverage (13/13 Python files)
+
+---
+
+*Last Updated: January 29, 2026*  
+*Developed for ASX Trading Analysis*

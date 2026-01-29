@@ -1,4 +1,12 @@
-"""ASX AI Trading System - Main Application Entry Point."""
+"""
+ASX AI Trading System - Main Application Entry Point
+
+Purpose: Streamlit dashboard for multi-model AI trading strategy analysis
+with realistic backtesting and performance metrics.
+
+Author: Yannick
+Copyright (c) 2026 Yannick
+"""
 
 import streamlit as st
 import pandas as pd

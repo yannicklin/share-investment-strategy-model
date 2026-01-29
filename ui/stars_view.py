@@ -1,4 +1,12 @@
-"""Super Stars (Mode 3) view for the ASX AI Trading System."""
+"""
+ASX AI Trading System - Super Stars View
+
+Purpose: Streamlit view for ranking and displaying top-performing stocks
+within ASX indices.
+
+Author: Yannick
+Copyright (c) 2026 Yannick
+"""
 
 import streamlit as st
 import pandas as pd

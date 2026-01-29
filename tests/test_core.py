@@ -1,4 +1,12 @@
-"""Tests for the AI trading system components."""
+"""
+ASX AI Trading System - Unit Tests
+
+Purpose: Test suite for core module validation including model builder
+and backtesting engine.
+
+Author: Yannick
+Copyright (c) 2026 Yannick
+"""
 
 import pytest
 import pandas as pd

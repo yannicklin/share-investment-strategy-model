@@ -1,4 +1,12 @@
-"""Shared UI components for the ASX AI Trading System."""
+"""
+ASX AI Trading System - Shared UI Components
+
+Purpose: Reusable Streamlit components for equity curves, trade logs,
+and glossary displays.
+
+Author: Yannick
+Copyright (c) 2026 Yannick
+"""
 
 import streamlit as st
 import pandas as pd

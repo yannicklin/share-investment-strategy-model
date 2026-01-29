@@ -1,4 +1,12 @@
-"""Algorithm Comparison view for the ASX AI Trading System."""
+"""
+ASX AI Trading System - Algorithm Comparison View
+
+Purpose: Streamlit view for comparing AI model performance metrics
+and visualizations.
+
+Author: Yannick
+Copyright (c) 2026 Yannick
+"""
 
 import streamlit as st
 import pandas as pd

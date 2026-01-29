@@ -1,4 +1,12 @@
-"""Configuration management for the AI-Based Stock Investment System."""
+"""
+ASX AI Trading System - Configuration Management
+
+Purpose: Configuration dataclass for system parameters including tickers,
+capital, thresholds, and backtesting settings.
+
+Author: Yannick
+Copyright (c) 2026 Yannick
+"""
 
 from dataclasses import dataclass, field
 from typing import List

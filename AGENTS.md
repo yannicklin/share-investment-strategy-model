@@ -1,5 +1,18 @@
 # AGENTS.md: AI Agent Instructions
 
+## 🎯 **CRITICAL: Read SOUL.md First**
+
+**Before making ANY changes, read [SOUL.md](SOUL.md)** to understand:
+- Project philosophy and core values (Data-Driven, Realism, Transparency, Flexibility)
+- Architectural principles (Modularity, Factory Pattern, Consensus Logic)
+- Security-first mindset and financial safety standards
+- Development journey and lessons learned (4 phases)
+- Code ownership and attribution standards
+
+**All AI agents MUST align their work with SOUL.md principles. Non-compliance = rejected work.**
+
+---
+
 This document provides instructions for AI agents working on the **AI-Based Stock Investment System (ASX Version)**. All agents MUST follow these guidelines to ensure consistency, safety, and code quality.
 
 ## 1. Project Overview

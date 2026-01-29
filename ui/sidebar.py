@@ -1,4 +1,12 @@
-"""Sidebar components for the ASX AI Trading System."""
+"""
+ASX AI Trading System - Sidebar Component
+
+Purpose: Streamlit sidebar for mode selection, ticker input, and
+backtest parameters.
+
+Author: Yannick
+Copyright (c) 2026 Yannick
+"""
 
 import streamlit as st
 from core.config import Config

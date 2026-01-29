@@ -1,4 +1,12 @@
-"""Module for managing ASX index constituents and live updates."""
+"""
+ASX AI Trading System - Index Manager
+
+Purpose: Manages ASX index constituents with live updates and caching
+for ASX 50, ASX 200, and custom stock lists.
+
+Author: Yannick
+Copyright (c) 2026 Yannick
+"""
 
 import pandas as pd
 import json
