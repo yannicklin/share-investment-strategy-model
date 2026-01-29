@@ -2,10 +2,6 @@
   "name": "ASX AI Trading System",
   "image": "mcr.microsoft.com/devcontainers/python:3.12",
   
-  "features": {
-    "ghcr.io/devcontainers-contrib/features/uv:latest": {}
-  },
-  
   "customizations": {
     "vscode": {
       "extensions": [
@@ -36,7 +32,7 @@
     }
   },
   
-  "postCreateCommand": "uv sync",
+  "postCreateCommand": "curl -LsSf https://astral.sh/uv/install.sh | sh && export PATH=\"$HOME/.cargo/bin:$PATH\" && uv sync",
   
   "remoteUser": "vscode"
 }
