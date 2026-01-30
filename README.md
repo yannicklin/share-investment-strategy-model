@@ -20,7 +20,8 @@ A Python-based automated trading strategy system designed specifically for the *
     -   **Super Stars Scanner**: Scan entire market indices (**ASX 50**, **ASX 200**) to find the top 10 most profitable stocks using consensus logic.
     -   **Realized Equity Curves**: Visual tracking of capital growth connecting trade exit points.
     -   **Daily Recommendations**: AI-generated signals with consensus scoring.
--   **Performance Metrics**: Track Net ROI, Win Rate, and Total Trades with standardized **2-decimal precision**.
+-   **Input Validation**: Real-time ticker validation against Yahoo Finance — automatically removes invalid tickers before analysis with user warnings.
+-   **Performance Metrics**: Track Net ROI, Win Rate, and Total Trades with standardized **2-decimal precision** (numeral.js format).
 -   **T+1 Reinvestment Logic**: Simulates realistic brokerage cash flow where capital from a sale is available for the next trading day.
 
 ## 🛠️ Installation
@@ -51,6 +52,14 @@ Launch the interactive dashboard to configure parameters, run backtests, and vie
 ```bash
 uv run streamlit run ASX_AImodel.py
 ```
+
+### GitHub Codespaces (Cloud Development)
+This project includes a devcontainer configuration for GitHub Codespaces:
+- **Pre-configured**: Debian base + Python 3.12 + UV + SSH
+- **Automatic setup**: Dependencies installed on container creation
+- **SSH access**: Enabled via `gh codespace ssh`
+
+Simply open the repository in GitHub Codespaces to start developing immediately.
 
 ## 📂 Project Structure
 

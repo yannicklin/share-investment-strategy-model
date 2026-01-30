@@ -32,8 +32,8 @@ class Config:
         ]
     )
     backtest_years: int = 5
-    stop_loss_threshold: float = 0.10
-    stop_profit_threshold: float = 0.20
+    stop_loss_threshold: float = 0.15
+    stop_profit_threshold: float = 0.30
     model_path: str = "models/"
     init_capital: float = 3000.0
     hold_period_unit: str = "month"

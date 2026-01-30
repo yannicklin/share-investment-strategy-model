@@ -40,10 +40,15 @@ The goal is to build a Python-based trading strategy system for the Australian S
 7. **Index Management**: Always maintain an automated way to refresh stock symbols from live market lists (e.g., `index_manager.py`).
 8. **Data Preprocessing**: Support both `StandardScaler` and `RobustScaler` to ensure consistency and handle market outliers effectively.
 9. **Performance Optimization**: Use `st.session_state` in the UI to cache results.
+10. **Input Validation**: All ticker inputs MUST be validated against Yahoo Finance API before processing — use `validate_ticker()` function.
+11. **Display Formatting**: Use numeral.js format strings for Streamlit NumberColumn:
+    - Currency: `"$0,0.00"` (NOT Python format `"$,.2f"`)
+    - Percentage: `"0.00%"` (auto-multiplies by 100, NOT `".2%"`)
+    - Integer: `"0"` for whole numbers
 
 
 ...
 
 ---
-*Last Updated: 2026-01-24 (Added Tie-Breaker & Strategy Sensitivity Toggle)*
+*Last Updated: 2026-01-30 (Added Ticker Validation & Streamlit Format Standards)*
 *Note: This is a living document. Update it as project conventions evolve.*

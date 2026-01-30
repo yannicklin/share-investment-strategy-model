@@ -34,12 +34,13 @@ The model may buy even if projected returns do not meet take-profit thresholds, 
 #### 2.2 UI Modules (`ui/`)
 - **`sidebar.py`** — Analysis mode selection via a **Segmented Button Switch** (Models vs. Time-Span vs. Super Stars). Includes three configuration sections:
     - **Global Settings**: Shared parameters (Tickers, Capital, Risk thresholds).
+    - **Ticker Validation**: Real-time validation against Yahoo Finance API — automatically removes invalid/non-existent tickers with user warnings.
     - **Mode-Specific Settings**: Context-aware fields (Fixed strategy for Models Comparison; AI Committee & Tie-Breaker for Time-Span/Super Stars).
     - **Preprocessing & Accounting**: Scaler type, costs, and taxes.
 - **`algo_view.py`** — Renders the **Models Comparison** leaderboard and individual model deep-dives.
 - **`strategy_view.py`** — Renders the **Time-Span Comparison** ROI bar charts and consensus equity paths.
 - **`stars_view.py`** — Renders the **Super Stars** leaderboard (Hall of Fame) with comparative ROI charts and drill-down trade analysis for the top 10 winners.
-- **`components.py`** — Shared dashboard elements including the **Realized Equity Curve**, standardized transaction logs (2-decimal precision), and the financial glossary.
+- **`components.py`** — Shared dashboard elements including the **Realized Equity Curve**, standardized transaction logs (numeral.js format: `$0,0.00` for currency, `0.00%` for percentages), and the financial glossary.
 
 ### 2.3 Main Module — `ASX_AImodel.py`
 The unified entry point for the Streamlit dashboard. Integrates core logic with the modular UI views and provides a **Live Recommendations** feature for real-time ticker analysis.
