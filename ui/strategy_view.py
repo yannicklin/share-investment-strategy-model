@@ -60,10 +60,10 @@ def render_strategy_sensitivity(ticker, ticker_res):
         st.dataframe(
             df,
             column_config={
-                "Net ROI": st.column_config.NumberColumn("ROI", format=".2%"),
-                "Win Rate": st.column_config.NumberColumn("Win Rate", format=".2%"),
+                "Net ROI": st.column_config.NumberColumn("ROI", format="0.00%"),
+                "Win Rate": st.column_config.NumberColumn("Win Rate", format="0.00%"),
                 "Final Portfolio": st.column_config.NumberColumn(
-                    "Final Value", format="$,.2f"
+                    "Final Value", format="$0,0.00"
                 ),
                 "Total Trades": "Trades",
             },

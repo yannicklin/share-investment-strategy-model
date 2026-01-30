@@ -38,6 +38,16 @@ models/*.joblib
 data/downloads/
 *.log
 
+# AI Model Training Artifacts
+catboost_info/          # CatBoost: Training logs and metrics
+*.cmdstan/              # Prophet: Stan compiler cache
+logs/                   # TensorFlow: Training logs and checkpoints
+runs/                   # TensorFlow: TensorBoard logs
+checkpoints/            # TensorFlow: Model checkpoints
+events.out.tfevents.*   # TensorFlow: TensorBoard event files
+*.pb                    # TensorFlow: Protocol buffer files
+saved_model/            # TensorFlow: SavedModel format
+
 # Environment variables
 .env
 .envrc
