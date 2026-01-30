@@ -4,7 +4,7 @@
 
   "features": {
     "ghcr.io/devcontainers/features/python:1": {
-      "version": "3.12"
+      "version": "3.12", "installTools": "false"
     },
     "ghcr.io/devcontainers-extra/features/uv:1": {},
     "ghcr.io/devcontainers/features/sshd:1": {}
@@ -37,7 +37,7 @@
     }
   },
   
-  "postCreateCommand": "uv pip install -r requirements.txt",
+  "postCreateCommand": "uv venv && uv pip install -r requirements.txt",
   
   "remoteUser": "vscode"
 }
