@@ -33,17 +33,18 @@ def render_algorithm_comparison(ticker, ticker_res):
 
     if summary:
         df = pd.DataFrame(summary).sort_values("Net ROI", ascending=False)
+        
+        # Format the display values
+        df_display = df.copy()
+        df_display["Net ROI"] = df["Net ROI"].apply(lambda x: f"{x*100:.2f}%")
+        df_display["Win Rate"] = df["Win Rate"].apply(lambda x: f"{x*100:.2f}%")
+        df_display["Final Capital"] = df["Final Capital"].apply(lambda x: f"${x:,.2f}")
 
         col_table, col_chart = st.columns([1, 1])
         with col_table:
             st.subheader("Leaderboard")
             st.dataframe(
-                df,
-                column_config={
-                    "Net ROI": st.column_config.NumberColumn(format="0.00%"),
-                    "Win Rate": st.column_config.NumberColumn(format="0.00%"),
-                    "Final Capital": st.column_config.NumberColumn(format="$0,0.00"),
-                },
+                df_display,
                 hide_index=True,
                 use_container_width=True,
             )

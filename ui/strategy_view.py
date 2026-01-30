@@ -42,6 +42,12 @@ def render_strategy_sensitivity(ticker, ticker_res):
 
     if summary:
         df = pd.DataFrame(summary)
+        
+        # Format the display values
+        df_display = df.copy()
+        df_display["Net ROI"] = df["Net ROI"].apply(lambda x: f"{x*100:.2f}%")
+        df_display["Win Rate"] = df["Win Rate"].apply(lambda x: f"{x*100:.2f}%")
+        df_display["Final Portfolio"] = df["Final Portfolio"].apply(lambda x: f"${x:,.2f}")
 
         # 1. ROI Comparison Chart
         fig = px.bar(
@@ -58,15 +64,7 @@ def render_strategy_sensitivity(ticker, ticker_res):
         # 2. Metrics Table
         st.subheader("Efficiency Metrics")
         st.dataframe(
-            df,
-            column_config={
-                "Net ROI": st.column_config.NumberColumn("ROI", format="0.00%"),
-                "Win Rate": st.column_config.NumberColumn("Win Rate", format="0.00%"),
-                "Final Portfolio": st.column_config.NumberColumn(
-                    "Final Value", format="$0,0.00"
-                ),
-                "Total Trades": "Trades",
-            },
+            df_display,
             hide_index=True,
             use_container_width=True,
         )

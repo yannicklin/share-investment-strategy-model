@@ -40,20 +40,17 @@ def render_super_stars(index_name, all_ticker_res):
         # Sort by ROI and take top 10
         df_all = pd.DataFrame(summary).sort_values("Net ROI", ascending=False)
         df_top10 = df_all.head(10).reset_index(drop=True)
+        
+        # Format the display values
+        df_display = df_top10.copy()
+        df_display["Net ROI"] = df_top10["Net ROI"].apply(lambda x: f"{x*100:.2f}%")
+        df_display["Win Rate"] = df_top10["Win Rate"].apply(lambda x: f"{x*100:.2f}%")
+        df_display["Final Portfolio"] = df_top10["Final Portfolio"].apply(lambda x: f"${x:,.2f}")
 
         # 1. Leaderboard Table
         st.subheader("🏆 Top 10 Profit Performers")
         st.dataframe(
-            df_top10,
-            column_config={
-                "Ticker": st.column_config.TextColumn("Stock Symbol"),
-                "Net ROI": st.column_config.NumberColumn("ROI", format="0.00%"),
-                "Win Rate": st.column_config.NumberColumn("Win Rate", format="0.00%"),
-                "Total Trades": st.column_config.NumberColumn("Trades", format="0"),
-                "Final Portfolio": st.column_config.NumberColumn(
-                    "Final Value", format="$0,0.00"
-                ),
-            },
+            df_display,
             hide_index=True,
             use_container_width=True,
         )

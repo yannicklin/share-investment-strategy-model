@@ -60,21 +60,24 @@ def render_trade_details(res):
         for d_col in ["buy_date", "sell_date"]:
             if d_col in log_df.columns:
                 log_df[d_col] = pd.to_datetime(log_df[d_col]).dt.date
+        
+        # Format display values
+        trades_display = log_df.copy()
+        if "buy_price" in trades_display.columns:
+            trades_display["buy_price"] = log_df["buy_price"].apply(lambda x: f"${x:,.2f}")
+        if "sell_price" in trades_display.columns:
+            trades_display["sell_price"] = log_df["sell_price"].apply(lambda x: f"${x:,.2f}")
+        if "fees" in trades_display.columns:
+            trades_display["fees"] = log_df["fees"].apply(lambda x: f"${x:,.2f}")
+        if "tax" in trades_display.columns:
+            trades_display["tax"] = log_df["tax"].apply(lambda x: f"${x:,.2f}")
+        if "profit_pct" in trades_display.columns:
+            trades_display["profit_pct"] = log_df["profit_pct"].apply(lambda x: f"{x*100:.2f}%")
+        if "cumulative_capital" in trades_display.columns:
+            trades_display["cumulative_capital"] = log_df["cumulative_capital"].apply(lambda x: f"${x:,.2f}")
 
         st.dataframe(
-            log_df,
-            column_config={
-                "buy_price": st.column_config.NumberColumn("Buy", format="$0,0.00"),
-                "sell_price": st.column_config.NumberColumn("Sell", format="$0,0.00"),
-                "fees": st.column_config.NumberColumn("Fees", format="$0,0.00"),
-                "tax": st.column_config.NumberColumn("Tax", format="$0,0.00"),
-                "profit_pct": st.column_config.NumberColumn("P/L %", format="0.00%"),
-                "cumulative_capital": st.column_config.NumberColumn(
-                    "Portfolio", format="$0,0.00"
-                ),
-                "duration": st.column_config.NumberColumn("Days", format="0"),
-                "reason": "Exit Reason",
-            },
+            trades_display,
             hide_index=True,
             use_container_width=True,
         )
