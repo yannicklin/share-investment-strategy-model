@@ -14,25 +14,6 @@ from core.config import Config
 from core.index_manager import load_index_constituents, update_index_data
 
 
-def validate_ticker(ticker: str) -> bool:
-    """
-    Validate if ticker exists in Yahoo Finance by attempting to fetch minimal data.
-    
-    Args:
-        ticker: Stock ticker symbol (e.g., 'CBA.AX')
-    
-    Returns:
-        True if ticker exists and has data, False otherwise
-    """
-    try:
-        # Attempt to fetch just 5 days of data to minimize API calls
-        data = yf.download(ticker, period="5d", progress=False, show_errors=False)
-        # Check if we got valid data (non-empty dataframe)
-        return not data.empty and len(data) > 0
-    except Exception:
-        return False
-
-
 def render_sidebar(config: Config):
     """Renders all sidebar inputs and returns the selected analysis mode."""
 
@@ -66,40 +47,11 @@ def render_sidebar(config: Config):
         ticker_input = st.sidebar.text_input(
             "Target Tickers (semicolon separated)", ";".join(config.target_stock_codes)
         )
-        # Filter out empty/invalid tickers
-        raw_tickers = [
+        # Filter out empty tickers and normalize format
+        config.target_stock_codes = [
             t.strip().upper() for t in ticker_input.split(";")
             if t.strip() and len(t.strip()) > 0
         ]
-        
-        # Validate tickers against Yahoo Finance
-        if raw_tickers:
-            with st.spinner("Validating tickers..."):
-                valid_tickers = []
-                invalid_tickers = []
-                
-                for ticker in raw_tickers:
-                    if validate_ticker(ticker):
-                        valid_tickers.append(ticker)
-                    else:
-                        invalid_tickers.append(ticker)
-                
-                config.target_stock_codes = valid_tickers
-                
-                # Warn user about invalid tickers
-                if invalid_tickers:
-                    st.sidebar.warning(
-                        f"⚠️ Removed invalid ticker(s): {', '.join(invalid_tickers)}\n\n"
-                        f"These tickers don't exist in Yahoo Finance or have no data."
-                    )
-                
-                # Show validation summary
-                if valid_tickers:
-                    st.sidebar.success(f"✅ {len(valid_tickers)} valid ticker(s) ready")
-                else:
-                    st.sidebar.error("❌ No valid tickers found. Please enter valid ticker symbols.")
-        else:
-            config.target_stock_codes = []
     else:
         # Super Star Index Choice
         st.sidebar.subheader("Index Selection")
