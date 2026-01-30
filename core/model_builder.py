@@ -176,10 +176,17 @@ class ModelBuilder:
             self.model = self._init_model(input_dim=X.shape[1])
             self.model.fit(X_seq, y_seq, batch_size=32, epochs=10, verbose=0)
         elif self.config.model_type == "prophet" and PROPHET_AVAILABLE:
-            prophet_df = data.reset_index()[["Date", "Close"]].rename(
-                columns={"Date": "ds", "Close": "y"}
-            )
-            prophet_df["ds"] = prophet_df["ds"].dt.tz_localize(None)
+            # Prophet requires DataFrame with 'ds' (datetime) and 'y' (numeric) columns
+            prophet_df = pd.DataFrame({
+                'ds': data.index,
+                'y': data['Close'].values
+            })
+            # Remove timezone if present
+            prophet_df['ds'] = pd.to_datetime(prophet_df['ds']).dt.tz_localize(None)
+            # Ensure y is numeric
+            prophet_df['y'] = pd.to_numeric(prophet_df['y'], errors='coerce')
+            prophet_df = prophet_df.dropna()
+            
             self.model = self._init_model()
             self.model.fit(prophet_df)
         else:
