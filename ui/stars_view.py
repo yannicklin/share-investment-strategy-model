@@ -47,11 +47,11 @@ def render_super_stars(index_name, all_ticker_res):
             df_top10,
             column_config={
                 "Ticker": st.column_config.TextColumn("Stock Symbol"),
-                "Net ROI": st.column_config.NumberColumn("ROI", format="0.00%"),
-                "Win Rate": st.column_config.NumberColumn("Win Rate", format="0.00%"),
+                "Net ROI": st.column_config.NumberColumn("ROI", format=".2%"),
+                "Win Rate": st.column_config.NumberColumn("Win Rate", format=".2%"),
                 "Total Trades": st.column_config.NumberColumn("Trades", format="0"),
                 "Final Portfolio": st.column_config.NumberColumn(
-                    "Final Value", format="$0,0.00"
+                    "Final Value", format="$,.2f"
                 ),
             },
             hide_index=True,
@@ -70,7 +70,7 @@ def render_super_stars(index_name, all_ticker_res):
         )
 
         # Add labels to chart
-        fig.update_traces(texttemplate="%{y:.2%}", textposition="outside")
+        fig.update_traces(texttemplate="%{y:.2f}%", textposition="outside")
         fig.update_layout(yaxis_tickformat=".2%")
         st.plotly_chart(fig, use_container_width=True)
 

@@ -46,7 +46,11 @@ def render_sidebar(config: Config):
         ticker_input = st.sidebar.text_input(
             "Target Tickers (semicolon separated)", ";".join(config.target_stock_codes)
         )
-        config.target_stock_codes = [t.strip() for t in ticker_input.split(";")]
+        # Filter out empty/invalid tickers
+        config.target_stock_codes = [
+            t.strip().upper() for t in ticker_input.split(";")
+            if t.strip() and len(t.strip()) > 0
+        ]
     else:
         # Super Star Index Choice
         st.sidebar.subheader("Index Selection")

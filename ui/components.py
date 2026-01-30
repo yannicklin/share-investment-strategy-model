@@ -64,13 +64,13 @@ def render_trade_details(res):
         st.dataframe(
             log_df,
             column_config={
-                "buy_price": st.column_config.NumberColumn("Buy", format="$0,0.00"),
-                "sell_price": st.column_config.NumberColumn("Sell", format="$0,0.00"),
-                "fees": st.column_config.NumberColumn("Fees", format="$0,0.00"),
-                "tax": st.column_config.NumberColumn("Tax", format="$0,0.00"),
-                "profit_pct": st.column_config.NumberColumn("P/L %", format="0.00%"),
+                "buy_price": st.column_config.NumberColumn("Buy", format="$,.2f"),
+                "sell_price": st.column_config.NumberColumn("Sell", format="$,.2f"),
+                "fees": st.column_config.NumberColumn("Fees", format="$,.2f"),
+                "tax": st.column_config.NumberColumn("Tax", format="$,.2f"),
+                "profit_pct": st.column_config.NumberColumn("P/L %", format=".2%"),
                 "cumulative_capital": st.column_config.NumberColumn(
-                    "Portfolio", format="$0,0.00"
+                    "Portfolio", format="$,.2f"
                 ),
                 "duration": st.column_config.NumberColumn("Days", format="0"),
                 "reason": "Exit Reason",

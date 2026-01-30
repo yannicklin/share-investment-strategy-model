@@ -40,9 +40,9 @@ def render_algorithm_comparison(ticker, ticker_res):
             st.dataframe(
                 df,
                 column_config={
-                    "Net ROI": st.column_config.NumberColumn(format="0.00%"),
-                    "Win Rate": st.column_config.NumberColumn(format="0.00%"),
-                    "Final Capital": st.column_config.NumberColumn(format="$0,0.00"),
+                    "Net ROI": st.column_config.NumberColumn(format=".2%"),
+                    "Win Rate": st.column_config.NumberColumn(format=".2%"),
+                    "Final Capital": st.column_config.NumberColumn(format="$,.2f"),
                 },
                 hide_index=True,
                 use_container_width=True,
