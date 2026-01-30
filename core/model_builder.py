@@ -177,9 +177,14 @@ class ModelBuilder:
             self.model.fit(X_seq, y_seq, batch_size=32, epochs=10, verbose=0)
         elif self.config.model_type == "prophet" and PROPHET_AVAILABLE:
             # Prophet requires DataFrame with 'ds' (datetime) and 'y' (numeric) columns
+            # Handle MultiIndex columns from yfinance
+            close_data = data['Close']
+            if isinstance(close_data, pd.DataFrame):
+                close_data = close_data.iloc[:, 0]  # Get first column if DataFrame
+            
             prophet_df = pd.DataFrame({
                 'ds': data.index,
-                'y': data['Close'].values
+                'y': close_data.values.flatten()  # Ensure 1-D array
             })
             # Remove timezone if present
             prophet_df['ds'] = pd.to_datetime(prophet_df['ds']).dt.tz_localize(None)
