@@ -109,7 +109,7 @@ class BacktestEngine:
 
         df = self._get_indicators(raw_data)
         if df.empty:
-            return {"error": f"Insufficient data after indicators for {ticker}"}
+            return {"error": f"Insufficient data for {ticker}"}
 
         features = [
             "Open",
@@ -127,18 +127,10 @@ class BacktestEngine:
 
         capital = self.config.init_capital
         position, buy_price, buy_date, buy_fees = 0.0, 0.0, None, 0.0
-        trades, equity_history = [], []
+        trades = []
 
         for i in range(len(df) - 1):
             date, current_price = df.index[i], float(df.iloc[i]["Close"])
-            equity_history.append(
-                {
-                    "date": date,
-                    "capital": float(
-                        position * current_price if position > 0 else capital
-                    ),
-                }
-            )
 
             is_bullish = signal_func(
                 i,
@@ -236,7 +228,6 @@ class BacktestEngine:
             "win_rate": win_rate,
             "total_trades": len(trades),
             "trades": trades,
-            "equity_history": equity_history,
         }
 
     def run_model_mode(self, ticker: str, model_type: str) -> Dict[str, Any]:
@@ -244,21 +235,35 @@ class BacktestEngine:
         self.config.model_type = model_type
         self.model_builder.load_or_build(ticker)  # Load once
 
-        def signal(i, df, features, current_cap):
-            current_price = float(df.iloc[i]["Close"])
+        raw_data = self.model_builder.fetch_data(ticker, self.config.backtest_years)
+        if raw_data.empty:
+            return {"error": f"No data for {ticker}"}
+        df = self._get_indicators(raw_data)
+        if df.empty:
+            return {"error": f"Insufficient data for {ticker}"}
+
+        features = [
+            "Open",
+            "High",
+            "Low",
+            "Close",
+            "Volume",
+            "MA5",
+            "MA20",
+            "RSI",
+            "MACD",
+            "Signal_Line",
+            "Daily_Return",
+        ]
+
+        # Bulk pre-calculate predictions
+        print(f"Pre-calculating bulk predictions for {model_type}...")
+        all_preds = self._get_bulk_predictions(df, features, model_type)
+
+        def signal(i, df_inner, features_inner, current_cap):
+            current_price = float(df_inner.iloc[i]["Close"])
             hurdle = self.get_hurdle_rate(current_cap)
-
-            if model_type == "lstm":
-                if i < 30:
-                    return False
-                X = df.iloc[i - 29 : i + 1][features].values
-                pred = self.model_builder.predict(X, date=df.index[i])
-            else:
-                pred = self.model_builder.predict(
-                    df.iloc[i][features].values, date=df.index[i]
-                )
-
-            # Hurdle Rate logic: predicted return must exceed costs + buffer
+            pred = all_preds[i]
             pred_return = (pred - current_price) / current_price
             return pred_return > hurdle
 
@@ -268,43 +273,44 @@ class BacktestEngine:
         self, ticker: str, models: List[str], tie_breaker: Optional[str] = None
     ) -> Dict[str, Any]:
         """Mode 2: Evaluate strategy sensitivity using multi-model consensus."""
-        # Pre-load all models and scalers into memory
-        model_instances = {}
+        raw_data = self.model_builder.fetch_data(ticker, self.config.backtest_years)
+        if raw_data.empty:
+            return {"error": f"No data for {ticker}"}
+        df = self._get_indicators(raw_data)
+        if df.empty:
+            return {"error": f"Insufficient data for {ticker}"}
+
+        features = [
+            "Open",
+            "High",
+            "Low",
+            "Close",
+            "Volume",
+            "MA5",
+            "MA20",
+            "RSI",
+            "MACD",
+            "Signal_Line",
+            "Daily_Return",
+        ]
+
+        # Bulk pre-calculate predictions for all models in the committee
+        committee_preds = {}
         for m_type in models:
             self.config.model_type = m_type
             self.model_builder.load_or_build(ticker)
-            model_instances[m_type] = (
-                self.model_builder.model,
-                self.model_builder.scaler,
-            )
+            print(f"Pre-calculating bulk predictions for {m_type}...")
+            committee_preds[m_type] = self._get_bulk_predictions(df, features, m_type)
 
-        def signal(i, df, features, current_cap):
+        def signal(i, df_inner, features_inner, current_cap):
             votes = 0
-            current_price = float(df.iloc[i]["Close"])
+            current_price = float(df_inner.iloc[i]["Close"])
             hurdle = self.get_hurdle_rate(current_cap)
             tie_breaker_bullish = False
             tb_model = tie_breaker if tie_breaker else models[0]
 
             for m_type in models:
-                # Restore model state for prediction
-                self.model_builder.model, self.model_builder.scaler = model_instances[
-                    m_type
-                ]
-                self.config.model_type = m_type
-
-                if m_type == "lstm":
-                    if i < 30:
-                        pred = 0.0
-                    else:
-                        pred = self.model_builder.predict(
-                            df.iloc[i - 29 : i + 1][features].values, date=df.index[i]
-                        )
-                else:
-                    pred = self.model_builder.predict(
-                        df.iloc[i][features].values, date=df.index[i]
-                    )
-
-                # Each model's vote is subject to the hurdle rate
+                pred = committee_preds[m_type][i]
                 pred_return = (pred - current_price) / current_price
                 is_m_bullish = pred_return > hurdle
 
@@ -320,3 +326,48 @@ class BacktestEngine:
             return False
 
         return self._core_run(ticker, signal)
+
+    def _get_bulk_predictions(
+        self, df: pd.DataFrame, features: List[str], model_type: str
+    ) -> np.ndarray:
+        """Helper to get predictions for all rows in one go with memory safety."""
+        X_all = df[features].values.astype(np.float32)
+
+        if (
+            model_type == "lstm"
+            and self.model_builder.model is not None
+            and self.model_builder.scaler is not None
+        ):
+            # LSTM needs sequences - pre-allocate to save memory
+            seq_len = 30
+            X_scaled = self.model_builder.scaler.transform(X_all).astype(np.float32)
+            X_seq = np.zeros((len(df), seq_len, len(features)), dtype=np.float32)
+
+            for i in range(len(df)):
+                if i >= seq_len:
+                    X_seq[i] = X_scaled[i - seq_len + 1 : i + 1]
+
+            # Batch predict
+            batch_preds = self.model_builder.model.predict(
+                X_seq, batch_size=256, verbose=0
+            )
+            return batch_preds.flatten()
+
+        elif model_type == "prophet" and self.model_builder.model is not None:
+            # Prophet bulk predict
+            prophet_df = pd.DataFrame({"ds": df.index}).copy()
+            prophet_df["ds"] = prophet_df["ds"].dt.tz_localize(None)
+            prophet_df["ds"] = prophet_df["ds"] + pd.DateOffset(days=1)
+
+            forecast = self.model_builder.model.predict(prophet_df)
+            return forecast["yhat"].values.astype(np.float32)
+
+        elif (
+            self.model_builder.model is not None
+            and self.model_builder.scaler is not None
+        ):
+            # Standard SKLearn-like models
+            X_scaled = self.model_builder.scaler.transform(X_all).astype(np.float32)
+            return self.model_builder.model.predict(X_scaled).astype(np.float32)
+
+        return np.zeros(len(df), dtype=np.float32)

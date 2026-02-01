@@ -49,7 +49,8 @@ def render_sidebar(config: Config):
         )
         # Filter out empty tickers and normalize format
         config.target_stock_codes = [
-            t.strip().upper() for t in ticker_input.split(";")
+            t.strip().upper()
+            for t in ticker_input.split(";")
             if t.strip() and len(t.strip()) > 0
         ]
     else:
@@ -175,6 +176,11 @@ def render_sidebar(config: Config):
 
     st.sidebar.markdown("---")
     gen_suggestions = st.sidebar.button("💡 Generate Live Suggestions")
+
+    st.sidebar.markdown("---")
+    if st.sidebar.button("🗑️ Reset Session State"):
+        st.session_state.clear()
+        st.rerun()
 
     return (
         analysis_mode,
