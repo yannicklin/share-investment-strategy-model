@@ -1,0 +1,84 @@
+# Aider Configuration for ASX AI Trading System
+
+## 🎯 CRITICAL: Read SOUL.md Before Making Changes
+
+**All AI agents MUST read SOUL.md first to understand:**
+- Project philosophy and core values
+- Architectural principles
+- Security and financial safety standards
+- Development journey and lessons learned
+- Code attribution requirements
+
+**Violating SOUL.md principles = rejected work.**
+
+---
+
+## Project Context
+
+**Name**: ASX AI Trading Strategy System  
+**Type**: Python/Streamlit Machine Learning Application  
+**Purpose**: Multi-model AI trading strategy analysis with realistic backtesting
+
+---
+
+## Development Mandates
+
+### 1. Documentation-First
+- Update `asx_ai_trading_system_requirements.md` before coding
+- Never implement without documentation updates
+
+### 2. Backtesting Realism
+- Include CMC Markets fees, ATO taxes, price gaps, T+1 settlement
+- Never compromise realism for better-looking results
+
+### 3. Multi-Model Consensus
+- Maintain factory pattern with 5 algorithms
+- Preserve majority vote consensus (≥3/5 models)
+- Keep tie-breaker mechanism
+
+### 4. Data Integrity
+- Use `.AX` suffix for ASX tickers
+- Use `auto_adjust=True` and `Close` column
+- Implement RSI, MACD, Moving Averages
+
+### 5. Security
+- Never commit API keys
+- Never make financial claims without disclaimers
+- Always validate inputs
+- Always test with real ASX data
+
+### 6. Code Attribution
+**All new Python files MUST include:**
+```python
+"""
+ASX AI Trading System - [Module Name]
+
+Purpose: [Brief description]
+
+Author: Yannick
+Created: January 2026
+Copyright (c) 2026 Yannick
+"""
+```
+
+---
+
+## File Structure
+
+- `core/` - Business logic (models, backtesting, configuration)
+- `ui/` - Streamlit components (sidebar, views)
+- Don't mix UI and business logic
+
+---
+
+## References
+
+- **[SOUL.md](SOUL.md)** - Project philosophy (READ FIRST)
+- **[AUTHORS.md](AUTHORS.md)** - Contributors
+- **[CODE_HEADERS.md](CODE_HEADERS.md)** - Attribution templates
+- **[AGENTS.md](AGENTS.md)** - Development guidelines
+
+---
+
+**Copyright**: (c) 2026 Yannick  
+**Last Updated**: January 29, 2026

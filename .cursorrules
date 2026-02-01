@@ -1,0 +1,278 @@
+# Cursor AI Rules for ASX AI Trading System
+
+## 🎯 MANDATORY: Read SOUL.md First
+
+**Before making ANY code changes, read SOUL.md to understand:**
+- Project philosophy and core values (Data-Driven, Realism, Transparency)
+- Architectural principles (Modularity, Factory Pattern, Consensus Logic)
+- Security-first mindset and financial safety standards
+- Development journey and lessons learned
+- Code attribution requirements
+
+**All contributions MUST align with SOUL.md principles. Non-compliance = rejected work.**
+
+---
+
+## Project Context
+
+**Name**: ASX AI Trading Strategy System  
+**Type**: Python/Streamlit Machine Learning Application  
+**Purpose**: Multi-model AI trading strategy analysis with realistic backtesting
+
+**Stack**:
+- **Backend**: Python 3.x, pandas, scikit-learn, yfinance
+- **ML Models**: Random Forest, XGBoost, CatBoost, Prophet, LSTM (5 algorithms)
+- **Frontend**: Streamlit dashboard with segmented views
+- **Data**: Yahoo Finance (ASX tickers with .AX suffix)
+
+---
+
+## Development Workflow
+
+### 1. Documentation-First Development
+
+**ALWAYS follow this sequence:**
+
+1. **UPDATE REQUIREMENTS**: Modify `asx_ai_trading_system_requirements.md` first
+2. **ANALYZE CHANGES**: Understand impact on existing features
+3. **IMPLEMENT**: Code with proper documentation
+4. **TEST**: Validate with real ASX ticker data
+5. **DOCUMENT HEADERS**: Add copyright headers to new files
+
+**NEVER start coding without updating requirements documentation first.**
+
+---
+
+## Core Mandates
+
+### 1. Preserve Backtesting Realism
+
+**CRITICAL**: Never compromise realistic constraints for better-looking results
+
+**Must Include**:
+- ✅ CMC Markets fees: max($11, 0.10% × trade value)
+- ✅ ATO 2024-25 tax brackets with 50% CGT discount
+- ✅ Price gap handling for stop-loss (open price check)
+- ✅ T+1 reinvestment logic (no same-day reallocation)
+- ✅ 2-decimal precision for ROI/Win Rate (no false precision)
+
+**Forbidden**:
+- ❌ Removing fee calculations
+- ❌ Ignoring tax implications
+- ❌ Perfect fills at exact stop-loss prices
+- ❌ Immediate capital reinvestment
+- ❌ Excessive decimal precision (>2 places)
+
+---
+
+### 2. Maintain Multi-Model Consensus
+
+**Architecture**: Factory pattern with 5 independent models
+
+**Must Preserve**:
+- ✅ Majority vote consensus (≥3/5 models for signal)
+- ✅ Tie-breaker mechanism (user-selectable model)
+- ✅ Individual model availability checks (XGB/CatBoost/Prophet/LSTM optional)
+- ✅ Standardized prediction interface across all models
+
+**Forbidden**:
+- ❌ Hardcoding single model
+- ❌ Removing consensus logic
+- ❌ Breaking model availability checks
+- ❌ Inconsistent prediction formats
+
+---
+
+### 3. Data Integrity Standards
+
+**Yahoo Finance Integration**:
+- ✅ Use `.AX` suffix for all ASX tickers
+- ✅ Use `auto_adjust=True` for historical data
+- ✅ Use `Close` column (not `Adj Close`) for all calculations
+- ✅ Implement RSI, MACD, Moving Averages as standard features
+
+**Preprocessing**:
+- ✅ Support both `StandardScaler` and `RobustScaler`
+- ✅ Handle missing data gracefully
+- ✅ Validate ticker format before API calls
+
+---
+
+### 4. Security & Safety
+
+**CRITICAL**:
+- ❌ NEVER commit API keys or credentials
+- ❌ NEVER make financial claims without disclaimers
+- ✅ ALWAYS validate user inputs
+- ✅ ALWAYS implement safe defaults
+- ✅ ALWAYS test with real ASX data
+
+**Disclaimers**:
+```python
+# Example for UI components
+st.warning("⚠️ For educational purposes only. Not financial advice.")
+```
+
+---
+
+### 5. Code Attribution
+
+**All new Python files MUST include copyright header:**
+
+```python
+"""
+ASX AI Trading System - [Module Name]
+
+Purpose: [Brief description of module's functionality]
+
+Author: Yannick
+Created: January 2026
+Copyright (c) 2026 Yannick
+"""
+```
+
+**See**: `CODE_HEADERS.md` for detailed templates
+
+---
+
+## File Structure Rules
+
+```
+share-investment-strategy-model/
+├── ASX_AImodel.py          # Main Streamlit app (DO NOT refactor heavily)
+├── core/                   # Business logic
+│   ├── config.py          # Configuration dataclass
+│   ├── model_builder.py   # AI model factory
+│   ├── backtest_engine.py # Backtesting engine
+│   └── index_manager.py   # Index constituent management
+├── ui/                     # Streamlit components
+│   ├── sidebar.py         # Mode selection + parameters
+│   ├── algo_view.py       # Models comparison view
+│   ├── strategy_view.py   # Time-span comparison view
+│   ├── stars_view.py      # Super stars scanner view
+│   └── components.py      # Reusable UI components
+└── tests/                  # Unit tests
+```
+
+**Separation Rules**:
+- ✅ Keep business logic in `core/`
+- ✅ Keep UI logic in `ui/`
+- ❌ Don't mix UI and business logic
+- ❌ Don't create new top-level directories without justification
+
+---
+
+## Code Style
+
+### Python Standards
+
+- **PEP 8**: Follow Python style guidelines
+- **Type Hints**: Use for function signatures
+- **Docstrings**: Required for all public functions
+- **Imports**: Organize (stdlib → third-party → local)
+
+**Example**:
+```python
+from typing import List, Dict, Optional
+import pandas as pd
+
+def calculate_roi(
+    initial_capital: float,
+    final_capital: float
+) -> float:
+    """
+    Calculate return on investment as percentage.
+    
+    Args:
+        initial_capital: Starting capital (AUD)
+        final_capital: Ending capital (AUD)
+    
+    Returns:
+        ROI as percentage (2 decimal precision)
+    """
+    return round(((final_capital - initial_capital) / initial_capital) * 100, 2)
+```
+
+---
+
+## Testing Requirements
+
+**Before Committing**:
+1. ✅ Test with real ASX tickers (e.g., CBA.AX, BHP.AX)
+2. ✅ Verify all 3 modes work (Models, Time-Span, Super Stars)
+3. ✅ Check performance with ASX 50/200 indices
+4. ✅ Validate fee/tax calculations produce realistic results
+5. ✅ Ensure consensus logic produces sensible recommendations
+
+**Unit Tests**:
+```bash
+pytest tests/test_core.py
+```
+
+---
+
+## Common Tasks
+
+### Adding New Model Algorithm
+
+1. **Update** `asx_ai_trading_system_requirements.md` (new model section)
+2. **Import** with availability check in `model_builder.py`
+3. **Add** to `Config.model_types` default list
+4. **Implement** factory method following existing pattern
+5. **Test** with real ASX ticker data
+6. **Update** README.md features list
+
+### Adding New Technical Indicator
+
+1. **Update** `asx_ai_trading_system_requirements.md` (indicators section)
+2. **Add** calculation in `ModelBuilder._compute_features()`
+3. **Ensure** consistent naming (lowercase_snake_case)
+4. **Test** with various market conditions
+5. **Document** in docstring
+
+### Modifying Backtesting Logic
+
+1. **CRITICAL**: Review SOUL.md "Lessons Learned" first
+2. **Maintain** all realistic constraints (fees, taxes, gaps, T+1)
+3. **Test** edge cases (stop-loss triggering, zero trades, etc.)
+4. **Verify** performance metrics accuracy (ROI, Win Rate)
+5. **Document** changes in requirements doc
+
+---
+
+## References
+
+- **[SOUL.md](SOUL.md)** - Project philosophy and values (READ FIRST)
+- **[AUTHORS.md](AUTHORS.md)** - Contributors and credits
+- **[CODE_HEADERS.md](CODE_HEADERS.md)** - Attribution templates
+- **[AGENTS.md](AGENTS.md)** - AI development guidelines
+- **[asx_ai_trading_system_requirements.md](asx_ai_trading_system_requirements.md)** - Technical specifications
+
+---
+
+## Anti-Patterns to Avoid
+
+❌ **Don't**:
+- Remove fee/tax calculations
+- Hardcode single model predictions
+- Ignore consensus logic
+- Mix UI and business logic
+- Commit without testing with real data
+- Add dependencies without justification
+- Make financial claims without disclaimers
+- Violate SOUL.md principles
+
+✅ **Do**:
+- Update requirements documentation first
+- Preserve backtesting realism
+- Test with real ASX tickers
+- Add proper copyright headers
+- Follow existing architectural patterns
+- Validate user inputs
+- Include safety disclaimers
+
+---
+
+**Last Updated**: January 29, 2026  
+**Copyright**: (c) 2026 Yannick  
+**License**: MIT

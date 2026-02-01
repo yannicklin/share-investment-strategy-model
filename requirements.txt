@@ -1,0 +1,15 @@
+yfinance
+pandas
+numpy
+scikit-learn
+xgboost
+catboost
+prophet
+streamlit
+plotly
+tensorflow
+ruff
+black
+mypy
+pytest
+pytest-cov
