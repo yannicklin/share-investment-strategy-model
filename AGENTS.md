@@ -36,8 +36,10 @@ The goal is to build a Python-based trading strategy system for the Australian S
 6. **Dual-Mode Analysis**:
    - **Mode 1**: Compare algorithms for a fixed strategy (Models Comparison).
    - **Mode 2**: Compare strategy timing/holding periods (Time-Span Comparison) using multi-model **Consensus**.
-   - **Mode 3**: **Super Stars Scanner** — Benchmarking entire indexes to find top-performing individual stocks.
-7. **Index Management**: Always maintain an automated way to refresh stock symbols from live market lists (e.g., `index_manager.py`).
+    - **Mode 3**: **Super Stars Scanner** — Benchmarking entire indexes to find top-performing individual stocks.
+7. **Hurdle-Aware Decisions**: All buy signals MUST be filtered through the `get_hurdle_rate()` logic in the decision layer. This logic MUST be tax-aware, ensuring the predicted return covers fees and a risk buffer after accounting for the user's marginal tax rate.
+8. **Index Management**: Always maintain an automated way to refresh stock symbols from live market lists (e.g., `index_manager.py`).
+
 8. **Data Preprocessing**: Support both `StandardScaler` and `RobustScaler` to ensure consistency and handle market outliers effectively.
 9. **Performance Optimization**: Use `st.session_state` in the UI to cache results.
 10. **Input Validation**: All ticker inputs MUST be validated against Yahoo Finance API before processing — use `validate_ticker()` function.
@@ -50,5 +52,5 @@ The goal is to build a Python-based trading strategy system for the Australian S
 ...
 
 ---
-*Last Updated: 2026-01-30 (Added Ticker Validation & Streamlit Format Standards)*
+*Last Updated: 2026-02-01 (Added Hurdle-Aware Decision Layer)*
 *Note: This is a living document. Update it as project conventions evolve.*

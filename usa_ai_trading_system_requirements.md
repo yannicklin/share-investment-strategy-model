@@ -28,6 +28,13 @@ The model may buy even if projected returns do not meet take-profit thresholds, 
         - **Trustable Data Sources**: Fetch constituents from authoritative sources (e.g., Wikipedia's real-time maintained tables or official ETF holding CSVs).
         - **Consensus Analysis**: Ranks stocks using the multi-model consensus strategy.
 
+#### 2.3 Decision Layer & Hurdle Rate
+To ensure realism and profitability, the system employs a **Tax-Aware Dynamic Hurdle Rate** in the decision layer for all analysis modes:
+- **Break-even Calculation**: For every potential trade, the system calculates the minimum required return (%) using `Fees_Pct + (Risk_Buffer / (1 - Marginal_Tax_Rate))`.
+- **Hurdle-Filtered Signals**: The AI model (or consensus) only generates a "BUY" signal if the predicted price increase exceeds this hurdle rate.
+- **Tax Sensitivity**: Higher income brackets result in a higher hurdle rate, as the system requires a larger gross gain to achieve the same net-of-tax risk buffer.
+- **Small Capital Protection**: Prevents over-trading where brokerage fees or taxes would erode the majority of potential profits.
+
 #### 2.2 UI Modules (`ui/`)
 - **`sidebar.py`** — Analysis mode selection via a **Segmented Button Switch** (Models vs. Time-Span vs. Super Stars).
 - **`algo_view.py`** — Renders the **Models Comparison** leaderboard.
@@ -70,3 +77,6 @@ Exclusively uses **Yahoo Finance (`yfinance`)**.
 
 ## 5. Summary
 This system provides a rigorous, realistic backtesting environment for US trading, mirroring the ASX version's AI intelligence while strictly adhering to US regulatory fees and federal tax laws.
+
+---
+*Last Updated: February 1, 2026*

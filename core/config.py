@@ -53,6 +53,9 @@ class Config:
     # Cost & Tax Profiles
     cost_profile: str = "default"  # "default" or "cmc_markets"
     annual_income: float = 90000.0  # Annual income for tax bracket calculation
+    hurdle_risk_buffer: float = (
+        0.005  # 0.5% extra buffer to account for slippage/volatility
+    )
 
 
 def load_config() -> Config:

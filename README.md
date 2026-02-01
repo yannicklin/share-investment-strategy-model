@@ -9,6 +9,7 @@ A Python-based automated trading strategy system designed specifically for the *
     -   Prophet (Time-series forecasting)
     -   **LSTM (Deep Learning / Sequential Memory)**
 -   **Realistic Backtesting Engine**:
+    -   **Tax-Aware Dynamic Hurdle Rate**: AI signals are filtered through a "break-even + buffer" check that accounts for fees, market slippage, and your personal ATO tax bracket.
     -   **Fee Profiles**: Supports `Default` (Percentage-based + Clearing) and **`CMC Markets`** ($11 min or 0.10%) structures.
     -   **ATO Taxation**: Implements 2024-25 Individual Tax Brackets with a 50% CGT discount for holdings $\ge$ 12 months, calculated based on your annual income.
     -   **Market Constraints**: Enforces stop-loss rules and minimum holding periods.
@@ -108,5 +109,5 @@ This software is for educational and research purposes only. It is **not** finan
 
 ---
 
-*Last Updated: January 29, 2026*  
+*Last Updated: February 1, 2026*  
 *Developed for ASX Trading Analysis*

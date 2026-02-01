@@ -31,7 +31,14 @@ The model may buy even if projected returns do not meet take-profit thresholds, 
         - **Live Updates**: Built-in constituent manager to refresh index lists from live HTML tracking sources (e.g., asx200list.com).
         - **Consensus Analysis**: Uses the multi-model consensus engine to rank stocks by their AI-driven ROI.
 
-#### 2.2 UI Modules (`ui/`)
+#### 2.3 Decision Layer & Hurdle Rate
+To ensure realism and profitability, the system employs a **Tax-Aware Dynamic Hurdle Rate** in the decision layer for all analysis modes:
+- **Break-even Calculation**: For every potential trade, the system calculates the minimum required return (%) using `Fees_Pct + (Risk_Buffer / (1 - Marginal_Tax_Rate))`.
+- **Hurdle-Filtered Signals**: The AI model (or consensus) only generates a "BUY" signal if the predicted price increase exceeds this hurdle rate.
+- **Tax Sensitivity**: Higher income brackets result in a higher hurdle rate, as the system requires a larger gross gain to achieve the same net-of-tax risk buffer.
+- **Small Capital Protection**: Prevents over-trading where brokerage fees or taxes would erode the majority of potential profits.
+
+#### 2.4 UI Modules (`ui/`)
 - **`sidebar.py`** — Analysis mode selection via a **Segmented Button Switch** (Models vs. Time-Span vs. Super Stars). Includes three configuration sections:
     - **Global Settings**: Shared parameters (Tickers, Capital, Risk thresholds).
     - **Ticker Validation**: Real-time validation against Yahoo Finance API — automatically removes invalid/non-existent tickers with user warnings.
@@ -59,3 +66,6 @@ Exclusively uses **Yahoo Finance (`yfinance`)**.
 ---
 ## 5. Summary
 This system provides a rigorous, realistic backtesting environment for ASX trading, accounting for both technical AI signals and real-world financial constraints (fees, taxes, and holding preferences).
+
+---
+*Last Updated: February 1, 2026*

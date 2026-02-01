@@ -44,6 +44,41 @@ class BacktestEngine:
             return 31288 + (income - 135000) * 0.37
         return 51638 + (income - 190000) * 0.45
 
+    def get_marginal_tax_rate(self, income: float) -> float:
+        """Determines the marginal tax rate based on 2024-25 ATO brackets."""
+        if income <= 18200:
+            return 0.0
+        if income <= 45000:
+            return 0.16
+        if income <= 135000:
+            return 0.30
+        if income <= 190000:
+            return 0.37
+        return 0.45
+
+    def get_hurdle_rate(self, current_capital: float) -> float:
+        """Calculates the minimum return % required to break even after fees, tax, and buffer."""
+        if current_capital <= 0:
+            return 0.0
+
+        # 1. Transactional Friction (Fees)
+        entry_fee = self.calculate_fees(current_capital)
+        exit_fee = self.calculate_fees(current_capital)
+        fees_pct = (entry_fee + exit_fee) / current_capital
+
+        # 2. Tax Friction
+        # We need a profit that remains above the buffer AFTER tax.
+        # Since tax only applies to the GAIN, we 'gross up' the risk buffer.
+        marginal_rate = self.get_marginal_tax_rate(self.config.annual_income)
+
+        # If tax rate is 100% (impossible), avoid division by zero
+        tax_multiplier = 1.0 / (1.0 - marginal_rate) if marginal_rate < 1.0 else 1.0
+
+        # Tax-adjusted buffer ensures the target 'risk buffer' is net of tax
+        adjusted_buffer = self.config.hurdle_risk_buffer * tax_multiplier
+
+        return fees_pct + adjusted_buffer
+
     def _get_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
         df = data.copy()
         if isinstance(df.columns, pd.MultiIndex):
@@ -63,7 +98,9 @@ class BacktestEngine:
         return df.dropna()
 
     def _core_run(
-        self, ticker: str, signal_func: Callable[[int, pd.DataFrame, List[str]], bool]
+        self,
+        ticker: str,
+        signal_func: Callable[[int, pd.DataFrame, List[str], float], bool],
     ) -> Dict[str, Any]:
         """The shared engine logic for both modes."""
         raw_data = self.model_builder.fetch_data(ticker, self.config.backtest_years)
@@ -103,7 +140,12 @@ class BacktestEngine:
                 }
             )
 
-            is_bullish = signal_func(i, df, features)
+            is_bullish = signal_func(
+                i,
+                df,
+                features,
+                capital if position == 0 else (position * current_price),
+            )
 
             if position == 0 and is_bullish:
                 fees = self.calculate_fees(capital)
@@ -202,19 +244,23 @@ class BacktestEngine:
         self.config.model_type = model_type
         self.model_builder.load_or_build(ticker)  # Load once
 
-        def signal(i, df, features):
+        def signal(i, df, features, current_cap):
             current_price = float(df.iloc[i]["Close"])
+            hurdle = self.get_hurdle_rate(current_cap)
+
             if model_type == "lstm":
                 if i < 30:
                     return False
                 X = df.iloc[i - 29 : i + 1][features].values
-                return self.model_builder.predict(X, date=df.index[i]) > current_price
-            return (
-                self.model_builder.predict(
+                pred = self.model_builder.predict(X, date=df.index[i])
+            else:
+                pred = self.model_builder.predict(
                     df.iloc[i][features].values, date=df.index[i]
                 )
-                > current_price
-            )
+
+            # Hurdle Rate logic: predicted return must exceed costs + buffer
+            pred_return = (pred - current_price) / current_price
+            return pred_return > hurdle
 
         return self._core_run(ticker, signal)
 
@@ -232,9 +278,10 @@ class BacktestEngine:
                 self.model_builder.scaler,
             )
 
-        def signal(i, df, features):
+        def signal(i, df, features, current_cap):
             votes = 0
             current_price = float(df.iloc[i]["Close"])
+            hurdle = self.get_hurdle_rate(current_cap)
             tie_breaker_bullish = False
             tb_model = tie_breaker if tie_breaker else models[0]
 
@@ -247,17 +294,19 @@ class BacktestEngine:
 
                 if m_type == "lstm":
                     if i < 30:
-                        is_m_bullish = False
+                        pred = 0.0
                     else:
                         pred = self.model_builder.predict(
                             df.iloc[i - 29 : i + 1][features].values, date=df.index[i]
                         )
-                        is_m_bullish = pred > current_price
                 else:
                     pred = self.model_builder.predict(
                         df.iloc[i][features].values, date=df.index[i]
                     )
-                    is_m_bullish = pred > current_price
+
+                # Each model's vote is subject to the hurdle rate
+                pred_return = (pred - current_price) / current_price
+                is_m_bullish = pred_return > hurdle
 
                 if is_m_bullish:
                     votes += 1

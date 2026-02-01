@@ -88,6 +88,12 @@ All performance reporting uses:
 
 **Why?** Apples-to-apples comparisons across strategies and models.
 
+### Hurdle Rate Decision Layer
+Every "BUY" signal is filtered through a financial friction check:
+- **Calculation**: `Fees_Pct + (Risk_Buffer / (1 - Marginal_Tax_Rate))`
+- **Purpose**: Prevents "death by a thousand cuts" from brokerage fees and ensures returns are meaningful even after the ATO's cut.
+- **Independence**: The AI predicts market moves, while the Decision Layer enforces financial sanity based on the user's personal tax profile.
+
 ---
 
 ## 🛡️ Security & Safety Manifesto
@@ -305,6 +311,6 @@ Use it wisely. Learn from it. Improve it. Share it.
 
 ---
 
-*Last Updated: January 29, 2026*  
+*Last Updated: February 1, 2026*  
 *Copyright (c) 2026 Yannick*  
 *Licensed under MIT License*
