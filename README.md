@@ -1,4 +1,4 @@
-# ASX AI Trading Strategy System
+# ASX AI Trading Strategy System (`asx` branch)
 
 A Python-based automated trading strategy system designed specifically for the **Australian Securities Exchange (ASX)**. This system utilizes advanced AI models to predict stock price movements, perform realistic backtesting (accounting for fees, taxes, and price gaps), and provide real-time investment recommendations via a Streamlit dashboard.
 
@@ -31,7 +31,10 @@ A Python-based automated trading strategy system designed specifically for the *
     ```bash
     git clone <repository-url>
     cd share-investment-strategy-model
+    git checkout asx  # Switch to the ASX-specific branch
     ```
+
+> **Note**: This repository uses a branch-per-market structure. Ensure you are on the `asx` branch for the Australian market implementation. Other branches like `usa` is for different research tracks.
 
 2.  **Using `uv` (Recommended)**:
     This project is optimized for `uv`. Install dependencies and run in one go:
