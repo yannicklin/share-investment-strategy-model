@@ -23,13 +23,13 @@
 
 ## 🤖 Development Tools
 
-This project was developed with assistance from AI coding tools:
+This project's framework and philosophy were developed with assistance from various AI systems, depending on the research environment:
 
-- **GitHub Copilot**: Code completion and suggestions
-- **ChatGPT/Claude**: Architecture discussions and problem-solving
-- **AI-Assisted Development**: Algorithm implementation guidance
+- **Home Environment**: OpenCode + Gemini
+- **Office Environment**: GitHub Copilot + Claude
 
-> **Note**: All AI-generated code was reviewed, tested, and validated by the primary author. AI tools assisted with implementation but did not make design decisions.
+
+> **Note**: All AI-assisted implementation was reviewed, tested, and validated by the primary author. AI tools assisted with implementation but did not make architectural or design decisions.
 
 ---
 
