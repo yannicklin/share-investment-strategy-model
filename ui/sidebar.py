@@ -84,12 +84,26 @@ def render_sidebar(config: Config):
         "Initial Capital", value=float(config.init_capital), format="%.2f", step=100.0
     )
 
-    config.stop_loss_threshold = st.sidebar.slider(
-        "Stop-Loss Threshold", 0.01, 0.50, config.stop_loss_threshold
+    # Display as percentage but store as decimal
+    sl_val = st.sidebar.slider(
+        "Stop-Loss Threshold",
+        1.0,
+        50.0,
+        float(config.stop_loss_threshold * 100),
+        step=0.5,
+        format="%.1f%%",
     )
-    config.stop_profit_threshold = st.sidebar.slider(
-        "Take-Profit Threshold", 0.01, 1.0, config.stop_profit_threshold
+    config.stop_loss_threshold = sl_val / 100.0
+
+    tp_val = st.sidebar.slider(
+        "Take-Profit Threshold",
+        1.0,
+        100.0,
+        float(config.stop_profit_threshold * 100),
+        step=1.0,
+        format="%.0f%%",
     )
+    config.stop_profit_threshold = tp_val / 100.0
 
     # --- 2. MODE-SPECIFIC CONFIGURATION ---
     st.sidebar.header(f"{analysis_mode} Settings")
