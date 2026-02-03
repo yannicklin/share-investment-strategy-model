@@ -26,7 +26,6 @@ htmlcov/
 *.cover
 
 # Streamlit
-.streamlit/
 static/
 
 # Development process tracking
