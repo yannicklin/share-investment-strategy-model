@@ -37,6 +37,7 @@ static/
 models/*.pkl
 models/*.h5
 models/*.joblib
+models/index_cache.json
 data/downloads/
 *.log
 
