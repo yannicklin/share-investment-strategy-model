@@ -17,7 +17,8 @@
         "charliermarsh.ruff"
       ],
       "settings": {
-        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.defaultInterpreterPath": "${containerWorkspaceFolder}/.venv/bin/python3",
+        "git.autofetch": true,
         "editor.formatOnSave": true,
         "editor.codeActionsOnSave": {
           "source.organizeImports": "explicit"
@@ -29,15 +30,16 @@
     }
   },
   
-  "forwardPorts": [8501],
+  "forwardPorts": [8502],
   "portsAttributes": {
-    "8501": {
+    "8502": {
       "label": "Streamlit App",
       "onAutoForward": "notify"
     }
   },
   
   "postCreateCommand": "make setup",
+  "postStartCommand": "git pull",
   
   "remoteUser": "vscode"
 }
