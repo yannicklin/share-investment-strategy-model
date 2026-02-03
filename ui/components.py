@@ -68,7 +68,7 @@ def render_trade_details(ticker, res):
                     x=price_df.index,
                     y=price_df["Close"],
                     name=f"{ticker} Price Trend",
-                    line=dict(color="rgba(173, 216, 230, 0.6)", width=2, dash="dash"),
+                    line=dict(color="rgba(173, 216, 230, 0.6)", width=2, dash="dot"),
                     mode="lines",
                 ),
                 secondary_y=True,
