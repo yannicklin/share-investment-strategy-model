@@ -3,11 +3,9 @@ yfinance
 pandas
 numpy
 scikit-learn
-# Use py-xgboost if available or standard with fallback
-xgboost
 catboost
 prophet
-# LightGBM is often a more portable alternative to XGBoost on Mac/ARM
+# LightGBM is the main GBDT framework
 lightgbm
 
 # TensorFlow (OS-Specific)

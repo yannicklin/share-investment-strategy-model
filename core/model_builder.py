@@ -50,13 +50,6 @@ class ModelBuilder:
         available = ["random_forest"]
 
         try:
-            from xgboost import XGBRegressor
-
-            available.append("xgboost")
-        except (ImportError, Exception):
-            pass
-
-        try:
             from catboost import CatBoostRegressor
 
             available.append("catboost")
@@ -89,15 +82,7 @@ class ModelBuilder:
     def _init_model(self, input_dim: int = 0) -> Any:
         m_type = self.config.model_type
 
-        if m_type == "xgboost":
-            from xgboost import XGBRegressor
-
-            logging.info("Initialized XGBoost model.")
-            return XGBRegressor(
-                n_estimators=100, learning_rate=0.05, random_state=42, n_jobs=-1
-            )
-
-        elif m_type == "catboost":
+        if m_type == "catboost":
             from catboost import CatBoostRegressor
 
             logging.info("Initialized CatBoost model.")
