@@ -306,7 +306,7 @@ def update_index_data() -> Dict[str, str]:
 
             # Look for patterns like <td>ABC</td> or <tr><td>ABC</td>
             # Most ASX list sites use simple tables
-            potential_tickers = re.findall(r"<td>([A-Z0-9]{3,4})</td>", html)
+            potential_tickers = re.findall(r"<td>([A-Z0-9]{3,6})</td>", html)
 
             # Filter and append .AX
             tickers = sorted(
@@ -315,7 +315,7 @@ def update_index_data() -> Dict[str, str]:
                         [
                             f"{t.strip()}.AX"
                             for t in potential_tickers
-                            if t.strip().isalpha() and len(t.strip()) <= 4
+                            if len(t.strip()) >= 3 and len(t.strip()) <= 6
                         ]
                     )
                 )
