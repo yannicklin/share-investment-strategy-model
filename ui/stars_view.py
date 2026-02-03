@@ -43,14 +43,18 @@ def render_super_stars(index_name, all_ticker_res, models=None, tie_breaker=None
         if res and "error" not in res:
             # Ensure win_rate is present and valid
             win_rate = float(res.get("win_rate", 0.0))
+            company_name = res.get("company_name", ticker)
+            yfinance_url = f"https://finance.yahoo.com/quote/{ticker}"
 
             summary.append(
                 {
                     "Ticker": ticker,
+                    "Company": company_name,
                     "Net ROI": float(res["roi"]),
                     "Win Rate": win_rate,
                     "Total Trades": int(res["total_trades"]),
                     "Final Portfolio": float(res["final_capital"]),
+                    "Link": yfinance_url,
                 }
             )
 
@@ -71,6 +75,14 @@ def render_super_stars(index_name, all_ticker_res, models=None, tie_breaker=None
         st.subheader("🏆 Top 10 Profit Performers")
         st.dataframe(
             df_display,
+            column_config={
+                "Link": st.column_config.LinkColumn(
+                    "Yahoo Finance",
+                    help="View ticker details on Yahoo Finance",
+                    validate="^https://finance\.yahoo\.com/quote/.*",
+                    display_text="View Page",
+                ),
+            },
             hide_index=True,
             width="stretch",
         )
@@ -80,6 +92,7 @@ def render_super_stars(index_name, all_ticker_res, models=None, tie_breaker=None
             df_top10,
             x="Ticker",
             y="Net ROI",
+            hover_data=["Company"],
             color="Net ROI",
             title="Top 10 Stocks by Profitability",
             color_continuous_scale="RdYlGn",
@@ -98,7 +111,9 @@ def render_super_stars(index_name, all_ticker_res, models=None, tie_breaker=None
         for _, row in df_top10.iterrows():
             tab_labels.append(f"{row['Ticker']}")
 
-        tabs = st.tabs(tab_labels)
+        tabs = st.tabs(
+            [f"{row['Ticker']} - {row['Company']}" for _, row in df_top10.iterrows()]
+        )
         for i in range(len(tab_labels)):
             with tabs[i]:
                 ticker_symbol = tab_labels[i]

@@ -134,6 +134,8 @@ def render_app():
                                 )
                                 if "error" in res:
                                     st.error(f"Ranking Error: {res['error']}")
+                                # Include company name for Super Stars mode
+                                res["company_name"] = builder.get_company_name(ticker)
                                 ticker_results = res
                             except Exception as e:
                                 st.error(f"Ranking Exception: {e}")
@@ -225,7 +227,10 @@ def render_app():
             active_mode = st.session_state["active_mode"]
             if active_mode == "Find Super Stars":
                 render_super_stars(
-                    st.session_state.get("active_index", "ASX Index"), results
+                    st.session_state.get("active_index", "ASX Index"),
+                    results,
+                    models=config.model_types,
+                    tie_breaker=tie_breaker,
                 )
             else:
                 for ticker in valid_tickers:
@@ -233,7 +238,12 @@ def render_app():
                     if active_mode == "Models Comparison":
                         render_algorithm_comparison(ticker, ticker_res)
                     else:
-                        render_strategy_sensitivity(ticker, ticker_res)
+                        render_strategy_sensitivity(
+                            ticker,
+                            ticker_res,
+                            models=config.model_types,
+                            tie_breaker=tie_breaker,
+                        )
                     st.markdown("---")
     else:
         st.info("Welcome! Configure the sidebar and click 'Run Analysis' to start.")

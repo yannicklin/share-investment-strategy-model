@@ -183,6 +183,14 @@ class ModelBuilder:
 
         return data
 
+    def get_company_name(self, ticker: str) -> str:
+        """Fetches the long name of the company from yfinance."""
+        try:
+            info = yf.Ticker(ticker).info
+            return info.get("longName", ticker)
+        except Exception:
+            return ticker
+
     def is_etf(self, ticker: str) -> bool:
         """Determines if a ticker is an ETF using yfinance info."""
         try:
