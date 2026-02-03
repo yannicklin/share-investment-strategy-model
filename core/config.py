@@ -46,13 +46,7 @@ class Config:
     model_type: str = "random_forest"
     # Available: ["random_forest", "gradient_boosting", "catboost", "prophet", "lstm"]
     model_types: List[str] = field(
-        default_factory=lambda: [
-            "random_forest",
-            "gradient_boosting",
-            "catboost",
-            "prophet",
-            "lstm",
-        ]
+        default_factory=lambda: ["random_forest", "catboost"]
     )
     data_source: str = "yfinance"
 

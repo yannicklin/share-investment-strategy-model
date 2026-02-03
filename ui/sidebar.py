@@ -124,7 +124,7 @@ def render_sidebar(config: Config):
         config.model_types = st.sidebar.multiselect(
             "Select AI Committee",
             available_models,
-            default=[m for m in ["random_forest", "catboost"] if m in available_models],
+            default=[m for m in config.model_types if m in available_models],
         )
         if len(config.model_types) > 0 and len(config.model_types) % 2 == 0:
             tie_breaker = st.sidebar.selectbox(
@@ -141,7 +141,7 @@ def render_sidebar(config: Config):
         config.model_types = st.sidebar.multiselect(
             "Select AI Committee",
             available_models,
-            default=[m for m in ["random_forest", "catboost"] if m in available_models],
+            default=[m for m in config.model_types if m in available_models],
         )
         if len(config.model_types) > 0 and len(config.model_types) % 2 == 0:
             tie_breaker = st.sidebar.selectbox(
