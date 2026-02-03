@@ -27,6 +27,13 @@ This is a Python-based research infrastructure designed for the cold, clinical a
 
 ...
 
+## 3. Workflow & Automation Rules (Strict)
+
+1. **Manual Commits Only**: NEVER run `git commit` or `git add` unless the user explicitly requests a commit. Do not assume a successful change implies a checkpoint is wanted.
+2. **No Automatic Background Tasks**: NEVER start the dashboard or tests in the background (e.g., `make run &`) automatically after an edit. Wait for the user to request the start.
+3. **Respect Local Environment**: Do not attempt to install system-level libraries (e.g., `brew install`). Stick strictly to `requirements.txt` via the local virtual environment.
+4. **Code-Only Implementation**: Focus on editing the requested files. Do not chain multiple shell operations (like build or run) unless they are part of a verification step requested by the user.
+
 ---
-*Last Updated: 2026-02-01 (Added Hurdle-Aware Decision Layer)*
+*Last Updated: 2026-02-03 (Hardware Portability & Workflow Safety Updates)*
 *Note: This is a living document. Update it as project conventions evolve.*
