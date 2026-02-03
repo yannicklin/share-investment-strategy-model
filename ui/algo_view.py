@@ -16,7 +16,13 @@ from ui.components import render_trade_details
 
 def render_algorithm_comparison(ticker, ticker_res):
     """Main panel for Model Mode: Comparing AI IQ."""
-    st.header(f"📊 Models Comparison: {ticker}")
+    # Check if ETF
+    etf_label = ""
+    if "active_builder" in st.session_state:
+        if st.session_state["active_builder"].is_etf(ticker):
+            etf_label = " 🏷️ (ETF)"
+
+    st.header(f"📊 Models Comparison: {ticker}{etf_label}")
 
     summary = []
     for m_name, res in ticker_res.items():

@@ -183,6 +183,17 @@ class ModelBuilder:
 
         return data
 
+    def is_etf(self, ticker: str) -> bool:
+        """Determines if a ticker is an ETF using yfinance info."""
+        try:
+            # We don't want to call .info for every run, so we might want a small cache
+            # or just rely on the quoteType if we had it.
+            # For now, a quick fetch is fine as it's only called during rendering once per ticker.
+            info = yf.Ticker(ticker).info
+            return info.get("quoteType") == "ETF"
+        except Exception:
+            return False
+
     def fetch_data(self, ticker: str, years: int) -> pd.DataFrame:
         cache_key = f"{ticker}_{years}"
         if cache_key in self._data_cache:

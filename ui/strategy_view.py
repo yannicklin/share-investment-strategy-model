@@ -16,7 +16,13 @@ from ui.components import render_trade_details
 
 def render_strategy_sensitivity(ticker, ticker_res, models=None, tie_breaker=None):
     """Main panel for Strategy Mode: Comparing Holding Times."""
-    st.header(f"⏳ Time-Span Comparison: {ticker}")
+    # Check if ETF
+    etf_label = ""
+    if "active_builder" in st.session_state:
+        if st.session_state["active_builder"].is_etf(ticker):
+            etf_label = " 🏷️ (ETF)"
+
+    st.header(f"⏳ Time-Span Comparison: {ticker}{etf_label}")
 
     # Dynamic Decision Engine Description
     if models and len(models) > 1:
