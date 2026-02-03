@@ -42,35 +42,33 @@ def render_trade_details(ticker, res):
         # Create figure with secondary y-axis
         fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-        # Add Capital Path (Primary Y-Axis)
+        # Add Capital Path (Primary Y-Axis) - Solid Line
         fig.add_trace(
             go.Scatter(
                 x=df_equity["date"],
                 y=df_equity["capital"],
                 name="Realized Capital",
                 line=dict(color="#00CC96", width=3),
-                marker=dict(size=8),
-                mode="lines+markers",
+                mode="lines",  # Solid line, no markers
             ),
             secondary_y=False,
         )
 
-        # Add Share Price (Secondary Y-Axis)
+        # Add Share Price (Secondary Y-Axis) - Dash Line
         if not price_df.empty:
             # Filter price data to match the backtest range for cleaner look
             if not df_equity.empty:
+                # We show the price trend for the entire range of the backtest
+                # based on the configured years, filtered to when the first trade started
                 start_date = df_equity["date"].min()
-                end_date = df_equity["date"].max()
-                price_df = price_df[
-                    (price_df.index >= start_date) & (price_df.index <= end_date)
-                ]
+                price_df = price_df[price_df.index >= start_date]
 
             fig.add_trace(
                 go.Scatter(
                     x=price_df.index,
                     y=price_df["Close"],
-                    name=f"{ticker} Price",
-                    line=dict(color="rgba(100, 100, 100, 0.3)", width=1, dash="dot"),
+                    name=f"{ticker} Price Trend",
+                    line=dict(color="rgba(173, 216, 230, 0.6)", width=2, dash="dash"),
                     mode="lines",
                 ),
                 secondary_y=True,
