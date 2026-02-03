@@ -40,19 +40,21 @@ def render_super_stars(index_name, all_ticker_res):
         # Sort by ROI and take top 10
         df_all = pd.DataFrame(summary).sort_values("Net ROI", ascending=False)
         df_top10 = df_all.head(10).reset_index(drop=True)
-        
+
         # Format the display values
         df_display = df_top10.copy()
-        df_display["Net ROI"] = df_top10["Net ROI"].apply(lambda x: f"{x*100:.2f}%")
-        df_display["Win Rate"] = df_top10["Win Rate"].apply(lambda x: f"{x*100:.2f}%")
-        df_display["Final Portfolio"] = df_top10["Final Portfolio"].apply(lambda x: f"${x:,.2f}")
+        df_display["Net ROI"] = df_top10["Net ROI"].apply(lambda x: f"{x * 100:.2f}%")
+        df_display["Win Rate"] = df_top10["Win Rate"].apply(lambda x: f"{x * 100:.2f}%")
+        df_display["Final Portfolio"] = df_top10["Final Portfolio"].apply(
+            lambda x: f"${x:,.2f}"
+        )
 
         # 1. Leaderboard Table
         st.subheader("🏆 Top 10 Profit Performers")
         st.dataframe(
             df_display,
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
         )
 
         # 2. Comparative Chart
@@ -69,7 +71,7 @@ def render_super_stars(index_name, all_ticker_res):
         # Add labels to chart
         fig.update_traces(texttemplate="%{y:.2f}%", textposition="outside")
         fig.update_layout(yaxis_tickformat=".2%")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
         # 3. Drill-down for winners
         st.subheader("Detailed Look at Winners")

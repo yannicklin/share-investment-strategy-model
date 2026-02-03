@@ -80,11 +80,41 @@ class BacktestEngine:
         return fees_pct + adjusted_buffer
 
     def _get_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
-        df = data.copy()
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
+        if data is None or data.empty:
+            return pd.DataFrame()
 
+        # IMPORTANT: The data from ModelBuilder.fetch_data is already normalized.
+        # However, we perform a safety check to ensure standard columns are available.
+        df = data.copy()
+
+        standard_cols = ["Close", "Open", "High", "Low", "Volume"]
+
+        # Verify mandatory columns
+        for col in ["Close", "Open", "High", "Low"]:
+            if col not in df.columns:
+                # If a core column is missing, it means normalization failed.
+                # We try one last desperate search.
+                found = False
+                for c in df.columns:
+                    if col.lower() in str(c).lower():
+                        df.rename(columns={c: col}, inplace=True)
+                        found = True
+                        break
+                if not found:
+                    raise KeyError(
+                        f"CRITICAL: Column '{col}' not found. Available: {list(df.columns)}"
+                    )
+
+        # Ensure numeric
+        for col in standard_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+
+        df = df.dropna(subset=["Close", "Open", "High", "Low"])
+
+        # MACD
         df["MACD"] = df["Close"].ewm(span=12).mean() - df["Close"].ewm(span=26).mean()
+
         df["Signal_Line"] = df["MACD"].ewm(span=9).mean()
         delta = df["Close"].diff()
         gain = (delta.where(delta > 0, 0)).rolling(14).mean()
@@ -257,7 +287,6 @@ class BacktestEngine:
         ]
 
         # Bulk pre-calculate predictions
-        print(f"Pre-calculating bulk predictions for {model_type}...")
         all_preds = self._get_bulk_predictions(df, features, model_type)
 
         def signal(i, df_inner, features_inner, current_cap):
@@ -299,7 +328,6 @@ class BacktestEngine:
         for m_type in models:
             self.config.model_type = m_type
             self.model_builder.load_or_build(ticker)
-            print(f"Pre-calculating bulk predictions for {m_type}...")
             committee_preds[m_type] = self._get_bulk_predictions(df, features, m_type)
 
         def signal(i, df_inner, features_inner, current_cap):
@@ -338,20 +366,24 @@ class BacktestEngine:
             and self.model_builder.model is not None
             and self.model_builder.scaler is not None
         ):
-            # LSTM needs sequences - pre-allocate to save memory
+            # Optimized Sequence Generation for Deep Learning
             seq_len = 30
             X_scaled = self.model_builder.scaler.transform(X_all).astype(np.float32)
-            X_seq = np.zeros((len(df), seq_len, len(features)), dtype=np.float32)
 
-            for i in range(len(df)):
-                if i >= seq_len:
-                    X_seq[i] = X_scaled[i - seq_len + 1 : i + 1]
+            # Create sequences only for indices where we have enough history
+            # This avoids creating a full zeroed-out array which consumes RAM
+            valid_indices = np.arange(seq_len, len(df))
+            X_seq = np.array([X_scaled[i - seq_len : i] for i in valid_indices])
 
-            # Batch predict
-            batch_preds = self.model_builder.model.predict(
-                X_seq, batch_size=256, verbose=0
-            )
-            return batch_preds.flatten()
+            # Batch predict with a smaller batch size to avoid GPU memory overflow on M3
+            raw_preds = self.model_builder.model.predict(
+                X_seq, batch_size=64, verbose=0
+            ).flatten()
+
+            # Pad the beginning with zeros (no predictions for first seq_len days)
+            all_preds = np.zeros(len(df), dtype=np.float32)
+            all_preds[seq_len:] = raw_preds
+            return all_preds
 
         elif model_type == "prophet" and self.model_builder.model is not None:
             # Prophet bulk predict

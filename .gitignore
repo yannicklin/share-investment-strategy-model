@@ -41,8 +41,14 @@ data/downloads/
 *.log
 
 # AI Model Training Artifacts
-catboost_info/          # CatBoost: Training logs and metrics
-*.cmdstan/              # Prophet: Stan compiler cache
+catboost_info/
+**/catboost_info/
+learn_error.tsv
+test_error.tsv
+time_left.tsv
+catboost_training.json
+catboost_meta.json
+*.cmdstan/
 logs/                   # TensorFlow: Training logs and checkpoints
 runs/                   # TensorFlow: TensorBoard logs
 checkpoints/            # TensorFlow: Model checkpoints

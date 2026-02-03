@@ -43,94 +43,25 @@ def render_app():
         st.error("Sidebar failed to render. Please check the logs.")
         return
 
-    mode, test_periods, period_map, gen_suggestions, tie_breaker, index_choice = (
+    mode, test_periods, period_map, run_analysis, tie_breaker, index_choice = (
         sidebar_res
     )
 
-    # --- 1. ACTION: LIVE SUGGESTIONS ---
-    if gen_suggestions:
-        # Clear previous results to avoid UI clutter
-        if "results" in st.session_state:
-            del st.session_state["results"]
-
-        suggestions_list = []
-        builder = ModelBuilder(config)
-
-        # Limit live scan to first 10 for performance if in index mode
-        tickers_to_scan = (
-            config.target_stock_codes[:10]
-            if mode == "Find Super Stars"
-            else config.target_stock_codes
-        )
-
-        with st.spinner("Pre-fetching market data for suggestions..."):
-            builder.prefetch_data_batch(tickers_to_scan, 1)
-
-        prog_placeholder = st.empty()
-        progress_bar = prog_placeholder.progress(0)
-
-        for i, ticker in enumerate(tickers_to_scan):
-            with st.spinner(f"Analyzing {ticker} for today..."):
-                # Fetch data once for all models of this ticker
-                data_1y = builder.fetch_data(ticker, 1)
-                if data_1y.empty:
-                    continue
-                X, y = builder.prepare_features(data_1y)
-                if len(X) < builder.sequence_length:
-                    continue
-                latest_features = X[-builder.sequence_length :]
-
-                votes, total_return, tie_breaker_bullish = 0, 0.0, False
-                tb_model = tie_breaker if tie_breaker else config.model_types[0]
-                current_price = float(latest_features[-1, 3])
-
-                for m_type in config.model_types:
-                    config.model_type = m_type
-                    builder.load_or_build(ticker)
-                    pred = builder.predict(latest_features, date=pd.Timestamp.now())
-                    is_m_bullish = pred > current_price
-                    if is_m_bullish:
-                        votes += 1
-                    if m_type == tb_model:
-                        tie_breaker_bullish = is_m_bullish
-                    total_return += (pred - current_price) / current_price
-
-                avg_return = total_return / len(config.model_types)
-                is_bullish = votes > (len(config.model_types) / 2) or (
-                    votes == len(config.model_types) / 2 and tie_breaker_bullish
-                )
-
-                suggestions_list.append(
-                    {
-                        "Ticker": ticker,
-                        "Price": current_price,
-                        "Expected Return": avg_return,
-                        "Consensus": f"{votes}/{len(config.model_types)} Models",
-                        "Signal": "🟢 BUY" if is_bullish else "🟡 WAIT/HOLD",
-                    }
-                )
-            progress_bar.progress((i + 1) / len(tickers_to_scan))
-
-        st.session_state["suggestions"] = suggestions_list
-        prog_placeholder.empty()
-        # Use a state-based trigger instead of immediate rerun to avoid recursion loops
-        st.session_state["trigger_rerun"] = True
-
-    # --- 2. ACTION: RUN BACKTEST ANALYSIS ---
-    if st.sidebar.button("🚀 Run Analysis"):
-        # Clear previous suggestions
-        if "suggestions" in st.session_state:
-            del st.session_state["suggestions"]
+    # --- 1. ACTION: RUN BACKTEST ANALYSIS ---
+    if run_analysis:
+        # Clear previous results
         if "results" in st.session_state:
             del st.session_state["results"]
 
         all_results = {}
-        builder = ModelBuilder(config)
+        # Keep builder in session state for cache persistence across UI refreshes
+        st.session_state["active_builder"] = ModelBuilder(config)
+        builder = st.session_state["active_builder"]
         engine = BacktestEngine(config, builder)
 
         tickers = config.target_stock_codes
 
-        # Batch pre-fetch all ticker data at once (5 years) to avoid loop overhead
+        # Batch pre-fetch all ticker data at once
         with st.spinner(f"Pre-fetching historical data for {len(tickers)} tickers..."):
             builder.prefetch_data_batch(tickers, config.backtest_years)
 
@@ -140,60 +71,84 @@ def render_app():
             ticker_results = {}
             with prog_placeholder.container():
                 st.write(f"### 🔍 Analyzing {ticker} ({idx + 1}/{len(tickers)})")
-                progress_bar = st.progress((idx) / len(tickers))
+                st.progress((idx) / len(tickers))
 
-                with st.spinner(f"Preparing AI Models for {ticker}..."):
-                    original_rebuild = config.rebuild_model
-                    for m_type in config.model_types:
-                        config.model_type = m_type
-                        try:
-                            builder.load_or_build(ticker)
-                        except Exception as e:
-                            st.warning(
-                                f"Could not load/build {m_type} for {ticker}: {e}"
-                            )
-                    config.rebuild_model = False
-
-                if mode == "Models Comparison":
-                    for m_type in config.model_types:
-                        with st.spinner(f"Backtesting {m_type}..."):
+                with st.status(f"Processing {ticker}...", expanded=True) as status:
+                    try:
+                        st.write("Preparing AI Models...")
+                        for m_type in config.model_types:
+                            config.model_type = m_type
                             try:
-                                ticker_results[m_type] = engine.run_model_mode(
-                                    ticker, m_type
-                                )
+                                if builder.load_or_build(ticker) == "trained":
+                                    st.write(f"✅ Trained {m_type}")
                             except Exception as e:
-                                ticker_results[m_type] = {"error": str(e)}
-                elif mode == "Time-Span Comparison":
-                    for p_name in test_periods:
-                        with st.spinner(f"Evaluating {p_name} strategy..."):
+                                st.error(f"Model Error ({m_type}): {e}")
+                                ticker_results[f"{m_type}_error"] = str(e)
+
+                        if mode == "Models Comparison":
+                            for m_type in config.model_types:
+                                st.write(f"Backtesting {m_type}...")
+                                try:
+                                    res = engine.run_model_mode(ticker, m_type)
+                                    if "error" in res:
+                                        st.error(
+                                            f"Backtest Error ({m_type}): {res['error']}"
+                                        )
+                                    ticker_results[m_type] = res
+                                except Exception as e:
+                                    st.error(f"Backtest Exception ({m_type}): {e}")
+                                    ticker_results[m_type] = {"error": str(e)}
+                        elif mode == "Time-Span Comparison":
+                            for p_name in test_periods:
+                                st.write(f"Evaluating {p_name} strategy...")
+                                unit, val = period_map[p_name]
+                                config.hold_period_unit, config.hold_period_value = (
+                                    unit,
+                                    val,
+                                )
+                                try:
+                                    res = engine.run_strategy_mode(
+                                        ticker,
+                                        config.model_types,
+                                        tie_breaker=tie_breaker,
+                                    )
+                                    if "error" in res:
+                                        st.error(
+                                            f"Strategy Error ({p_name}): {res['error']}"
+                                        )
+                                    ticker_results[p_name] = res
+                                except Exception as e:
+                                    st.error(f"Strategy Exception ({p_name}): {e}")
+                                    ticker_results[p_name] = {"error": str(e)}
+                        else:
+                            st.write("Ranking stock...")
+                            p_name = test_periods[0]
                             unit, val = period_map[p_name]
                             config.hold_period_unit, config.hold_period_value = (
                                 unit,
                                 val,
                             )
                             try:
-                                ticker_results[p_name] = engine.run_strategy_mode(
+                                res = engine.run_strategy_mode(
                                     ticker, config.model_types, tie_breaker=tie_breaker
                                 )
+                                if "error" in res:
+                                    st.error(f"Ranking Error: {res['error']}")
+                                ticker_results = res
                             except Exception as e:
-                                ticker_results[p_name] = {"error": str(e)}
-                else:
-                    # Find Super Stars (Mode 3)
-                    with st.spinner(f"Ranking {ticker}..."):
-                        p_name = test_periods[0]
-                        unit, val = period_map[p_name]
-                        config.hold_period_unit, config.hold_period_value = unit, val
-                        try:
-                            ticker_results = engine.run_strategy_mode(
-                                ticker, config.model_types, tie_breaker=tie_breaker
-                            )
-                        except Exception as e:
-                            ticker_results = {"error": str(e)}
+                                st.error(f"Ranking Exception: {e}")
+                                ticker_results = {"error": str(e)}
+                    except Exception as ticker_e:
+                        st.error(f"Critical Ticker Error ({ticker}): {ticker_e}")
+                        ticker_results = {"error": str(ticker_e)}
+
+                    status.update(
+                        label=f"✅ {ticker} Complete", state="complete", expanded=False
+                    )
 
                 all_results[ticker] = ticker_results
-                config.rebuild_model = original_rebuild
 
-                # Force Python to release memory after each ticker
+                # Force memory cleanup
                 import gc
 
                 gc.collect()
@@ -206,61 +161,82 @@ def render_app():
         prog_placeholder.empty()
         st.session_state["trigger_rerun"] = True
 
-    # Check for rerun trigger
     if st.session_state.get("trigger_rerun"):
         st.session_state["trigger_rerun"] = False
         st.rerun()
 
     # --- 3. RENDERING: DASHBOARD VIEWS ---
-
-    # Render Suggestions Table if present
-    if "suggestions" in st.session_state:
-        st.header("🚀 AI Daily Recommendations")
-        suggest_df = pd.DataFrame(st.session_state["suggestions"])
-        if not suggest_df.empty:
-            st.dataframe(
-                suggest_df,
-                column_config={
-                    "Price": st.column_config.NumberColumn(
-                        "Current Price", format="$0,0.00"
-                    ),
-                    "Expected Return": st.column_config.NumberColumn(
-                        "Exp. Return", format="0.00%"
-                    ),
-                    "Ticker": st.column_config.TextColumn("Symbol"),
-                },
-                hide_index=True,
-                use_container_width=True,
-            )
-            st.info(
-                "Signals are based on the latest available market close and your trained models."
-            )
-        else:
-            st.warning("No suggestions generated. Check your data connection.")
-
-    # Render Backtest Results if present
     if "results" in st.session_state:
-        render_glossary()
         results = st.session_state["results"]
-        active_mode = st.session_state["active_mode"]
+        # Use existing builder to leverage cache, or a dummy if none active
+        builder = st.session_state.get("active_builder")
 
-        if active_mode == "Find Super Stars":
-            render_super_stars(
-                st.session_state.get("active_index", "ASX Index"), results
-            )
+        # Validation logic: identify tickers with valid non-error results
+        valid_tickers = []
+        for ticker, r in results.items():
+            if not isinstance(r, dict):
+                continue
+            # Check if any model in the results has actual trade data (indicated by roi presence)
+            is_valid = False
+            if any(isinstance(m_res, dict) and "roi" in m_res for m_res in r.values()):
+                is_valid = True
+            elif "roi" in r:
+                is_valid = True
+
+            if is_valid:
+                valid_tickers.append(ticker)
+
+        if not results:
+            st.warning("Analysis completed but no tickers were processed.")
+        elif not valid_tickers:
+            st.error("❌ Analysis failed to generate any valid trade results.")
+            with st.expander("🔍 View Technical Error Report", expanded=True):
+                if builder:
+                    st.subheader("📊 Data Consistency Check")
+                    for ticker in results.keys():
+                        # Try to get from cache first to avoid slow network calls
+                        data = builder.fetch_data(ticker, config.backtest_years)
+                        if data.empty:
+                            st.error(f"- {ticker}: No data available.")
+                        else:
+                            st.success(f"- {ticker}: {len(data)} rows cached.")
+                            st.write(f"  - Columns: {list(data.columns)}")
+
+                st.subheader("📝 Execution Logs")
+                for ticker, res in results.items():
+                    st.markdown(f"**{ticker}:**")
+                    if isinstance(res, dict):
+                        found_err = False
+                        for key, val in res.items():
+                            if isinstance(val, dict) and "error" in val:
+                                st.error(f"- {key}: {val['error']}")
+                                found_err = True
+                            elif key == "error":
+                                st.error(f"- Global: {val}")
+                                found_err = True
+                        if not found_err:
+                            st.write(
+                                "- No trades were triggered by the AI models (Hurdle rate too high?)."
+                            )
+                    else:
+                        st.write(f"- Unexpected result type: {type(res)}")
         else:
-            for ticker, ticker_res in results.items():
-                if active_mode == "Models Comparison":
-                    render_algorithm_comparison(ticker, ticker_res)
-                else:
-                    render_strategy_sensitivity(ticker, ticker_res)
-                st.markdown("---")
-
-    # If nothing is active, show the welcome message
-    if "results" not in st.session_state and "suggestions" not in st.session_state:
-        st.info(
-            "Welcome! Configure the sidebar and click 'Run Analysis' or 'Generate Suggestions' to start."
-        )
+            render_glossary()
+            active_mode = st.session_state["active_mode"]
+            if active_mode == "Find Super Stars":
+                render_super_stars(
+                    st.session_state.get("active_index", "ASX Index"), results
+                )
+            else:
+                for ticker in valid_tickers:
+                    ticker_res = results[ticker]
+                    if active_mode == "Models Comparison":
+                        render_algorithm_comparison(ticker, ticker_res)
+                    else:
+                        render_strategy_sensitivity(ticker, ticker_res)
+                    st.markdown("---")
+    else:
+        st.info("Welcome! Configure the sidebar and click 'Run Analysis' to start.")
 
 
 if __name__ == "__main__":

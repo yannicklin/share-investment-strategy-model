@@ -37,7 +37,7 @@
     }
   },
   
-  "postCreateCommand": "uv venv && uv pip install -r requirements.txt",
+  "postCreateCommand": "make setup",
   
   "remoteUser": "vscode"
 }

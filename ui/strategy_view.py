@@ -42,12 +42,14 @@ def render_strategy_sensitivity(ticker, ticker_res):
 
     if summary:
         df = pd.DataFrame(summary)
-        
+
         # Format the display values
         df_display = df.copy()
-        df_display["Net ROI"] = df["Net ROI"].apply(lambda x: f"{x*100:.2f}%")
-        df_display["Win Rate"] = df["Win Rate"].apply(lambda x: f"{x*100:.2f}%")
-        df_display["Final Portfolio"] = df["Final Portfolio"].apply(lambda x: f"${x:,.2f}")
+        df_display["Net ROI"] = df["Net ROI"].apply(lambda x: f"{x * 100:.2f}%")
+        df_display["Win Rate"] = df["Win Rate"].apply(lambda x: f"{x * 100:.2f}%")
+        df_display["Final Portfolio"] = df["Final Portfolio"].apply(
+            lambda x: f"${x:,.2f}"
+        )
 
         # 1. ROI Comparison Chart
         fig = px.bar(
@@ -59,14 +61,14 @@ def render_strategy_sensitivity(ticker, ticker_res):
             color_continuous_scale="Viridis",
             labels={"Net ROI": "Net Return on Investment"},
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
         # 2. Metrics Table
         st.subheader("Efficiency Metrics")
         st.dataframe(
             df_display,
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
         )
 
         # 3. Detailed Tabs

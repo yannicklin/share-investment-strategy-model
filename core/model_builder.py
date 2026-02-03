@@ -13,8 +13,16 @@ import joblib
 import numpy as np
 import pandas as pd
 import yfinance as yf
-import requests
 import time
+import logging
+
+# Suppress heavy logging and warnings from backends
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["STAN_LOG_LEVEL"] = "ERROR"
+os.environ["CMDSTANPY_LOG_LEVEL"] = "ERROR"
+logging.getLogger("cmdstanpy").setLevel(logging.ERROR)
+logging.getLogger("prophet").setLevel(logging.ERROR)
+
 from typing import Optional, Any, Dict, List
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import StandardScaler, RobustScaler
@@ -28,9 +36,8 @@ class ModelBuilder:
         self.config = config
         self.model: Optional[Any] = None
         self.scaler: Optional[Any] = None
-        self.sequence_length = 30  # Default lookback for LSTM
+        self.sequence_length = 30
         self._data_cache: Dict[str, pd.DataFrame] = {}
-        # Removing custom session to let yfinance handle its own session requirements (curl_cffi)
 
     def _init_scaler(self) -> Any:
         if self.config.scaler_type == "robust":
@@ -60,6 +67,7 @@ class ModelBuilder:
                     random_state=42,
                     verbose=0,
                     thread_count=-1,
+                    allow_writing_files=False,
                 )
             except ImportError:
                 return RandomForestRegressor(n_estimators=100, random_state=42)
@@ -75,29 +83,93 @@ class ModelBuilder:
         elif m_type == "lstm":
             try:
                 import tensorflow as tf
+                # Disable GPU if it's causing crashes on M3/Metal
+                # tf.config.set_visible_devices([], 'GPU')
+
                 from tensorflow.keras.models import Sequential
                 from tensorflow.keras.layers import LSTM, Dense, Dropout
 
                 model = Sequential(
                     [
                         LSTM(
-                            50,
+                            32,
                             return_sequences=True,
                             input_shape=(self.sequence_length, input_dim),
                         ),
-                        Dropout(0.2),
-                        LSTM(50, return_sequences=False),
-                        Dropout(0.2),
-                        Dense(25),
+                        Dropout(0.1),
+                        LSTM(16, return_sequences=False),
+                        Dense(8, activation="relu"),
                         Dense(1),
                     ]
                 )
                 model.compile(optimizer="adam", loss="mean_squared_error")
                 return model
             except Exception:
+                from sklearn.ensemble import RandomForestRegressor
+
                 return RandomForestRegressor(n_estimators=100, random_state=42)
 
         return RandomForestRegressor(n_estimators=100, random_state=42)
+
+    def _normalize_df(self, df: pd.DataFrame, ticker: str) -> pd.DataFrame:
+        """Forces any yfinance response into a clean, flat TitleCase DataFrame."""
+        if df is None or (isinstance(df, pd.DataFrame) and df.empty):
+            return pd.DataFrame()
+
+        data = df.copy()
+
+        # 1. Handle MultiIndex (Ticker/Price complexity)
+        if isinstance(data.columns, pd.MultiIndex):
+            # Try to extract the specific ticker level
+            for i in range(data.columns.nlevels):
+                if ticker in data.columns.get_level_values(i):
+                    data = data.xs(ticker, axis=1, level=i)
+                    break
+
+            # If still MultiIndex, collapse it
+            if isinstance(data.columns, pd.MultiIndex):
+                data.columns = [
+                    str(c[0]) if isinstance(c, tuple) else str(c) for c in data.columns
+                ]
+
+        # 2. Force Flat String Columns and Clean names
+        data.columns = [str(c).strip() for c in data.columns]
+
+        # 3. Handle 'Ticker.Price' format
+        new_cols = []
+        for c in data.columns:
+            if "." in c and ticker.lower() in c.lower():
+                new_cols.append(c.split(".")[-1])
+            else:
+                new_cols.append(c)
+        data.columns = new_cols
+
+        # 4. Final Standardization Map
+        name_map = {
+            "close": "Close",
+            "adj close": "Close",
+            "open": "Open",
+            "high": "High",
+            "low": "Low",
+            "volume": "Volume",
+        }
+
+        mapping = {}
+        for c in data.columns:
+            low_c = c.lower()
+            if low_c in name_map:
+                mapping[c] = name_map[low_c]
+
+        if mapping:
+            data.rename(columns=mapping, inplace=True)
+
+        # 5. Strict Deduplication & Type Casting
+        data = data.loc[:, ~data.columns.duplicated()]
+        for col in ["Close", "Open", "High", "Low", "Volume"]:
+            if col in data.columns:
+                data[col] = pd.to_numeric(data[col], errors="coerce")
+
+        return data
 
     def fetch_data(self, ticker: str, years: int) -> pd.DataFrame:
         cache_key = f"{ticker}_{years}"
@@ -107,8 +179,7 @@ class ModelBuilder:
         end_date = pd.Timestamp.now()
         start_date = end_date - pd.DateOffset(years=years)
 
-        max_retries = 3
-        for attempt in range(max_retries):
+        for attempt in range(3):
             try:
                 data = yf.download(
                     ticker,
@@ -116,39 +187,28 @@ class ModelBuilder:
                     end=end_date,
                     auto_adjust=True,
                     progress=False,
-                    timeout=30,
-                    threads=False,  # Sequential to avoid rate limits
+                    threads=False,
                 )
                 if not data.empty:
-                    self._data_cache[cache_key] = data
-                    return data
-
-                # If data is empty but no exception, might be rate limited
-                time.sleep(1 * (attempt + 1))
-            except Exception as e:
-                if attempt == max_retries - 1:
-                    print(f"Final error fetching data for {ticker}: {e}")
-                time.sleep(2 * (attempt + 1))
-
+                    norm = self._normalize_df(data, ticker)
+                    self._data_cache[cache_key] = norm
+                    return norm
+                time.sleep(1)
+            except Exception:
+                pass
         return pd.DataFrame()
 
     def prefetch_data_batch(self, tickers: List[str], years: int):
-        """Fetches multiple tickers in one go to reduce overhead and connection count."""
         if not tickers:
             return
-
         end_date = pd.Timestamp.now()
         start_date = end_date - pd.DateOffset(years=years)
-
-        # Filter out already cached
         to_fetch = [t for t in tickers if f"{t}_{years}" not in self._data_cache]
         if not to_fetch:
             return
 
-        # Download in batches of 20 to balance speed and reliability
-        batch_size = 20
-        for i in range(0, len(to_fetch), batch_size):
-            batch = to_fetch[i : i + batch_size]
+        for i in range(0, len(to_fetch), 20):
+            batch = to_fetch[i : i + 20]
             try:
                 data = yf.download(
                     batch,
@@ -156,34 +216,37 @@ class ModelBuilder:
                     end=end_date,
                     auto_adjust=True,
                     progress=False,
-                    timeout=60,
+                    threads=False,
                     group_by="ticker",
                 )
-
-                for ticker in batch:
-                    cache_key = f"{ticker}_{years}"
-                    if len(batch) == 1:
-                        ticker_df = data
-                    else:
-                        try:
-                            ticker_df = data[ticker]
-                        except KeyError:
-                            ticker_df = pd.DataFrame()
-
-                    if not ticker_df.empty:
-                        # Standardize columns (remove multi-index if single ticker result)
-                        if isinstance(ticker_df.columns, pd.MultiIndex):
-                            ticker_df.columns = ticker_df.columns.get_level_values(0)
-                        self._data_cache[cache_key] = ticker_df
-
-                time.sleep(1)  # Gap between batches
-            except Exception as e:
-                print(f"Batch prefetch error: {e}")
+                if data.empty:
+                    continue
+                for t in batch:
+                    try:
+                        # Extract ticker data carefully
+                        if len(batch) == 1:
+                            t_df = data
+                        else:
+                            if isinstance(
+                                data.columns, pd.MultiIndex
+                            ) and t in data.columns.get_level_values(0):
+                                t_df = data[t]
+                            else:
+                                t_df = data
+                        norm = self._normalize_df(t_df, t)
+                        if not norm.empty:
+                            self._data_cache[f"{t}_{years}"] = norm
+                    except Exception:
+                        continue
+            except Exception:
+                pass
 
     def prepare_features(self, data: pd.DataFrame):
         df = data.copy()
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
+
+        # Double check Close is a Series
+        if "Close" not in df.columns:
+            raise KeyError(f"Column 'Close' missing. Found: {list(df.columns)}")
 
         df["MA5"] = df["Close"].rolling(window=5).mean()
         df["MA20"] = df["Close"].rolling(window=20).mean()
@@ -228,7 +291,6 @@ class ModelBuilder:
         return np.array(X_seq), np.array(y_seq)
 
     def train(self, ticker: str):
-        print(f"Training {self.config.model_type} for {ticker}...")
         data = self.fetch_data(ticker, self.config.backtest_years)
         if data.empty:
             raise ValueError(f"No data for {ticker}")
@@ -248,18 +310,11 @@ class ModelBuilder:
                 self.model.fit(X_scaled, y)
         elif m_type == "prophet":
             try:
-                # Prophet requires DataFrame with 'ds' (datetime) and 'y' (numeric) columns
-                close_data = data["Close"]
-                if isinstance(close_data, pd.DataFrame):
-                    close_data = close_data.iloc[:, 0]
-
                 prophet_df = pd.DataFrame(
-                    {"ds": data.index, "y": close_data.values.flatten()}
+                    {"ds": data.index, "y": data["Close"].values.flatten()}
                 )
                 prophet_df["ds"] = pd.to_datetime(prophet_df["ds"]).dt.tz_localize(None)
-                prophet_df["y"] = pd.to_numeric(prophet_df["y"], errors="coerce")
                 prophet_df = prophet_df.dropna()
-
                 self.model = self._init_model()
                 self.model.fit(prophet_df)
             except Exception:
@@ -273,7 +328,6 @@ class ModelBuilder:
         model_filename = os.path.join(
             self.config.model_path, f"{ticker}_{m_type}_model.joblib"
         )
-
         if m_type == "lstm" and hasattr(self.model, "save"):
             h5_path = model_filename.replace(".joblib", ".h5")
             self.model.save(h5_path)
@@ -281,12 +335,13 @@ class ModelBuilder:
         else:
             joblib.dump({"model": self.model, "scaler": self.scaler}, model_filename)
 
-    def load_or_build(self, ticker: str):
+    def load_or_build(self, ticker: str) -> str:
         model_filename = os.path.join(
             self.config.model_path, f"{ticker}_{self.config.model_type}_model.joblib"
         )
         if self.config.rebuild_model or not os.path.exists(model_filename):
             self.train(ticker)
+            return "trained"
         else:
             data_bundle = joblib.load(model_filename)
             self.scaler = data_bundle["scaler"]
@@ -299,22 +354,21 @@ class ModelBuilder:
                     self.model = data_bundle.get("model")
             else:
                 self.model = data_bundle.get("model")
+            return "loaded"
 
     def predict(
         self, current_data: np.ndarray, date: Optional[pd.Timestamp] = None
     ) -> float:
         if self.model is None:
             raise ValueError("Model not loaded.")
-
         m_type = self.config.model_type
         if m_type == "prophet" and hasattr(self.model, "predict"):
             future = pd.DataFrame(
                 {"ds": [(date + pd.DateOffset(days=1)).tz_localize(None)]}
             )
             return float(self.model.predict(future)["yhat"].iloc[0])
-
         if m_type == "lstm" and hasattr(self.model, "predict"):
-            if len(current_data.shape) == 2:  # (Seq, Features)
+            if len(current_data.shape) == 2:
                 X = self.scaler.transform(current_data)
                 return float(
                     self.model.predict(
@@ -322,12 +376,11 @@ class ModelBuilder:
                     )[0][0]
                 )
             return 0.0
-
-        if len(current_data.shape) == 2:
-            X_input = current_data[-1].reshape(1, -1)
-        else:
-            X_input = current_data.reshape(1, -1)
-
+        X_input = (
+            current_data[-1].reshape(1, -1)
+            if len(current_data.shape) == 2
+            else current_data.reshape(1, -1)
+        )
         X_scaled = self.scaler.transform(X_input)
         return float(self.model.predict(X_scaled)[0])
 

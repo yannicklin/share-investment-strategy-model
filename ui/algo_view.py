@@ -20,7 +20,8 @@ def render_algorithm_comparison(ticker, ticker_res):
 
     summary = []
     for m_name, res in ticker_res.items():
-        if "error" not in res:
+        # Skip error entries for the summary leaderboard
+        if isinstance(res, dict) and "error" not in res:
             summary.append(
                 {
                     "Algorithm": m_name.upper(),
@@ -33,11 +34,11 @@ def render_algorithm_comparison(ticker, ticker_res):
 
     if summary:
         df = pd.DataFrame(summary).sort_values("Net ROI", ascending=False)
-        
+
         # Format the display values
         df_display = df.copy()
-        df_display["Net ROI"] = df["Net ROI"].apply(lambda x: f"{x*100:.2f}%")
-        df_display["Win Rate"] = df["Win Rate"].apply(lambda x: f"{x*100:.2f}%")
+        df_display["Net ROI"] = df["Net ROI"].apply(lambda x: f"{x * 100:.2f}%")
+        df_display["Win Rate"] = df["Win Rate"].apply(lambda x: f"{x * 100:.2f}%")
         df_display["Final Capital"] = df["Final Capital"].apply(lambda x: f"${x:,.2f}")
 
         col_table, col_chart = st.columns([1, 1])
@@ -46,7 +47,7 @@ def render_algorithm_comparison(ticker, ticker_res):
             st.dataframe(
                 df_display,
                 hide_index=True,
-                use_container_width=True,
+                width="stretch",
             )
 
         with col_chart:
@@ -58,10 +59,30 @@ def render_algorithm_comparison(ticker, ticker_res):
                 title="Algorithm ROI Performance",
                 color_continuous_scale="RdYlGn",
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
         st.subheader("Individual Model Analysis")
         tabs = st.tabs([m["Algorithm"] for m in summary])
         for i, m_info in enumerate(summary):
             with tabs[i]:
                 render_trade_details(ticker_res[m_info["Algorithm"].lower()])
+    else:
+        st.warning(f"⚠️ No valid trades or model results for {ticker}.")
+        with st.expander("🔍 Why am I seeing this?"):
+            st.write("Common reasons:")
+            st.write(
+                "1. **Data Availability**: The stock might not have enough historical data for the requested backtest period."
+            )
+            st.write(
+                "2. **AI Strategy**: The AI models might not have found any 'BUY' opportunities that passed the hurdle rate filter."
+            )
+            st.write(
+                "3. **Errors**: There might have been an issue fetching data or building the models."
+            )
+
+            if ticker_res:
+                st.write("---")
+                st.write("**Technical Details:**")
+                for m, r in ticker_res.items():
+                    if isinstance(r, dict) and "error" in r:
+                        st.error(f"{m}: {r['error']}")

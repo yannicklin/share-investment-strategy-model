@@ -19,12 +19,10 @@ def render_sidebar(config: Config):
 
     st.sidebar.header("Analysis Mode")
 
-    # The 3-way toggle (Segmented Switch)
-    modes = ["Models", "Time-Span", "Super Stars"]
-
+    # Selection mode
     analysis_mode_short = st.sidebar.segmented_control(
         "Workflow Selection",
-        options=modes,
+        options=["Models", "Time-Span", "Super Stars"],
         default="Models",
         label_visibility="collapsed",
         help="Models: Compare AI algorithms. Time-Span: Find best period. Super Stars: Find top 10 stocks.",
@@ -41,7 +39,8 @@ def render_sidebar(config: Config):
     index_choice = None
 
     # --- 1. SHARED GLOBAL SETTINGS ---
-    st.sidebar.header("Global Settings")
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("⚙️ Strategy Parameters")
 
     if analysis_mode != "Find Super Stars":
         ticker_input = st.sidebar.text_input(
@@ -169,24 +168,30 @@ def render_sidebar(config: Config):
             format="%.2f",
             step=5000.0,
         )
+        # Display as percentage (0-5%) but store as decimal (0-0.05)
+        buffer_val = st.slider(
+            "Hurdle Risk Buffer",
+            0.0,
+            5.0,
+            float(config.hurdle_risk_buffer * 100),
+            step=0.1,
+            format="%.1f%%",
+            help="Extra profit margin required after fees and tax to trigger a BUY.",
+        )
+        config.hurdle_risk_buffer = buffer_val / 100.0
 
     config.rebuild_model = st.sidebar.checkbox(
         "Force Rebuild AI Models", value=config.rebuild_model
     )
 
     st.sidebar.markdown("---")
-    gen_suggestions = st.sidebar.button("💡 Generate Live Suggestions")
-
-    st.sidebar.markdown("---")
-    if st.sidebar.button("🗑️ Reset Session State"):
-        st.session_state.clear()
-        st.rerun()
+    run_analysis = st.sidebar.button("🚀 Run Analysis", width="stretch")
 
     return (
         analysis_mode,
         test_periods,
         period_map,
-        gen_suggestions,
+        run_analysis,
         tie_breaker,
         index_choice,
     )
