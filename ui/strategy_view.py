@@ -14,10 +14,26 @@ import plotly.express as px
 from ui.components import render_trade_details
 
 
-def render_strategy_sensitivity(ticker, ticker_res):
+def render_strategy_sensitivity(ticker, ticker_res, models=None, tie_breaker=None):
     """Main panel for Strategy Mode: Comparing Holding Times."""
     st.header(f"⏳ Time-Span Comparison: {ticker}")
-    st.info("Decision Engine: Consensus (Majority Vote) of selected AI models.")
+
+    # Dynamic Decision Engine Description
+    if models and len(models) > 1:
+        m_count = len(models)
+        if m_count % 2 == 0:
+            # Even number of models requires a tie-breaker
+            tb_name = tie_breaker.upper() if tie_breaker else models[0].upper()
+            st.info(
+                f"Decision Engine: Consensus ({m_count} models) with Tie-Breaker: {tb_name}"
+            )
+        else:
+            # Odd number of models has a natural majority
+            st.info(f"Decision Engine: Consensus (Majority Vote of {m_count} models)")
+    elif models and len(models) == 1:
+        st.info(f"Decision Engine: Single Model ({models[0].upper()})")
+    else:
+        st.info("Decision Engine: Consensus (Majority Vote) of selected AI models.")
 
     summary = []
     errors = []
