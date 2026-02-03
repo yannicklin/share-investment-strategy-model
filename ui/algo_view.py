@@ -22,9 +22,11 @@ def render_algorithm_comparison(ticker, ticker_res):
     for m_name, res in ticker_res.items():
         # Skip error entries for the summary leaderboard
         if isinstance(res, dict) and "error" not in res:
+            display_name = m_name.upper()
             summary.append(
                 {
-                    "Algorithm": m_name.upper(),
+                    "Algorithm": display_name,
+                    "Model": m_name,  # Hidden unique key
                     "Net ROI": float(res["roi"]),
                     "Win Rate": float(res.get("win_rate", 0)),
                     "Total Trades": res["total_trades"],
@@ -45,27 +47,36 @@ def render_algorithm_comparison(ticker, ticker_res):
         with col_table:
             st.subheader("Leaderboard")
             st.dataframe(
-                df_display,
+                df_display.drop(columns=["Model"]),
                 hide_index=True,
                 width="stretch",
             )
 
         with col_chart:
+            # Use Model as X to ensure uniqueness in chart if names overlap
             fig = px.bar(
                 df,
-                x="Algorithm",
+                x="Model",
                 y="Net ROI",
                 color="Net ROI",
                 title="Algorithm ROI Performance",
                 color_continuous_scale="RdYlGn",
+                labels={"Model": "Algorithm Type"},
+            )
+            # Update X-axis labels to use the display names
+            fig.update_layout(
+                xaxis=dict(
+                    tickmode="array", tickvals=df["Model"], ticktext=df["Algorithm"]
+                )
             )
             st.plotly_chart(fig, width="stretch")
 
         st.subheader("Individual Model Analysis")
-        tabs = st.tabs([m["Algorithm"] for m in summary])
+        # Use both display name and internal type for tab uniqueness
+        tabs = st.tabs([f"{m['Algorithm']} ({m['Model']})" for m in summary])
         for i, m_info in enumerate(summary):
             with tabs[i]:
-                render_trade_details(ticker_res[m_info["Algorithm"].lower()])
+                render_trade_details(ticker_res[m_info["Model"]])
     else:
         st.warning(f"⚠️ No valid trades or model results for {ticker}.")
         with st.expander("🔍 Why am I seeing this?"):

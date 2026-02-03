@@ -51,16 +51,21 @@ class ModelBuilder:
             try:
                 from xgboost import XGBRegressor
 
+                logging.info("Initialized XGBoost model.")
                 return XGBRegressor(
                     n_estimators=100, learning_rate=0.05, random_state=42, n_jobs=-1
                 )
-            except ImportError:
+            except (ImportError, Exception) as e:
+                logging.warning(
+                    f"XGBoost failed to load: {e}. Falling back to RandomForest."
+                )
                 return RandomForestRegressor(n_estimators=100, random_state=42)
 
         elif m_type == "catboost":
             try:
                 from catboost import CatBoostRegressor
 
+                logging.info("Initialized CatBoost model.")
                 return CatBoostRegressor(
                     n_estimators=100,
                     learning_rate=0.05,
@@ -69,15 +74,22 @@ class ModelBuilder:
                     thread_count=-1,
                     allow_writing_files=False,
                 )
-            except ImportError:
+            except (ImportError, Exception) as e:
+                logging.warning(
+                    f"CatBoost failed to load: {e}. Falling back to RandomForest."
+                )
                 return RandomForestRegressor(n_estimators=100, random_state=42)
 
         elif m_type == "prophet":
             try:
                 from prophet import Prophet
 
+                logging.info("Initialized Prophet model.")
                 return Prophet(daily_seasonality=True, yearly_seasonality=True)
-            except Exception:
+            except Exception as e:
+                logging.warning(
+                    f"Prophet failed to load: {e}. Falling back to RandomForest."
+                )
                 return RandomForestRegressor(n_estimators=100, random_state=42)
 
         elif m_type == "lstm":
@@ -89,6 +101,7 @@ class ModelBuilder:
                 from tensorflow.keras.models import Sequential
                 from tensorflow.keras.layers import LSTM, Dense, Dropout
 
+                logging.info("Initialized LSTM model.")
                 model = Sequential(
                     [
                         LSTM(
@@ -104,11 +117,15 @@ class ModelBuilder:
                 )
                 model.compile(optimizer="adam", loss="mean_squared_error")
                 return model
-            except Exception:
+            except Exception as e:
+                logging.warning(
+                    f"LSTM/TensorFlow failed to load: {e}. Falling back to RandomForest."
+                )
                 from sklearn.ensemble import RandomForestRegressor
 
                 return RandomForestRegressor(n_estimators=100, random_state=42)
 
+        logging.info("Initialized RandomForest model.")
         return RandomForestRegressor(n_estimators=100, random_state=42)
 
     def _normalize_df(self, df: pd.DataFrame, ticker: str) -> pd.DataFrame:
@@ -331,9 +348,23 @@ class ModelBuilder:
         if m_type == "lstm" and hasattr(self.model, "save"):
             h5_path = model_filename.replace(".joblib", ".h5")
             self.model.save(h5_path)
-            joblib.dump({"scaler": self.scaler, "lstm_h5": h5_path}, model_filename)
+            joblib.dump(
+                {
+                    "scaler": self.scaler,
+                    "lstm_h5": h5_path,
+                    "model_class": self.model.__class__.__name__,
+                },
+                model_filename,
+            )
         else:
-            joblib.dump({"model": self.model, "scaler": self.scaler}, model_filename)
+            joblib.dump(
+                {
+                    "model": self.model,
+                    "scaler": self.scaler,
+                    "model_class": self.model.__class__.__name__,
+                },
+                model_filename,
+            )
 
     def load_or_build(self, ticker: str) -> str:
         model_filename = os.path.join(

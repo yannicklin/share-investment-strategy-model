@@ -28,10 +28,24 @@ fi
 # 2. Create the environment
 if [ ! -d ".venv" ]; then
     echo "🛠️  Creating new virtual environment..."
+    
+    # Prefer Python 3.10+ if available
+    if command -v python3.12 >/dev/null 2>&1; then
+        PYTHON_EXEC=$(command -v python3.12)
+    elif command -v python3.11 >/dev/null 2>&1; then
+        PYTHON_EXEC=$(command -v python3.11)
+    elif command -v python3.10 >/dev/null 2>&1; then
+        PYTHON_EXEC=$(command -v python3.10)
+    else
+        PYTHON_EXEC="/usr/bin/python3"
+    fi
+    
+    echo "🐍 Using Python: $PYTHON_EXEC"
+
     if [ "$IS_APPLE_SILICON" == "true" ]; then
         echo "🍎 SUPER FORCE: Creating native arm64 environment..."
-        # Create it using the system universal python
-        /usr/bin/python3 -m venv .venv
+        # Create it using the selected python
+        $PYTHON_EXEC -m venv .venv
         
         # Verify using the arm64 slice explicitly
         VENV_TYPE=$(/usr/bin/arch -arm64 .venv/bin/python3 -c "import platform; print(platform.machine())" 2>/dev/null || echo "unknown")
@@ -42,7 +56,7 @@ if [ ! -d ".venv" ]; then
             exit 1
         fi
     else
-        python3 -m venv .venv
+        $PYTHON_EXEC -m venv .venv
     fi
 fi
 
