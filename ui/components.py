@@ -11,33 +11,92 @@ Copyright (c) 2026 Yannick
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 
-def render_trade_details(res):
+def render_trade_details(ticker, res):
     """Shared helper to render equity curves, stats, and logs."""
     if "error" in res:
         st.error(res["error"])
         return
 
     if res.get("trades"):
-        # 1. Equity Curve
+        # 1. Equity Curve with Share Price overlay
         trade_points = [
             {
-                "date": pd.to_datetime(t["sell_date"]).date(),
+                "date": pd.to_datetime(t["sell_date"]),
                 "capital": round(float(t["cumulative_capital"]), 2),
             }
             for t in res["trades"]
         ]
-        df_equity = pd.DataFrame(trade_points)
-        fig_curve = px.line(
-            df_equity,
-            x="date",
-            y="capital",
-            markers=True,
-            title="Realized Capital Path",
-            labels={"capital": "Portfolio Value (AUD)", "date": "Exit Date"},
+        df_equity = pd.DataFrame(trade_points).sort_values("date")
+
+        # Fetch historical price data for overlay
+        price_df = pd.DataFrame()
+        if "active_builder" in st.session_state:
+            builder = st.session_state["active_builder"]
+            # We use the same years as configured in backtest
+            price_df = builder.fetch_data(ticker, builder.config.backtest_years)
+
+        # Create figure with secondary y-axis
+        fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+        # Add Capital Path (Primary Y-Axis)
+        fig.add_trace(
+            go.Scatter(
+                x=df_equity["date"],
+                y=df_equity["capital"],
+                name="Realized Capital",
+                line=dict(color="#00CC96", width=3),
+                marker=dict(size=8),
+                mode="lines+markers",
+            ),
+            secondary_y=False,
         )
-        st.plotly_chart(fig_curve, width="stretch")
+
+        # Add Share Price (Secondary Y-Axis)
+        if not price_df.empty:
+            # Filter price data to match the backtest range for cleaner look
+            if not df_equity.empty:
+                start_date = df_equity["date"].min()
+                end_date = df_equity["date"].max()
+                price_df = price_df[
+                    (price_df.index >= start_date) & (price_df.index <= end_date)
+                ]
+
+            fig.add_trace(
+                go.Scatter(
+                    x=price_df.index,
+                    y=price_df["Close"],
+                    name=f"{ticker} Price",
+                    line=dict(color="rgba(100, 100, 100, 0.3)", width=1, dash="dot"),
+                    mode="lines",
+                ),
+                secondary_y=True,
+            )
+
+        # Update layout
+        fig.update_layout(
+            title=f"Realized Capital vs {ticker} Price Path",
+            xaxis_title="Date",
+            legend=dict(
+                orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
+            ),
+            hovermode="x unified",
+            template="plotly_dark",
+        )
+
+        fig.update_yaxes(
+            title_text="Portfolio Value (AUD)",
+            secondary_y=False,
+            gridcolor="rgba(255,255,255,0.1)",
+        )
+        fig.update_yaxes(
+            title_text=f"{ticker} Price (AUD)", secondary_y=True, showgrid=False
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
 
         # 2. Statistics
         c1, c2, c3, c4 = st.columns(4)

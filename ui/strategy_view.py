@@ -93,7 +93,7 @@ def render_strategy_sensitivity(ticker, ticker_res, models=None, tie_breaker=Non
         tabs = st.tabs(tab_titles)
         for i, p_info in enumerate(summary):
             with tabs[i]:
-                render_trade_details(ticker_res[p_info["Hold Period"]])
+                render_trade_details(ticker, ticker_res[p_info["Hold Period"]])
     else:
         if not errors:
             st.error(

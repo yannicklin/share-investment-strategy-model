@@ -76,7 +76,7 @@ def render_algorithm_comparison(ticker, ticker_res):
         tabs = st.tabs([f"{m['Algorithm']} ({m['Model']})" for m in summary])
         for i, m_info in enumerate(summary):
             with tabs[i]:
-                render_trade_details(ticker_res[m_info["Model"]])
+                render_trade_details(ticker, ticker_res[m_info["Model"]])
     else:
         st.warning(f"⚠️ No valid trades or model results for {ticker}.")
         with st.expander("🔍 Why am I seeing this?"):

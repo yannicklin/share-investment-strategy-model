@@ -102,7 +102,7 @@ def render_super_stars(index_name, all_ticker_res, models=None, tie_breaker=None
         for i in range(len(tab_labels)):
             with tabs[i]:
                 ticker_symbol = tab_labels[i]
-                render_trade_details(all_ticker_res[ticker_symbol])
+                render_trade_details(ticker_symbol, all_ticker_res[ticker_symbol])
 
     else:
         st.warning(
