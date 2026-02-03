@@ -12,6 +12,7 @@ import streamlit as st
 import yfinance as yf
 from core.config import Config
 from core.index_manager import load_index_constituents, update_index_data
+from core.model_builder import ModelBuilder
 
 
 def render_sidebar(config: Config):
@@ -27,6 +28,9 @@ def render_sidebar(config: Config):
         label_visibility="collapsed",
         help="Models: Compare AI algorithms. Time-Span: Find best period. Super Stars: Find top 10 stocks.",
     )
+
+    # Get available models based on installed libraries
+    available_models = ModelBuilder.get_available_models()
 
     # Map back to full names
     mode_map = {
@@ -112,15 +116,15 @@ def render_sidebar(config: Config):
         config.hold_period_value = col_val.number_input("Val", value=1, min_value=1)
         config.model_types = st.sidebar.multiselect(
             "AI Algorithms to Benchmark",
-            ["random_forest", "xgboost", "catboost", "prophet", "lstm"],
-            default=config.model_types,
+            available_models,
+            default=[m for m in config.model_types if m in available_models],
         )
 
     elif analysis_mode == "Time-Span Comparison":
         config.model_types = st.sidebar.multiselect(
             "Select AI Committee",
-            ["random_forest", "xgboost", "catboost", "prophet", "lstm"],
-            default=["random_forest", "catboost"],
+            available_models,
+            default=[m for m in ["random_forest", "catboost"] if m in available_models],
         )
         if len(config.model_types) > 0 and len(config.model_types) % 2 == 0:
             tie_breaker = st.sidebar.selectbox(
@@ -136,8 +140,8 @@ def render_sidebar(config: Config):
         # Find Super Stars (Mode 3)
         config.model_types = st.sidebar.multiselect(
             "Select AI Committee",
-            ["random_forest", "xgboost", "catboost", "prophet", "lstm"],
-            default=["random_forest", "catboost"],
+            available_models,
+            default=[m for m in ["random_forest", "catboost"] if m in available_models],
         )
         if len(config.model_types) > 0 and len(config.model_types) % 2 == 0:
             tie_breaker = st.sidebar.selectbox(

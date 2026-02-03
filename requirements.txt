@@ -3,9 +3,12 @@ yfinance
 pandas
 numpy
 scikit-learn
+# Use py-xgboost if available or standard with fallback
 xgboost
 catboost
 prophet
+# LightGBM is often a more portable alternative to XGBoost on Mac/ARM
+lightgbm
 
 # TensorFlow (OS-Specific)
 tensorflow; sys_platform != 'darwin' or platform_machine != 'arm64'

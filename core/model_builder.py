@@ -44,86 +44,105 @@ class ModelBuilder:
             return RobustScaler()
         return StandardScaler()
 
+    @classmethod
+    def get_available_models(cls) -> List[str]:
+        """Returns a list of models that have their dependencies installed."""
+        available = ["random_forest"]
+
+        try:
+            from xgboost import XGBRegressor
+
+            available.append("xgboost")
+        except (ImportError, Exception):
+            pass
+
+        try:
+            from catboost import CatBoostRegressor
+
+            available.append("catboost")
+        except (ImportError, Exception):
+            pass
+
+        try:
+            from lightgbm import LGBMRegressor
+
+            available.append("lightgbm")
+        except (ImportError, Exception):
+            pass
+
+        try:
+            from prophet import Prophet
+
+            available.append("prophet")
+        except (ImportError, Exception):
+            pass
+
+        try:
+            import tensorflow as tf
+
+            available.append("lstm")
+        except (ImportError, Exception):
+            pass
+
+        return available
+
     def _init_model(self, input_dim: int = 0) -> Any:
         m_type = self.config.model_type
 
         if m_type == "xgboost":
-            try:
-                from xgboost import XGBRegressor
+            from xgboost import XGBRegressor
 
-                logging.info("Initialized XGBoost model.")
-                return XGBRegressor(
-                    n_estimators=100, learning_rate=0.05, random_state=42, n_jobs=-1
-                )
-            except (ImportError, Exception) as e:
-                logging.warning(
-                    f"XGBoost failed to load: {e}. Falling back to RandomForest."
-                )
-                return RandomForestRegressor(n_estimators=100, random_state=42)
+            logging.info("Initialized XGBoost model.")
+            return XGBRegressor(
+                n_estimators=100, learning_rate=0.05, random_state=42, n_jobs=-1
+            )
 
         elif m_type == "catboost":
-            try:
-                from catboost import CatBoostRegressor
+            from catboost import CatBoostRegressor
 
-                logging.info("Initialized CatBoost model.")
-                return CatBoostRegressor(
-                    n_estimators=100,
-                    learning_rate=0.05,
-                    random_state=42,
-                    verbose=0,
-                    thread_count=-1,
-                    allow_writing_files=False,
-                )
-            except (ImportError, Exception) as e:
-                logging.warning(
-                    f"CatBoost failed to load: {e}. Falling back to RandomForest."
-                )
-                return RandomForestRegressor(n_estimators=100, random_state=42)
+            logging.info("Initialized CatBoost model.")
+            return CatBoostRegressor(
+                n_estimators=100,
+                learning_rate=0.05,
+                random_state=42,
+                verbose=0,
+                thread_count=-1,
+                allow_writing_files=False,
+            )
+
+        elif m_type == "lightgbm":
+            from lightgbm import LGBMRegressor
+
+            logging.info("Initialized LightGBM model.")
+            return LGBMRegressor(n_estimators=100, random_state=42, n_jobs=-1)
 
         elif m_type == "prophet":
-            try:
-                from prophet import Prophet
+            from prophet import Prophet
 
-                logging.info("Initialized Prophet model.")
-                return Prophet(daily_seasonality=True, yearly_seasonality=True)
-            except Exception as e:
-                logging.warning(
-                    f"Prophet failed to load: {e}. Falling back to RandomForest."
-                )
-                return RandomForestRegressor(n_estimators=100, random_state=42)
+            logging.info("Initialized Prophet model.")
+            return Prophet(daily_seasonality=True, yearly_seasonality=True)
 
         elif m_type == "lstm":
-            try:
-                import tensorflow as tf
-                # Disable GPU if it's causing crashes on M3/Metal
-                # tf.config.set_visible_devices([], 'GPU')
+            import tensorflow as tf
+            from tensorflow.keras.models import Sequential
+            from tensorflow.keras.layers import LSTM, Dense, Dropout
 
-                from tensorflow.keras.models import Sequential
-                from tensorflow.keras.layers import LSTM, Dense, Dropout
-
-                logging.info("Initialized LSTM model.")
-                model = Sequential(
-                    [
-                        LSTM(
-                            32,
-                            return_sequences=True,
-                            input_shape=(self.sequence_length, input_dim),
-                        ),
-                        Dropout(0.1),
-                        LSTM(16, return_sequences=False),
-                        Dense(8, activation="relu"),
-                        Dense(1),
-                    ]
-                )
-                model.compile(optimizer="adam", loss="mean_squared_error")
-                return model
-            except Exception as e:
-                logging.warning(
-                    f"LSTM/TensorFlow failed to load: {e}. Falling back to RandomForest."
-                )
-                from sklearn.ensemble import RandomForestRegressor
-
-                return RandomForestRegressor(n_estimators=100, random_state=42)
+            logging.info("Initialized LSTM model.")
+            model = Sequential(
+                [
+                    LSTM(
+                        32,
+                        return_sequences=True,
+                        input_shape=(self.sequence_length, input_dim),
+                    ),
+                    Dropout(0.1),
+                    LSTM(16, return_sequences=False),
+                    Dense(8, activation="relu"),
+                    Dense(1),
+                ]
+            )
+            model.compile(optimizer="adam", loss="mean_squared_error")
+            return model
 
         logging.info("Initialized RandomForest model.")
         return RandomForestRegressor(n_estimators=100, random_state=42)
