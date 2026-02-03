@@ -329,6 +329,11 @@ class ModelBuilder:
             raise ValueError(f"No data for {ticker}")
 
         X, y = self.prepare_features(data)
+        if len(X) < 1:
+            raise ValueError(
+                f"Insufficient data rows for {ticker} after feature engineering."
+            )
+
         self.scaler = self._init_scaler()
         X_scaled = self.scaler.fit_transform(X)
 
