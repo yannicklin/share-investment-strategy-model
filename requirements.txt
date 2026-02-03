@@ -5,8 +5,7 @@ numpy
 scikit-learn
 catboost
 prophet
-# LightGBM is the main GBDT framework
-lightgbm
+# Standard Scikit-Learn algorithms (RandomForest, GradientBoosting) are built-in
 
 # TensorFlow (OS-Specific)
 tensorflow; sys_platform != 'darwin' or platform_machine != 'arm64'

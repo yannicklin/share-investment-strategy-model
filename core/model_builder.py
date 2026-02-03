@@ -24,7 +24,7 @@ logging.getLogger("cmdstanpy").setLevel(logging.ERROR)
 logging.getLogger("prophet").setLevel(logging.ERROR)
 
 from typing import Optional, Any, Dict, List
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.preprocessing import StandardScaler, RobustScaler
 from core.config import Config
 
@@ -47,19 +47,12 @@ class ModelBuilder:
     @classmethod
     def get_available_models(cls) -> List[str]:
         """Returns a list of models that have their dependencies installed."""
-        available = ["random_forest"]
+        available = ["random_forest", "gradient_boosting"]
 
         try:
             from catboost import CatBoostRegressor
 
             available.append("catboost")
-        except (ImportError, Exception):
-            pass
-
-        try:
-            from lightgbm import LGBMRegressor
-
-            available.append("lightgbm")
         except (ImportError, Exception):
             pass
 
@@ -95,11 +88,9 @@ class ModelBuilder:
                 allow_writing_files=False,
             )
 
-        elif m_type == "lightgbm":
-            from lightgbm import LGBMRegressor
-
-            logging.info("Initialized LightGBM model.")
-            return LGBMRegressor(n_estimators=100, random_state=42, n_jobs=-1)
+        elif m_type == "gradient_boosting":
+            logging.info("Initialized Scikit-Learn Gradient Boosting model.")
+            return GradientBoostingRegressor(n_estimators=100, random_state=42)
 
         elif m_type == "prophet":
             from prophet import Prophet

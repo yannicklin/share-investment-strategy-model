@@ -44,9 +44,15 @@ class Config:
     tax_rate: float = 0.25  # 25% tax
     scaler_type: str = "robust"  # "standard" or "robust"
     model_type: str = "random_forest"
-    # Available: ["random_forest", "lightgbm", "catboost", "prophet", "lstm"]
+    # Available: ["random_forest", "gradient_boosting", "catboost", "prophet", "lstm"]
     model_types: List[str] = field(
-        default_factory=lambda: ["random_forest", "lightgbm", "catboost"]
+        default_factory=lambda: [
+            "random_forest",
+            "gradient_boosting",
+            "catboost",
+            "prophet",
+            "lstm",
+        ]
     )
     data_source: str = "yfinance"
 
