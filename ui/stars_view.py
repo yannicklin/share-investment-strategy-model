@@ -38,6 +38,7 @@ def render_super_stars(index_name, all_ticker_res, models=None, tie_breaker=None
         st.info("Ranking all stocks in the index based on Consensus AI performance.")
 
     summary = []
+    errors = []
 
     for ticker, res in all_ticker_res.items():
         if res and "error" not in res:
@@ -57,6 +58,8 @@ def render_super_stars(index_name, all_ticker_res, models=None, tie_breaker=None
                     "Link": yfinance_url,
                 }
             )
+        elif res and "error" in res:
+            errors.append({"Ticker": ticker, "Error": res["error"]})
 
     if summary:
         # Sort by ROI and take top 10
@@ -115,7 +118,14 @@ def render_super_stars(index_name, all_ticker_res, models=None, tie_breaker=None
                 ticker_symbol = tab_labels[i]
                 render_trade_details(ticker_symbol, all_ticker_res[ticker_symbol])
 
-    else:
+    # Show errors in an expander at the bottom
+    if errors:
+        st.markdown("---")
+        with st.expander(f"⚠️ View Processing Issues ({len(errors)} stocks failed)"):
+            err_df = pd.DataFrame(errors)
+            st.table(err_df)
+
+    if not summary and not errors:
         st.warning(
             "No valid stock data could be processed for this index. Please ensure the models are trained."
         )
