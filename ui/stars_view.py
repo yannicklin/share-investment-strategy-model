@@ -100,20 +100,16 @@ def render_super_stars(index_name, all_ticker_res, models=None, tie_breaker=None
         )
 
         # Add labels to chart
-        fig.update_traces(texttemplate="%{y:.2f}%", textposition="outside")
+        fig.update_traces(texttemplate="%{y:.2%}", textposition="outside")
         fig.update_layout(yaxis_tickformat=".2%")
         st.plotly_chart(fig, width="stretch")
 
         # 3. Drill-down for winners
         st.subheader("Detailed Look at Winners")
         # Creating a safe list of labels for tabs
-        tab_labels = []
-        for _, row in df_top10.iterrows():
-            tab_labels.append(f"{row['Ticker']}")
+        tab_labels = [row["Ticker"] for _, row in df_top10.iterrows()]
 
-        tabs = st.tabs(
-            [f"{row['Ticker']} - {row['Company']}" for _, row in df_top10.iterrows()]
-        )
+        tabs = st.tabs(tab_labels)
         for i in range(len(tab_labels)):
             with tabs[i]:
                 ticker_symbol = tab_labels[i]
