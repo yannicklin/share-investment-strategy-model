@@ -29,14 +29,17 @@ The model may buy even if projected returns do not meet take-profit thresholds, 
     - **Mode 1 (Models Comparison)**: Benchmarks individual AI performance for a fixed strategy.
     - **Mode 2 (Time-Span Comparison)**: Evaluates holding period efficiency using a **Multi-Model Consensus** (majority vote).
         - **Consensus Logic**: Odd number of models uses a natural majority; even number of models uses a user-selected **Tie-Breaker** (Chairman model).
-    - **Mode 3 (Find Super Stars)**: Scans entire market indexes to identify the **Top 10** performers for a chosen timeframe.
+    - **Mode 3 (Find Super Stars)**: Scans entire market indexes to identify the **Top 10** performers for a chosen timeframe (1 day to 1 year).
+        - **Company Profiles**: Displays full legal company names and provides direct links to **Yahoo Finance** for each winner.
+        - **Error Transparency**: Includes a reviewable section for stocks that failed processing (e.g., insufficient data for new listings).
 
 #### 2.4 UI Modules (`ui/`)
 - **`sidebar.py`** — Analysis mode selection via a **Segmented Button Switch** (Models vs. Time-Span vs. Super Stars). Includes:
     - **Dynamic Algorithm Filtering**: Automatically hides algorithms if their dependencies are not functional in the current environment.
+    - **Percentage-Based Controls**: Stop-Loss and Take-Profit thresholds are adjusted via intuitive **% sliders** (e.g., 15.0% instead of 0.15).
 - **`algo_view.py`** — Renders the **Models Comparison** leaderboard and individual model deep-dives. Features **ETF labeling** in headers.
 - **`strategy_view.py`** — Renders the **Time-Span Comparison** ROI bar charts and consensus equity paths.
-- **`stars_view.py`** — Renders the **Super Stars** leaderboard (Hall of Fame) with comparative ROI charts and drill-down trade analysis for the top 10 winners.
+- **`stars_view.py`** — Renders the **Super Stars** leaderboard (Hall of Fame) with comparative ROI charts (accurate % labeling) and drill-down trade analysis.
 - **`components.py`** — Shared dashboard elements including:
     - **Dual-Axis Equity Curve**: Visualizes **Realized Capital** (solid line) against the **Share Price Trend** (dotted line) on a secondary Y-axis.
     - **Standardized Logs**: numeral.js format: `$0,0.00` for currency, `0.00%` for percentages.
