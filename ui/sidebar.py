@@ -162,7 +162,9 @@ def render_sidebar(config: Config):
                 "⚖️ Consensus Tie-Breaker", config.model_types
             )
         star_period = st.sidebar.selectbox(
-            "Strategy Time-Span", ["1 month", "1 quarter", "1 year"], index=0
+            "Strategy Time-Span",
+            ["1 day", "1 week", "1 month", "1 quarter", "1 year"],
+            index=2,
         )
         test_periods = [star_period]
 
