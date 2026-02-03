@@ -12,15 +12,16 @@ import pytest
 import pandas as pd
 import numpy as np
 from core.config import Config
-from core.model_builder import ModelBuilder, XGB_AVAILABLE
+from core.model_builder import ModelBuilder
 from core.backtest_engine import BacktestEngine
 
 
 @pytest.fixture
 def mock_config():
+    available = ModelBuilder.get_available_models()
     model_types = ["random_forest"]
-    if XGB_AVAILABLE:
-        model_types.append("xgboost")
+    if "catboost" in available:
+        model_types.append("catboost")
 
     return Config(
         target_stock_codes=["TEST.AX"],
