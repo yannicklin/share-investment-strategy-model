@@ -32,25 +32,22 @@ The goal is to build a Python-based trading strategy system for the Australian S
 2. **Security Priorities**: NEVER commit API keys or sensitive financial data.
 3. **Data Integrity**: Use `.AX` ticker suffix. Use `auto_adjust=True` and the `Close` column for all calculations.
 4. **Technical Indicators**: Implement RSI, MACD, and Moving Averages as standard features.
-5. **Model Flexibility**: Support 5 algorithms (Random Forest, XGBoost, CatBoost, Prophet, LSTM) via factory pattern.
+5. **Model Flexibility**: Support multiple algorithms (Random Forest, Gradient Boosting, CatBoost, Prophet, LSTM) via factory pattern. Prefer native Scikit-Learn versions for maximum portability.
 6. **Dual-Mode Analysis**:
    - **Mode 1**: Compare algorithms for a fixed strategy (Models Comparison).
    - **Mode 2**: Compare strategy timing/holding periods (Time-Span Comparison) using multi-model **Consensus**.
     - **Mode 3**: **Super Stars Scanner** — Benchmarking entire indexes to find top-performing individual stocks.
 7. **Hurdle-Aware Decisions**: All buy signals MUST be filtered through the `get_hurdle_rate()` logic in the decision layer. This logic MUST be tax-aware, ensuring the predicted return covers fees and a risk buffer after accounting for the user's marginal tax rate.
-8. **Index Management**: Always maintain an automated way to refresh stock symbols from live market lists (e.g., `index_manager.py`).
-
-8. **Data Preprocessing**: Support both `StandardScaler` and `RobustScaler` to ensure consistency and handle market outliers effectively.
-9. **Performance Optimization**: Use `st.session_state` in the UI to cache results.
-10. **Input Validation**: All ticker inputs MUST be validated against Yahoo Finance API before processing — use `validate_ticker()` function.
-11. **Display Formatting**: Use numeral.js format strings for Streamlit NumberColumn:
+8. **Fair Comparison (Warm-up)**: Fetch 90 days of additional historical data *before* the backtest start date to prime technical indicators and sequence-based models (LSTM).
+9. **Index Management**: Always maintain an automated way to refresh stock symbols from live market lists (e.g., `index_manager.py`).
+10. **Data Preprocessing**: Support both `StandardScaler` and `RobustScaler`. Always validate array shapes before scaling to prevent crashes on "thin data" tickers.
+11. **Performance Optimization**: Use `st.session_state` in the UI to cache results.
+12. **Input Validation**: All ticker inputs MUST be validated against Yahoo Finance API before processing — use `validate_ticker()` function.
+13. **Display Formatting**: Use numeral.js format strings for Streamlit NumberColumn:
     - Currency: `"$0,0.00"` (NOT Python format `"$,.2f"`)
     - Percentage: `"0.00%"` (auto-multiplies by 100, NOT `".2%"`)
     - Integer: `"0"` for whole numbers
 
-
-...
-
 ---
-*Last Updated: 2026-02-01 (Added Hurdle-Aware Decision Layer)*
+*Last Updated: 2026-02-03 (Hardware Portability & Visual Intelligence Updates)*
 *Note: This is a living document. Update it as project conventions evolve.*

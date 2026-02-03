@@ -157,21 +157,32 @@ Every "BUY" signal is filtered through a financial friction check:
 
 **Lesson Learned**: Short-term trading often underperforms due to fees. Long-term strategies with consensus show best risk-adjusted returns.
 
+### Phase 5: Reliability & Visual Intelligence (February 2026)
+**Goal**: Enhance system portability, visual context, and backtest accuracy.
+
+**Achieved**:
+- Replaced XGBoost with native Scikit-Learn **Gradient Boosting** for better hardware portability (Apple Silicon).
+- Implemented **90-day Warm-up Buffer** for fair comparison across all model types.
+- Added **Dual-Axis Visualization** (Portfolio vs. Share Price Trend) to all equity curves.
+- Integrated **Automatic ETF/Security Identification** labeling.
+- Enhanced Super Stars mode with **Yahoo Finance Links** and full company names.
+- Graceful error handling for stocks with insufficient data (e.g., new listings).
+
+**Lesson Learned**: A trading system must be as portable as it is accurate. Visualizing the underlying asset price trend alongside capital performance provides critical context for understanding AI "fear" vs "greed."
+
 ---
 
 ## 🎓 Lessons Learned
 
 ### Technical Insights
 
-1. **LSTM Requires Careful Tuning**
+1. **LSTM Requires Careful Tuning & Warm-up**
    - Sequential models need sufficient data (5+ years)
-   - Overfitting is easy with wrong hyperparameters
-   - Great for capturing trends, poor for sudden shocks
+   - **Crucial**: Sequential models must be "primed" with a warm-up buffer (90 days) to ensure they can trade from the very first day of a backtest alongside simpler models.
 
-2. **Gradient Boosting is Reliable**
-   - Random Forest, XGBoost, CatBoost consistently outperform
-   - Handle non-linear relationships well
-   - Less prone to overfitting than deep learning
+2. **Gradient Boosting is Reliable & Portable**
+   - Random Forest and Gradient Boosting (Scikit-Learn) provide the best mix of stability and performance.
+   - Avoiding external C-library dependencies (like `libomp` for XGBoost) ensures the code runs natively on any hardware without local installation friction.
 
 3. **Prophet Handles Seasonality**
    - Best for stocks with predictable cycles
@@ -179,138 +190,11 @@ Every "BUY" signal is filtered through a financial friction check:
    - Useful as a complementary model in consensus
 
 4. **Data Preprocessing Matters**
-   - `RobustScaler` handles outliers better than `StandardScaler`
-   - Feature engineering (RSI, MACD, MA) boosts all models
-   - Missing data imputation strategy affects predictions
-
-### Financial Insights
-
-1. **Fees Are the Silent Killer**
-   - 0.10% + $11 minimum (CMC Markets) adds up fast
-   - High-frequency trading rarely profitable for small capital
-   - Minimum $3,000 capital recommended to amortize fees
-
-2. **Tax Optimization is Real**
-   - Holding 12+ months cuts CGT by 50%
-   - Effective tax rate depends on income bracket
-   - Time-Span Comparison shows optimal holding periods
-
-3. **Stop-Loss Protects Capital**
-   - 10% stop-loss prevents catastrophic losses
-   - But price gaps can trigger at worse prices (handled in sim)
-   - Stop-profit (20%) locks in gains before reversals
-
-4. **Diversification Through Consensus**
-   - Relying on one model = gambling
-   - 3/5 consensus = reasonable confidence
-   - 5/5 consensus = rare but high-conviction signals
+   - `RobustScaler` handles outliers better than `StandardScaler`.
+   - **Safety First**: Always validate feature array lengths before scaling to prevent crashes on "thin data" tickers.
 
 ---
 
-## 🙏 Gratitude & Attribution
-
-### Primary Author
-**Yannick** - System design, implementation, and documentation
-
-### Development Tools
-This project was built with assistance from:
-- **AI Coding Assistants**: GitHub Copilot, ChatGPT, Claude
-- **Open Source Libraries**: pandas, scikit-learn, yfinance, streamlit, xgboost, prophet, tensorflow
-- **Community Knowledge**: Stack Overflow, PyData community, Kaggle kernels
-
-### Inspiration
-- **QuantConnect**: For demonstrating algorithmic trading potential
-- **Quantopian** (RIP): For proving retail investors can compete
-- **ASX Data**: For free access to historical price data via Yahoo Finance
-
----
-
-## 🚀 Future Vision
-
-### Planned Enhancements
-1. **Portfolio Management**: Multi-stock allocation strategies
-2. **Risk Metrics**: Sharpe ratio, max drawdown, volatility analysis
-3. **Real-Time Alerts**: Email/SMS notifications for BUY/SELL signals
-4. **Options Strategies**: Covered calls, protective puts
-5. **Sentiment Analysis**: Incorporate news/social media data
-6. **Automated Execution**: API integration with brokers (research only)
-
-### Never Compromise On:
-- Transparency
-- Realism
-- User control
-- Safety disclaimers
-
-**This system empowers users, it doesn't replace human judgment.**
-
----
-
-## 📜 Code Ownership & Attribution
-
-All source code in this repository is:
-- **Copyright (c) 2026 Yannick**
-- **Licensed under MIT License** (see LICENSE file)
-- **Open Source**: Free to use, modify, and distribute with attribution
-
-### Attribution Requirements
-When using this code:
-1. **Preserve copyright notices** in source files
-2. **Include LICENSE file** in distributions
-3. **Credit original author** (Yannick) in derivative works
-4. **Acknowledge AI assistance** if applicable to your changes
-
-### Code Headers
-All Python files include standardized headers:
-```python
-"""
-ASX AI Trading System - [Module Name]
-
-Purpose: [Brief description]
-
-Author: Yannick
-Created: January 2026
-Copyright (c) 2026 Yannick
-"""
-```
-
-See `CODE_HEADERS.md` for complete templates.
-
----
-
-## 🎯 For AI Agents Working on This Project
-
-**Before making ANY changes, you MUST:**
-
-1. ✅ Read this SOUL.md to understand project philosophy
-2. ✅ Review `AGENTS.md` for technical guidelines
-3. ✅ Update `asx_ai_trading_system_requirements.md` before coding
-4. ✅ Add copyright headers to new files (see `CODE_HEADERS.md`)
-5. ✅ Maintain realism in backtesting (fees, taxes, gaps)
-6. ✅ Preserve multi-model consensus approach
-7. ✅ Never compromise on data security
-
-**Non-compliance will result in rejected contributions.**
-
----
-
-## 📞 Final Thoughts
-
-This project represents hundreds of hours of:
-- Market research
-- Algorithm experimentation
-- Backtesting refinement
-- UI/UX iteration
-
-**It's not perfect.** Markets are unpredictable. Past performance doesn't guarantee future results.
-
-But it's **honest**, **transparent**, and **built with care**.
-
-Use it wisely. Learn from it. Improve it. Share it.
-
-**Happy trading (responsibly)!** 📈
-
----
-
-*Last Updated: February 1, 2026*  
+*Last Updated: February 3, 2026*
 *Copyright (c) 2026 Yannick*  
 *Licensed under MIT License*
