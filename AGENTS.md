@@ -48,6 +48,13 @@ The goal is to build a Python-based trading strategy system for the Australian S
     - Percentage: `"0.00%"` (auto-multiplies by 100, NOT `".2%"`)
     - Integer: `"0"` for whole numbers
 
+## 3. Workflow & Automation Rules (Strict)
+
+1. **Manual Commits Only**: NEVER run `git commit` or `git add` unless the user explicitly requests a commit. Do not assume a successful change implies a checkpoint is wanted.
+2. **No Automatic Background Tasks**: NEVER start the dashboard or tests in the background (e.g., `make run &`) automatically after an edit. Wait for the user to request the start.
+3. **Respect Local Environment**: Do not attempt to install system-level libraries (e.g., `brew install`). Stick strictly to `requirements.txt` via the local virtual environment.
+4. **Code-Only Implementation**: Focus on editing the requested files. Do not chain multiple shell operations (like build or run) unless they are part of a verification step requested by the user.
+
 ---
-*Last Updated: 2026-02-03 (Hardware Portability & Visual Intelligence Updates)*
+*Last Updated: 2026-02-03 (Hardware Portability & Workflow Safety Updates)*
 *Note: This is a living document. Update it as project conventions evolve.*
