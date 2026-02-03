@@ -159,8 +159,17 @@ class BacktestEngine:
         position, buy_price, buy_date, buy_fees = 0.0, 0.0, None, 0.0
         trades = []
 
+        # Determine the official start date for trading (excluding warm-up)
+        official_start = pd.Timestamp.now() - pd.DateOffset(
+            years=self.config.backtest_years
+        )
+
         for i in range(len(df) - 1):
             date, current_price = df.index[i], float(df.iloc[i]["Close"])
+
+            # Skip the warm-up period for actual trading
+            if date < official_start:
+                continue
 
             is_bullish = signal_func(
                 i,

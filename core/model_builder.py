@@ -189,7 +189,9 @@ class ModelBuilder:
             return self._data_cache[cache_key]
 
         end_date = pd.Timestamp.now()
-        start_date = end_date - pd.DateOffset(years=years)
+        # Add a 60-day warm-up buffer (approx 2 months of trading days)
+        # so that indicators and LSTM sequences are ready on the actual start date.
+        start_date = end_date - pd.DateOffset(years=years) - pd.DateOffset(days=90)
 
         for attempt in range(3):
             try:
