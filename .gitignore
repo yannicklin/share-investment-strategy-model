@@ -1,5 +1,5 @@
-# AI Trading System - Git Ignore
-# Updated: 2026-01-23 for Streamlit + AI architecture
+# ASX Bot Trading System - Git Ignore
+# Updated: 2026-02-04 for Bot Automation (asx-bot branch)
 
 # Python
 __pycache__/
@@ -25,7 +25,14 @@ htmlcov/
 .mypy_cache/
 *.cover
 
-# Streamlit
+# Database (Development/Testing)
+*.db
+*.sqlite
+*.sqlite3
+app/data/*.lmdb  # If using MontyDB locally
+instance/
+
+# Streamlit (Main branch only - removed from bot branch)
 static/
 
 # Development process tracking
@@ -39,6 +46,8 @@ models/*.joblib
 models/index_cache.json
 data/downloads/
 *.log
+backups/*.enc  # Encrypted database backups
+backups/*.sql  # SQL dumps
 
 # AI Model Training Artifacts
 catboost_info/
@@ -60,6 +69,9 @@ saved_model/            # TensorFlow: SavedModel format
 .env
 .envrc
 .env.local
+.env.production
+*.key
+*.pem
 
 # Virtual environments
 .venv/
@@ -73,6 +85,7 @@ uv.lock
 
 # IDEs and Editors
 .vscode/
+.devcontainer/
 .idea/
 *.swp
 *.swo

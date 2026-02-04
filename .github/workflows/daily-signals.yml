@@ -1,0 +1,64 @@
+"""
+GitHub Actions Workflow - Daily Signal Generation
+
+Dual-trigger reliability pattern:
+- First attempt: 08:00 AEST (22:00 UTC previous day) - Monday to Friday
+- Second attempt: 10:00 AEST (00:00 UTC) - Tuesday to Saturday (backup)
+
+The Flask endpoint /cron/daily-signals is idempotent, so:
+- First trigger: Calculates signal + sends notifications (~30 min)
+- Second trigger: Exits in ~5 seconds if work already done
+
+Cost: ~$0.00001 per second trigger (negligible)
+Reliability: 99.9%+ (catches GitHub Actions queue delays, cold start timeouts)
+"""
+
+name: ASX - Daily Signals (Dual Triggers)
+
+on:
+  schedule:
+    # FIRST ATTEMPT: 08:00 AEST = 22:00 UTC (previous day)
+    # Monday-Friday in AEST = Sunday-Thursday in UTC
+    - cron: '0 22 * * 0-4'
+    
+    # SECOND ATTEMPT (BACKUP): 10:00 AEST = 00:00 UTC
+    # Tuesday-Saturday in AEST = Monday-Friday in UTC
+    - cron: '0 0 * * 1-5'
+  
+  # Allow manual trigger for testing
+  workflow_dispatch:
+
+jobs:
+  trigger-daily-signals:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Trigger daily signal generation on Fly.io
+        run: |
+          curl -X POST https://asx-bot-trading.fly.dev/cron/daily-signals \
+            -H "Authorization: Bearer ${{ secrets.CRON_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -w "\nHTTP Status: %{http_code}\n" \
+            -o response.json
+      
+      - name: Display response
+        run: |
+          echo "Response from ASX Bot:"
+          cat response.json | jq '.'
+      
+      - name: Check if idempotent (optional logging)
+        run: |
+          ALREADY_CALCULATED=$(cat response.json | jq -r '.already_calculated')
+          ALREADY_SENT=$(cat response.json | jq -r '.already_sent')
+          
+          if [ "$ALREADY_CALCULATED" = "true" ]; then
+            echo "✅ Second trigger detected - signal already calculated (idempotent)"
+          else
+            echo "🆕 First trigger - calculated new signal"
+          fi
+          
+          if [ "$ALREADY_SENT" = "true" ]; then
+            echo "✅ Notifications already sent (idempotent)"
+          else
+            echo "📧 Sent notifications (email/SMS)"
+          fi

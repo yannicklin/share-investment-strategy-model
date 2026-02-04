@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}Trading Profiles - ASX Bot Admin{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex justify-between items-center">
+    <h1 class="text-2xl font-bold text-gray-900">
+        <i class="fas fa-cog text-blue-600 mr-2"></i> Trading Strategy Profiles
+    </h1>
+    <a href="{{ url_for('admin_ui.create_profile') }}" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition">
+        <i class="fas fa-plus mr-1"></i> New Profile
+    </a>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    {% for profile in profiles %}
+    <div class="bg-white rounded-lg shadow-md hover:shadow-lg transition border border-gray-200">
+        <div class="p-6">
+            <!-- Profile Header -->
+            <div class="flex justify-between items-start mb-4">
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-900">{{ profile.name }}</h3>
+                    <p class="text-sm text-gray-500 mt-1">
+                        <i class="fas fa-chart-bar mr-1"></i> {{ profile.stocks|length }} stocks
+                    </p>
+                </div>
+                <div class="flex space-x-2">
+                    <a href="{{ url_for('admin_ui.edit_profile', id=profile.id) }}" class="text-blue-600 hover:text-blue-800">
+                        <i class="fas fa-edit"></i>
+                    </a>
+                    <form method="POST" action="{{ url_for('admin_ui.delete_profile', id=profile.id) }}" onsubmit="return confirm('Delete this profile?');" class="inline">
+                        <button type="submit" class="text-red-600 hover:text-red-800">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Stock Tickers -->
+            <div class="mb-4">
+                <p class="text-xs font-medium text-gray-500 uppercase mb-2">Stocks</p>
+                <div class="flex flex-wrap gap-1">
+                    {% for stock in profile.stocks %}
+                        <span class="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded">{{ stock }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Profile Parameters -->
+            <div class="space-y-2 border-t border-gray-200 pt-4">
+                <div class="flex justify-between text-sm">
+                    <span class="text-gray-600">Holding Period</span>
+                    <span class="font-medium text-gray-900">{{ profile.holding_period }} days</span>
+                </div>
+                <div class="flex justify-between text-sm">
+                    <span class="text-gray-600">Hurdle Rate</span>
+                    <span class="font-medium text-gray-900">{{ (profile.hurdle_rate * 100)|round(2) }}%</span>
+                </div>
+                <div class="flex justify-between text-sm">
+                    <span class="text-gray-600">Max Position</span>
+                    <span class="font-medium text-gray-900">${{ profile.max_position_size|int }}</span>
+                </div>
+                {% if profile.stop_loss %}
+                <div class="flex justify-between text-sm">
+                    <span class="text-gray-600">Stop Loss</span>
+                    <span class="font-medium text-red-600">-{{ (profile.stop_loss * 100)|round(2) }}%</span>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Last Updated -->
+            <div class="mt-4 pt-4 border-t border-gray-200">
+                <p class="text-xs text-gray-500">
+                    <i class="fas fa-clock mr-1"></i> Updated {{ profile.updated_at.strftime('%Y-%m-%d %H:%M') }}
+                </p>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="col-span-full">
+        <div class="text-center py-12 bg-white rounded-lg shadow">
+            <i class="fas fa-folder-open text-6xl text-gray-300 mb-4"></i>
+            <p class="text-gray-500 mb-4">No trading profiles configured yet</p>
+            <a href="{{ url_for('admin_ui.create_profile') }}" class="inline-block px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition">
+                <i class="fas fa-plus mr-1"></i> Create Your First Profile
+            </a>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

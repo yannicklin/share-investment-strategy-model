@@ -1,0 +1,50 @@
+"""
+GitHub Actions Workflow - Weekly Model Retraining
+
+Schedule: Saturday 02:00 AEST = Friday 16:00 UTC
+
+Process:
+1. Fetch 2 years ASX data (yfinance)
+2. Train 5 models sequentially (RF, XGB, CatBoost, Prophet, LSTM)
+3. Save best models to Tigris Object Storage
+4. Trigger database backup (Saturday 04:00 AEST)
+
+Duration: ~2 hours
+Cost: 8 hours/month × $0.01 = $0.08/month
+"""
+
+name: ASX - Weekly Model Retraining
+
+on:
+  schedule:
+    # Saturday 02:00 AEST = Friday 16:00 UTC
+    - cron: '0 16 * * 5'
+  
+  # Allow manual trigger for testing
+  workflow_dispatch:
+
+jobs:
+  trigger-model-retrain:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Trigger weekly model retraining on Fly.io
+        run: |
+          curl -X POST https://asx-bot-trading.fly.dev/cron/weekly-retrain \
+            -H "Authorization: Bearer ${{ secrets.CRON_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -w "\nHTTP Status: %{http_code}\n" \
+            -o response.json
+      
+      - name: Display response
+        run: |
+          echo "Response from ASX Bot:"
+          cat response.json | jq '.'
+      
+      - name: Log training results
+        run: |
+          MODELS_TRAINED=$(cat response.json | jq -r '.models_trained')
+          DURATION=$(cat response.json | jq -r '.duration_minutes')
+          
+          echo "✅ Models trained: $MODELS_TRAINED"
+          echo "⏱️ Duration: $DURATION minutes"

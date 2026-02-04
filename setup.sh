@@ -1,62 +1,76 @@
 #!/bin/bash
 
-# ASX AI Trading System - Robust Setup Script
-# This script ensures the correct environment is created for your architecture (Intel/ARM).
+# ASX Bot Trading System - Setup Script (asx-bot branch)
+# Prepares environment for Flask automation (no Streamlit, no M1 Mac-specific handling)
 
 set -e
 
-echo "🔍 Detecting hardware..."
-# Detect physical hardware, not just what the shell reports (handles Rosetta)
-IS_APPLE_SILICON=$(sysctl -n machdep.cpu.brand_string | grep -q "Apple" && echo "true" || echo "false")
-ARCH=$(uname -m)
-OS=$(uname -s)
+echo "🤖 ASX Bot Trading System - Environment Setup"
+echo "=============================================="
 
-echo "💻 OS: $OS, Shell Arch: $ARCH, Apple Silicon: $IS_APPLE_SILICON"
+echo "🤖 ASX Bot Trading System - Environment Setup"
+echo "=============================================="
 
-# 1. Clean up existing environment if it's incorrect
-if [ -d ".venv" ]; then
-    echo "♻️ Existing .venv found. Checking compatibility..."
-    VENV_ARCH=$(.venv/bin/python3 -c "import platform; print(platform.machine())" 2>/dev/null || echo "unknown")
-    
-    if [ "$IS_APPLE_SILICON" == "true" ] && [ "$VENV_ARCH" == "x86_64" ]; then
-        echo "⚠️  CRITICAL: You are on Apple Silicon but your .venv is Intel (x86_64)."
-        echo "🗑️  Removing incompatible .venv to fix AVX/TensorFlow crashes..."
-        rm -rf .venv
-    fi
+# 1. Check Python version
+echo "🐍 Checking Python version..."
+PYTHON_EXEC=$(command -v python3 || echo "")
+if [ -z "$PYTHON_EXEC" ]; then
+    echo "❌ Python 3 not found. Please install Python 3.10+."
+    exit 1
 fi
 
-# 2. Create the environment
-if [ ! -d ".venv" ]; then
-    echo "🛠️  Creating new virtual environment..."
-    
-    # Prefer Python 3.10+ if available
-    if command -v python3.12 >/dev/null 2>&1; then
-        PYTHON_EXEC=$(command -v python3.12)
-    elif command -v python3.11 >/dev/null 2>&1; then
-        PYTHON_EXEC=$(command -v python3.11)
-    elif command -v python3.10 >/dev/null 2>&1; then
-        PYTHON_EXEC=$(command -v python3.10)
-    else
-        PYTHON_EXEC="/usr/bin/python3"
-    fi
-    
-    echo "🐍 Using Python: $PYTHON_EXEC"
+PYTHON_VERSION=$($PYTHON_EXEC --version | awk '{print $2}')
+echo "✅ Using Python $PYTHON_VERSION"
 
-    if [ "$IS_APPLE_SILICON" == "true" ]; then
-        echo "🍎 SUPER FORCE: Creating native arm64 environment..."
-        # Create it using the selected python
-        $PYTHON_EXEC -m venv .venv
-        
-        # Verify using the arm64 slice explicitly
-        VENV_TYPE=$(/usr/bin/arch -arm64 .venv/bin/python3 -c "import platform; print(platform.machine())" 2>/dev/null || echo "unknown")
-        echo "🧪 Verification (forced arm64): $VENV_TYPE"
-        
-        if [ "$VENV_TYPE" != "arm64" ] && [ "$VENV_TYPE" != "arm64e" ]; then
-            echo "❌ ERROR: Could not verify arm64 support in venv."
-            exit 1
-        fi
-    else
-        $PYTHON_EXEC -m venv .venv
+# 2. Create virtual environment
+if [ -d ".venv" ]; then
+    echo "♻️  Existing .venv found. Skipping creation."
+else
+    echo "🛠️  Creating new virtual environment..."
+    $PYTHON_EXEC -m venv .venv
+    echo "✅ Virtual environment created"
+fi
+
+# 3. Activate and install dependencies
+echo "📦 Installing dependencies from requirements.txt..."
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+echo "✅ Dependencies installed"
+
+# 4. Setup environment file
+if [ ! -f ".env" ]; then
+    echo "📝 Creating .env from template..."
+    cp .env.example .env
+    echo "⚠️  IMPORTANT: Edit .env file with your actual secrets:"
+    echo "   - DATABASE_URL (PostgreSQL connection string)"
+    echo "   - CRON_TOKEN (secure random string)"
+    echo "   - BACKUP_ENCRYPTION_KEY (32-byte base64 key)"
+    echo "   - Notification API keys (SendGrid, Telnyx, Telegram)"
+else
+    echo "✅ .env file already exists"
+fi
+
+# 5. Verify core imports
+echo "🧪 Verifying core imports..."
+python -c "import flask, sqlalchemy, yfinance, sklearn, catboost, prophet, tensorflow" 2>/dev/null
+if [ $? -eq 0 ]; then
+    echo "✅ All core modules imported successfully"
+else
+    echo "❌ Import verification failed. Check requirements installation."
+    exit 1
+fi
+
+echo ""
+echo "✨ Setup complete!"
+echo ""
+echo "Next steps:"
+echo "  1. Edit .env with your actual secrets"
+echo "  2. Start PostgreSQL database (local or Supabase)"
+echo "  3. Run: make db-init (initialize database schema)"
+echo "  4. Run: make test (verify tests pass)"
+echo "  5. Run: make run (start Flask app locally)"
+echo ""
     fi
 fi
 

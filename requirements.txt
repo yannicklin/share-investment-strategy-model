@@ -1,24 +1,57 @@
-# Core AI and Data
-yfinance
-pandas
-numpy
-scikit-learn
-catboost
-prophet
-# Standard Scikit-Learn algorithms (RandomForest, GradientBoosting) are built-in
+# ASX Bot Trading System - Python Dependencies
 
-# TensorFlow (OS-Specific)
-tensorflow; sys_platform != 'darwin' or platform_machine != 'arm64'
-tensorflow-macos; sys_platform == 'darwin' and platform_machine == 'arm64'
-tensorflow-metal; sys_platform == 'darwin' and platform_machine == 'arm64'
+# ============================================================================
+# Flask Web Framework
+# ============================================================================
+Flask==3.0.0
+Flask-SQLAlchemy==3.1.1
+Flask-CORS==4.0.0
+gunicorn==21.2.0  # Production WSGI server for Fly.io
 
-# UI and Visualization
-streamlit
-plotly
+# ============================================================================
+# Database
+# ============================================================================
+psycopg2-binary==2.9.9  # PostgreSQL adapter
+SQLAlchemy==2.0.23
 
-# Development and Testing
-ruff
-black
-mypy
-pytest
-pytest-cov
+# ============================================================================
+# Security & Encryption
+# ============================================================================
+cryptography==41.0.7  # AES-256 backup encryption
+
+# ============================================================================
+# Market Data & AI Models
+# ============================================================================
+yfinance==0.2.33  # Yahoo Finance data
+pandas==2.1.4
+numpy==1.26.2
+
+# Machine Learning (from main branch requirements)
+scikit-learn==1.3.2
+catboost==1.2.2
+prophet==1.1.5
+tensorflow==2.15.0  # LSTM models (Keras included)
+
+# ============================================================================
+# Notifications
+# ============================================================================
+# sendgrid==6.11.0  # Uncomment when implementing email
+# telnyx==2.0.0  # Uncomment when implementing SMS
+requests==2.31.0  # For Telegram Bot API
+
+# ============================================================================
+# Cloud Storage
+# ============================================================================
+boto3==1.34.12  # Tigris S3-compatible storage
+
+# ============================================================================
+# Testing
+# ============================================================================
+pytest==7.4.3
+pytest-flask==1.3.0
+pytest-cov==4.1.0
+
+# ============================================================================
+# Development Tools
+# ============================================================================
+python-dotenv==1.0.0  # Environment variable management

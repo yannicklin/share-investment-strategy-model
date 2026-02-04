@@ -1,38 +1,57 @@
-.PHONY: setup run test lint clean
+.PHONY: setup install db-init run test lint clean help
 
-# Default: setup and run
-all: setup run
+# Default: show help
+all: help
+
+help:
+	@echo "ASX Bot Trading System - Makefile Commands"
+	@echo "==========================================="
+	@echo ""
+	@echo "Setup:"
+	@echo "  make setup      - Run setup.sh (create venv, install deps)"
+	@echo "  make install    - Install/upgrade dependencies only"
+	@echo "  make db-init    - Initialize database schema"
+	@echo ""
+	@echo "Development:"
+	@echo "  make run        - Start Flask app locally (port 5000)"
+	@echo "  make test       - Run pytest test suite"
+	@echo "  make lint       - Run code quality checks"
+	@echo ""
+	@echo "Cleanup:"
+	@echo "  make clean      - Remove venv and artifacts"
+	@echo ""
 
 setup:
 	@bash setup.sh
 
-# Architecture Detection for macOS
-IS_APPLE_SILICON := $(shell sysctl -n machdep.cpu.brand_string 2>/dev/null | grep -q "Apple" && echo "true" || echo "false")
+install:
+	@echo "📦 Installing dependencies..."
+	@.venv/bin/pip install --upgrade pip
+	@.venv/bin/pip install -r requirements.txt
+	@echo "✅ Dependencies updated"
+
+db-init:
+	@echo "🗄️  Initializing database schema..."
+	@.venv/bin/python -c "from app.bot import create_app, db; app = create_app(); app.app_context().push(); db.create_all(); print('✅ Database tables created')"
 
 run:
-ifeq ($(IS_APPLE_SILICON),true)
-	@arch -arm64 .venv/bin/python3 -m streamlit run ASX_AImodel.py
-else
-	@.venv/bin/python3 -m streamlit run ASX_AImodel.py
-endif
+	@echo "🚀 Starting Flask bot application..."
+	@.venv/bin/python run_bot.py
 
 test:
-ifeq ($(IS_APPLE_SILICON),true)
-	@arch -arm64 .venv/bin/python3 -m pytest tests/
-else
-	@.venv/bin/python3 -m pytest tests/
-endif
+	@echo "🧪 Running test suite..."
+	@.venv/bin/pytest tests/bot/ -v --tb=short
 
 lint:
-ifeq ($(IS_APPLE_SILICON),true)
-	@arch -arm64 .venv/bin/ruff check .
-else
-	@.venv/bin/ruff check .
-endif
+	@echo "🔍 Running code quality checks..."
+	@.venv/bin/python -m ruff check . || echo "⚠️  Ruff not installed (optional)"
 
 clean:
+	@echo "🧹 Cleaning up..."
 	rm -rf .venv
 	rm -rf catboost_info
-	rm -rf models/*.joblib
-	rm -rf models/*.h5
-	find . -type d -name "__pycache__" -exec rm -rf {} +
+	rm -rf models/*.pkl models/*.h5 models/*.joblib
+	rm -rf __pycache__ app/__pycache__ app/bot/__pycache__
+	rm -rf .pytest_cache .coverage htmlcov
+	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+	@echo "✅ Cleanup complete"

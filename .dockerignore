@@ -1,0 +1,66 @@
+# ASX Bot Trading System - Docker Ignore
+# Exclude unnecessary files from Docker build context
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Development files
+.git/
+.github/
+.gitignore
+.DS_Store
+*.md
+!README.md
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+.mypy_cache/
+
+# Local data
+models/
+data/downloads/
+backups/
+*.log
+catboost_info/
+
+# Environment files (use Fly.io secrets instead)
+.env
+.env.local
+.env.example
+
+# Development tools
+.vscode/
+.devcontainer/
+.idea/
+
+# Documentation
+docs/
+BOT_FRAMEWORK_README.md
+bot_trading_system_requirements.md
+infrastructure_comparison.md
+AUTHORS.md
+CODE_HEADERS.md
+SOUL.md
+AGENTS.md
+
+# Test files
+tests/
+
+# Unnecessary configs
+setup.sh
+Makefile
+pyproject.toml

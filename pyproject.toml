@@ -1,35 +1,59 @@
 [project]
-name = "share-investment-strategy-model"
-version = "0.1.0"
-description = "AI-Based Stock Investment System (ASX Version)"
+name = "asx-bot-trading-system"
+version = "1.0.0"
+description = "ASX Bot Trading System - Automated Signal Generation & Notification"
 authors = [{ name = "Yannick" }]
 requires-python = ">=3.10,<3.13"
 dependencies = [
-    "yfinance>=0.2.38",
-    "pandas>=2.0.0",
-    "numpy>=1.24.0",
-    "scikit-learn>=1.3.0",
-    "xgboost>=2.0.0",
-    "catboost>=1.2.0",
-    "prophet>=1.1.0",
-    "streamlit>=1.30.0",
-    "plotly>=5.18.0",
-    "tensorflow>=2.16.0; sys_platform != 'darwin' or platform_machine != 'arm64'",
-    "tensorflow-macos>=2.16.0; sys_platform == 'darwin' and platform_machine == 'arm64'",
-    "tensorflow-metal>=1.1.0; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "Flask==3.0.0",
+    "Flask-SQLAlchemy==3.1.1",
+    "Flask-CORS==4.0.0",
+    "psycopg2-binary==2.9.9",
+    "SQLAlchemy==2.0.23",
+    "cryptography==41.0.7",
+    "yfinance==0.2.33",
+    "pandas==2.1.4",
+    "numpy==1.26.2",
+    "scikit-learn==1.3.2",
+    "catboost==1.2.2",
+    "prophet==1.1.5",
+    "tensorflow==2.15.0",
+    "requests==2.31.0",
+    "boto3==1.34.12",
+    "python-dotenv==1.0.0",
 ]
 
 [dependency-groups]
 dev = [
-    "ruff",
-    "black",
-    "mypy",
-    "pytest",
-    "pytest-cov",
+    "pytest==7.4.3",
+    "pytest-flask==1.3.0",
+    "pytest-cov==4.1.0",
 ]
 
 [tool.setuptools]
-packages = ["core", "ui"]
+packages = ["app.bot", "core"]
 
 [tool.uv]
 managed = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests/bot"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = "-v --tb=short --strict-markers"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+exclude = [
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".pytest_cache",
+    ".git",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N"]
+ignore = ["E501"]  # Line too long (handled by formatter)
