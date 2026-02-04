@@ -82,7 +82,7 @@ def render_super_stars(index_name, all_ticker_res, models=None, tie_breaker=None
                 "Link": st.column_config.LinkColumn(
                     "Yahoo Finance",
                     help="View ticker details on Yahoo Finance",
-                    validate="^https://finance\.yahoo\.com/quote/.*",
+                    validate=r"^https://finance\.yahoo\.com/quote/.*",
                     display_text="View Page",
                 ),
             },
