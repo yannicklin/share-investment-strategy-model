@@ -13,11 +13,18 @@
 
 ---
 
-This document provides instructions for AI agents working on the **AI-Based Stock Investment System (ASX Version)**. All agents MUST follow these guidelines to ensure consistency, safety, and code quality.
+This document provides instructions for AI agents working on the **AI Trading System (Multi-Market Architecture)**. All agents MUST follow these guidelines to ensure consistency, safety, and code quality.
+
+> **Technical Reference**: See [ARCHITECTURE.md](ARCHITECTURE.md) for complete system architecture and specifications.
 
 ## 1. Project Overview
 
-The goal is to build a Python-based trading strategy system for the Australian Securities Exchange (ASX). The system uses AI models trained on historical Yahoo Finance data (`yfinance`) to backtest and generate recommendations.
+A Python-based trading strategy system supporting multiple stock exchanges through a **branch-based architecture**:
+- **`asx`** branch → Australian Securities Exchange
+- **`usa`** branch → NYSE/NASDAQ  
+- **`twn`** branch → Taiwan Stock Exchange
+
+Each branch is a standalone implementation with market-specific configurations. The system uses AI models trained on Yahoo Finance data to backtest and generate trading recommendations.
 
 ### Core Modules
 - `core/config.py`: Configuration management (tickers, capital, thresholds).
@@ -28,7 +35,7 @@ The goal is to build a Python-based trading strategy system for the Australian S
 
 ## 2. Core Mandates
 
-1. **Documentation-First Development**: Always update `asx_ai_trading_system_requirements.md` before implementing changes.
+1. **Documentation-First Development**: Always update `ARCHITECTURE.md` before implementing changes.
 2. **Security Priorities**: NEVER commit API keys or sensitive financial data.
 3. **Data Integrity**: Use `.AX` ticker suffix. Use `auto_adjust=True` and the `Close` column for all calculations.
 4. **Technical Indicators**: Implement RSI, MACD, and Moving Averages as standard features.

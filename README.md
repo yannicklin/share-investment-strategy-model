@@ -1,6 +1,30 @@
-# ASX AI Trading Strategy System (`asx` branch)
+# AI Trading Strategy System
 
-A Python-based automated trading strategy system designed specifically for the **Australian Securities Exchange (ASX)**. This system utilizes advanced AI models to predict stock price movements, perform realistic backtesting (accounting for fees, taxes, and price gaps), and provide real-time investment recommendations via a Streamlit dashboard.
+A Python-based automated trading strategy system with two operational modes:
+
+## 🎯 Two-Mode Architecture
+
+### **Mode 1: Analysis Dashboard** (Branch-Based)
+Interactive Streamlit UI for manual backtesting and strategy analysis.
+- **Switch Branches**: `git checkout asx` / `git checkout usa` / `git checkout twn`
+- **Market-Specific**: Each branch has optimized configs for that market
+- **Use Case**: Research, backtesting, strategy development
+
+### **Mode 2: Bot Service** (Unified - This Branch)
+Flask-based automation service for scheduled signal generation across ALL markets.
+- **Multi-Market Support**: ASX, USA, TWN in single codebase
+- **Database Isolation**: `.for_market('ASX')` ensures data never mixes
+- **Use Case**: Production automated trading signals
+
+> **When coding bot features**: Reference individual market branches (`asx`/`usa`/`twn`) for market-specific configurations (trading hours, ticker suffixes, holidays).
+
+## 🌍 Supported Markets
+
+| Branch | Market | Ticker Suffix | Bot Status | Analysis Status |
+|--------|--------|---------------|------------|----------------|
+| `asx` | Australian Securities Exchange | `.AX` | ✅ Ready | ✅ Ready |
+| `usa` | NYSE/NASDAQ | None | 📋 Planned | 📋 Planned |
+| `twn` | Taiwan Stock Exchange | `.TW` | 📋 Planned | 📋 Planned |
 
 ## 🚀 Key Features
 
@@ -31,10 +55,10 @@ A Python-based automated trading strategy system designed specifically for the *
     ```bash
     git clone <repository-url>
     cd share-investment-strategy-model
-    git checkout asx  # Switch to the ASX-specific branch
+    git checkout asx  # Switch to desired market branch (asx/usa/twn)
     ```
 
-> **Note**: This repository uses a branch-per-market structure. Ensure you are on the `asx` branch for the Australian market implementation. Other branches like `usa` is for different research tracks.
+> **Important**: Each branch is a standalone market implementation. Use `git branch` to see available markets.
 
 2.  **Using `uv` (Recommended)**:
     This project is optimized for `uv`. Install dependencies and run in one go:
@@ -67,21 +91,51 @@ Simply open the repository in GitHub Codespaces to start developing immediately.
 
 ## 📂 Project Structure
 
--   **`core/`**:
-    -   `config.py`: Global settings and defaults (Tickers, Capital, ATO Tax).
-    -   `model_builder.py`: AI model factory (RF, XGB, CatBoost, Prophet, LSTM).
-    -   `backtest_engine.py`: Dual-mode simulation logic with consensus voting.
-    -   `index_manager.py`: Reliable constituent fetcher for market indices.
--   **`ui/`**:
-    -   `sidebar.py`: Navigation and parameter inputs.
-    -   `algo_view.py`: AI Benchmarking dashboard.
-    -   `strategy_view.py`: Strategy Sensitivity (Consensus) dashboard.
-    -   `stars_view.py`: Index-wide "Super Stars" ranking view.
-    -   `components.py`: Shared UI elements (Realized Equity Curve, formatted logs).
--   `ASX_AImodel.py`: Main Streamlit application entry point.
+### **Analysis Mode** (Market-Specific Branches)
+```
+share-investment-strategy-model/ (asx/usa/twn branch)
+├── core/                    # ML algorithms & backtesting
+│   ├── config.py           # Market-specific settings
+│   ├── model_builder.py    # AI models (RF, XGB, LSTM, etc.)
+│   └── backtest_engine.py  # Simulation engine
+├── ui/                      # Streamlit dashboard
+│   ├── sidebar.py
+│   ├── algo_view.py        # AI benchmarking
+│   └── strategy_view.py    # Strategy comparison
+└── ASX_AImodel.py          # Entry point
+```
 
--   `tests/`: Unit tests for core logic.
--   `models/`: Directory for persistent model storage.
+### **Bot Service** (This Branch - Multi-Market)
+```
+share-investment-strategy-model/ (bot branch)
+├── app/bot/
+│   ├── shared/
+│   │   ├── models.py           # DB schema with market isolation
+│   │   └── notification.py     # Telegram/Email sender
+│   ├── markets/
+│   │   ├── asx/               # ASX signal generation
+│   │   │   ├── config.py      # Import from asx branch
+│   │   │   └── signal_service.py
+│   │   ├── usa/               # USA signal generation
+│   │   └── twn/               # TWN signal generation
+│   └── api/
+│       └── cron_routes.py     # /cron/daily-signals?market=ASX
+├── core/                      # Shared ML algorithms
+└── run_bot.py                 # Bot entry point
+```
+
+> **Key Pattern**: Bot references market configs from individual branches but runs unified database.
+
+### Bot Framework Status
+**Current State**: Framework complete, core logic pending
+- ✅ Flask app structure (`app/bot/`)
+- ✅ Database models (signals, profiles, credentials, job_logs)
+- ✅ Idempotent signal generation logic
+- ✅ GitHub Actions workflows (dual-trigger reliability)
+- ✅ Test suite (5 comprehensive tests)
+- ⏸️ **Pending**: AI consensus integration, notification APIs, backup service
+
+See [ARCHITECTURE.md](ARCHITECTURE.md#bot-implementation-status) for detailed setup guide and TODOs.
 
 ## ⚠️ Disclaimer
 
@@ -102,6 +156,11 @@ This software is for educational and research purposes only. It is **not** finan
 - **[.clinerules](.clinerules)** - Cline AI configuration
 - **[.aiderignore](.aiderignore)** - Aider AI configuration
 
+### Technical Documentation
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Complete system architecture, multi-market design, and bot implementation status
+- **[AGENTS.md](AGENTS.md)** - AI agent development guidelines
+- **[bot_trading_system_requirements.md](bot_trading_system_requirements.md)** - Original bot requirements (reference)
+
 ### License & Copyright
 
 **Copyright**: (c) 2026 Yannick  
@@ -112,5 +171,5 @@ This software is for educational and research purposes only. It is **not** finan
 
 ---
 
-*Last Updated: February 1, 2026*  
-*Developed for ASX Trading Analysis*
+*Last Updated: February 5, 2026*  
+*Multi-Market Trading System (ASX Production Ready)*
