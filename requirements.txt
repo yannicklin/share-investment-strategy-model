@@ -1,4 +1,5 @@
-# ASX Bot Trading System - Python Dependencies
+# AI Trading Bot System - Python Dependencies (Multi-Market Architecture)
+# Production stack: Koyeb + Supabase + Cloudflare R2 + GitHub Actions
 
 # ============================================================================
 # Flask Web Framework
@@ -40,9 +41,9 @@ tensorflow==2.15.0  # LSTM models (Keras included)
 requests==2.31.0  # For Telegram Bot API
 
 # ============================================================================
-# Cloud Storage
+# Cloud Storage (Cloudflare R2)
 # ============================================================================
-boto3==1.34.12  # Tigris S3-compatible storage
+boto3==1.34.12  # S3-compatible client for R2 backups
 
 # ============================================================================
 # Testing

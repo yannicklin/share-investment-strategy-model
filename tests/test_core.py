@@ -1,8 +1,8 @@
 """
-ASX AI Trading System - Unit Tests
+AI Trading Bot System - Unit Tests (Multi-Market Architecture)
 
 Purpose: Test suite for core module validation including model builder
-and backtesting engine.
+and backtesting engine. Covers ASX, USA, and TWN market configurations.
 
 Author: Yannick
 Copyright (c) 2026 Yannick

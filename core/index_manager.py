@@ -1,8 +1,9 @@
 """
-ASX AI Trading System - Index Manager
+AI Trading Bot System - Index Manager (Multi-Market Architecture)
 
-Purpose: Manages ASX index constituents with live updates and caching
-for ASX 50, ASX 200, and custom stock lists.
+Purpose: Manages stock index constituents with live updates and caching.
+Supports ASX (ASX 50, ASX 200), USA (S&P 500, NASDAQ 100), and
+Taiwan Stock Exchange (TSEC 50, TSEC 100) indices.
 
 Author: Yannick
 Copyright (c) 2026 Yannick

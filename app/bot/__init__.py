@@ -1,13 +1,14 @@
 """
-ASX Bot Trading System - Flask Application Factory
+AI Trading Bot System - Flask Application Factory (Multi-Market Architecture)
 
-This module implements the bot automation version of the ASX AI trading system.
+This module implements the bot automation version of the multi-market AI trading system.
 Unlike the interactive dashboard (main branch), this bot is designed for:
 - Scheduled cron execution (GitHub Actions triggers)
+- Multi-market support (ASX, USA, TWN)
 - Dual-trigger reliability (08:00 + 10:00 AEST daily)
 - Idempotent signal generation (no duplicate signals/notifications)
-- Database-backed configuration (PostgreSQL)
-- Encrypted weekly backups to Tigris (AES-256)
+- Market-isolated database architecture (PostgreSQL via Supabase)
+- Automated backups to Cloudflare R2
 
 See: bot_trading_system_requirements.md for detailed specifications
 """

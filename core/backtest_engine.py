@@ -1,8 +1,9 @@
 """
-ASX AI Trading System - Backtesting Engine
+AI Trading Bot System - Backtesting Engine (Multi-Market Architecture)
 
 Purpose: Simulates trading strategies on historical data with realistic
-constraints (fees, taxes, price gaps, T+1 settlement).
+constraints (fees, taxes, price gaps, T+1 settlement). Supports multiple
+markets (ASX, USA, TWN) with market-specific fee structures.
 
 Author: Yannick
 Copyright (c) 2026 Yannick

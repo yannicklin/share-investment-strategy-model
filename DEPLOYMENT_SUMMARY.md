@@ -248,11 +248,37 @@ Storage: ~50MB database (signals + logs for 1 year)
 
 ### Cost Estimate (Fly.io)
 ```
-Compute:  $0/month (auto-stop when idle, <1hr/day active)
-Database: $0/month (Supabase free tier: 500MB, 2 concurrent connections)
-Tigris:   $0/month (first 5GB free, backups ~10MB/month)
+Based on Fly.io calculator (730 hours/month standard):
 
-TOTAL: $0/month (within free tier limits)
+Compute (shared-cpu-1x, 1GB RAM):
+  - 24/7 baseline: Compute $0.88 + Memory $6.35 = $7.23/month
+  - Our usage (30 hours/month):
+    - Compute: $0.88 × (30/730) = $0.036/month
+    - Memory: $6.35 × (30/730) = $0.261/month
+  - Stopped rootfs (2GB): $0.15 × 2 = $0.300/month
+  - TOTAL COMPUTE: ~$0.60/month
+
+Database (Supabase free tier):
+  - 500MB storage: $0/month
+  - 2 concurrent connections: $0/month
+  - TOTAL DATABASE: $0/month
+
+Storage (Tigris S3-compatible):
+  - First 5GB free
+  - Backups: ~10MB/month
+  - TOTAL STORAGE: $0/month
+
+Network:
+  - Inbound: Free (unlimited)
+  - Outbound (Asia Pacific): $0.04/GB
+  - Estimated usage: ~2MB/month (API calls + data downloads)
+  - TOTAL NETWORK: ~$0.00/month
+
+═══════════════════════════════════
+TOTAL: ~$0.60/month (~$7.20/year)
+═══════════════════════════════════
+
+Note: With auto-stop enabled, saves 92% vs 24/7 ($7.53/month).
 ```
 
 ---

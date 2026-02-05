@@ -1,0 +1,138 @@
+# AI Trading Bot System - Koyeb Deployment Configuration
+# Docs: https://www.koyeb.com/docs/build-and-deploy/yaml-configuration
+
+app:
+  name: ai-trading-bot
+
+services:
+  - name: trading-bot-asx
+    type: web
+    
+    # ========================================================================
+    # Docker Build Configuration
+    # ========================================================================
+    build:
+      method: dockerfile
+      dockerfile: Dockerfile
+      context: .
+    
+    # ========================================================================
+    # Instance Configuration - eSmall (0.5 vCPU, 1GB RAM, 8GB disk)
+    # Cost: $0.0072/hour = $0.22/month (30 hours active)
+    # ========================================================================
+    instance_type: eSmall
+    regions:
+      - sin  # Singapore (closest to Australia for ASX market)
+    
+    scaling:
+      min: 1
+      max: 1  # Single instance (bot doesn't need scaling)
+    
+    # ========================================================================
+    # Auto-Stop Configuration (5-min idle shutdown)
+    # ========================================================================
+    auto_stop:
+      enabled: true
+      idle_timeout: 5m  # Stop after 5 minutes of no requests
+      light_sleep: true  # Fast 200ms wake-up (vs 30-60s full cold start)
+    
+    # ========================================================================
+    # Environment Variables (use Koyeb Secrets for sensitive values)
+    # ========================================================================
+    env:
+      - key: FLASK_ENV
+        value: production
+      
+      - key: FLASK_DEBUG
+        value: "0"
+      
+      # Database - Supabase PostgreSQL (use Koyeb Secret)
+      - key: DATABASE_URL
+        secret: database_url
+      
+      # Cloudflare R2 Storage (use Koyeb Secrets)
+      - key: R2_ACCOUNT_ID
+        secret: r2_account_id
+      - key: R2_ACCESS_KEY_ID
+        secret: r2_access_key
+      - key: R2_SECRET_ACCESS_KEY
+        secret: r2_secret_key
+      - key: R2_BUCKET_NAME
+        value: trading-bot-backups
+      
+      # Telegram Notifications (use Koyeb Secret)
+      - key: TELEGRAM_BOT_TOKEN
+        secret: telegram_bot_token
+      - key: TELEGRAM_CHAT_ID
+        secret: telegram_chat_id
+      
+      # API Authentication (use Koyeb Secret)
+      - key: API_BEARER_TOKEN
+        secret: api_bearer_token
+      
+      # Flask Secret Key (use Koyeb Secret)
+      - key: SECRET_KEY
+        secret: flask_secret_key
+      
+      # Market Settings
+      - key: DEFAULT_MARKET
+        value: ASX
+      - key: TIMEZONE
+        value: Australia/Sydney
+      
+      # Logging
+      - key: LOG_LEVEL
+        value: INFO
+      - key: LOG_FORMAT
+        value: json
+    
+    # ========================================================================
+    # Health Check Configuration
+    # ========================================================================
+    health_checks:
+      - path: /health
+        port: 5000
+        protocol: http
+        initial_delay_seconds: 30
+        interval_seconds: 30
+        timeout_seconds: 5
+        success_threshold: 1
+        failure_threshold: 3
+    
+    # ========================================================================
+    # Port Configuration
+    # ========================================================================
+    ports:
+      - port: 5000
+        protocol: http
+    
+    # ========================================================================
+    # Custom Domains (configure after deployment)
+    # ========================================================================
+    # domains:
+    #   - name: money.twoudia.com
+    #     ssl: true  # Auto-provision Let's Encrypt certificate
+    
+    # ========================================================================
+    # Routes (HTTP → HTTPS redirect)
+    # ========================================================================
+    routes:
+      - path: /
+        port: 5000
+
+# ============================================================================
+# Koyeb Secrets Setup Instructions
+# ============================================================================
+# Run these commands via Koyeb CLI to create secrets:
+#
+# koyeb secrets create database_url --value "postgresql://..."
+# koyeb secrets create r2_account_id --value "your-account-id"
+# koyeb secrets create r2_access_key --value "your-access-key"
+# koyeb secrets create r2_secret_key --value "your-secret-key"
+# koyeb secrets create telegram_bot_token --value "123456:ABC..."
+# koyeb secrets create telegram_chat_id --value "your-chat-id"
+# koyeb secrets create api_bearer_token --value "your-bearer-token"
+# koyeb secrets create flask_secret_key --value "$(openssl rand -hex 32)"
+#
+# Alternatively, create via web UI:
+# https://app.koyeb.com/secrets

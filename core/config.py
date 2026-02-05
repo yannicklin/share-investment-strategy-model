@@ -1,8 +1,9 @@
 """
-ASX AI Trading System - Configuration Management
+AI Trading Bot System - Configuration Management (Multi-Market Architecture)
 
 Purpose: Configuration dataclass for system parameters including tickers,
-capital, thresholds, and backtesting settings.
+capital, thresholds, and backtesting settings. Supports multiple markets
+(ASX, USA, TWN) with market-specific configurations.
 
 Author: Yannick
 Copyright (c) 2026 Yannick

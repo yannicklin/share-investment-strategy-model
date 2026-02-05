@@ -1,8 +1,9 @@
 """
-ASX AI Trading System - Model Builder
+AI Trading Bot System - Model Builder (Multi-Market Architecture)
 
 Purpose: Factory for creating and training machine learning models with
-standardized interfaces for prediction and backtesting.
+standardized interfaces for prediction and backtesting. Supports multiple
+markets (ASX, USA, TWN) with market-specific feature engineering.
 
 Author: Yannick
 Copyright (c) 2026 Yannick

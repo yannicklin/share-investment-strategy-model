@@ -1,18 +1,21 @@
 """
-Multi-Market Signal Generator with Idempotent Notifications
+AI Trading Bot System - Multi-Market Signal Generator with Idempotent Notifications
 
-Delegates to market-specific services (ASX/USA/TWN) for signal generation.
-Handles notification sending with idempotency tracking.
+Delegates to market-specific services (ASX/USA/TWN) for AI-powered signal generation.
+Handles Telegram notification sending with idempotency tracking.
 
 Flow:
-1. Market service generates signals (if not already done today)
-2. Check if notifications sent
-3. Send via Telegram/Email/SMS (first time only)
+1. Market service generates signals using consensus models (if not already done today)
+2. Check if notifications already sent for this market/date
+3. Send via Telegram Bot API (first time only)
 
 Benefits:
-- No duplicate signals (database uniqueness constraint)
+- No duplicate signals (database UNIQUE constraint on market/date/ticker)
 - No duplicate notifications (sent_at timestamp check)
-- Market isolation enforced via .for_market() helper
+- Market isolation enforced via .for_market() query helper
+
+Author: Yannick
+Copyright (c) 2026 Yannick
 """
 
 from datetime import date, datetime

@@ -1,6 +1,6 @@
-# AI Trading Strategy System
+# AI Trading Bot System (Multi-Market Architecture)
 
-A Python-based automated trading strategy system with two operational modes:
+A Python-based automated trading strategy system supporting multiple global markets with two operational modes:
 
 ## 🎯 Two-Mode Architecture
 
@@ -10,10 +10,11 @@ Interactive Streamlit UI for manual backtesting and strategy analysis.
 - **Market-Specific**: Each branch has optimized configs for that market
 - **Use Case**: Research, backtesting, strategy development
 
-### **Mode 2: Bot Service** (Unified - This Branch)
+### **Mode 2: Bot Service** (Unified - This Branch: `bots`)
 Flask-based automation service for scheduled signal generation across ALL markets.
 - **Multi-Market Support**: ASX, USA, TWN in single codebase
 - **Database Isolation**: `.for_market('ASX')` ensures data never mixes
+- **Deployment**: Koyeb (compute) + Supabase (database) + Cloudflare R2 (backups)
 - **Use Case**: Production automated trading signals
 
 > **When coding bot features**: Reference individual market branches (`asx`/`usa`/`twn`) for market-specific configurations (trading hours, ticker suffixes, holidays).
@@ -25,6 +26,17 @@ Flask-based automation service for scheduled signal generation across ALL market
 | `asx` | Australian Securities Exchange | `.AX` | ✅ Ready | ✅ Ready |
 | `usa` | NYSE/NASDAQ | None | 📋 Planned | 📋 Planned |
 | `twn` | Taiwan Stock Exchange | `.TW` | 📋 Planned | 📋 Planned |
+
+## 🏗️ Deployment Architecture
+
+**Production Stack** ($0.22/month):
+- **Compute**: Koyeb eSmall (Singapore, auto-stop)
+- **Database**: Supabase PostgreSQL Free (always-on, 500MB)
+- **Storage**: Cloudflare R2 (backups, 10GB free)
+- **DNS**: Cloudflare (subdomain delegation: `money.twoudia.com`)
+- **CI/CD**: GitHub Actions (daily signal triggers)
+
+See [CLOUD_PRICING_COMPARISON.md](CLOUD_PRICING_COMPARISON.md) for full architecture details.
 
 ## 🚀 Key Features
 

@@ -1,14 +1,19 @@
 """
-Database Models - PostgreSQL Schema
+AI Trading Bot System - Database Models (Multi-Market PostgreSQL Schema)
 
 Implements the database schema defined in:
 bot_trading_system_requirements.md Section 2.4.1
 
 Tables:
-- signals: Daily signal archive (BUY/SELL/HOLD)
-- config_profiles: Trading strategy configurations (SENSITIVE)
+- signals: Daily signal archive (BUY/SELL/HOLD) with market isolation
+- config_profiles: Trading strategy configurations per market (SENSITIVE)
 - api_credentials: Broker/notification API keys (SENSITIVE, encrypted)
-- job_logs: Execution history
+- job_logs: Execution history across all markets
+
+Supported markets: ASX (ready), USA (planned), TWN (planned)
+
+Author: Yannick
+Copyright (c) 2026 Yannick
 """
 
 from app.bot import db

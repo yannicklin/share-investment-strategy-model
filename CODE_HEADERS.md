@@ -41,7 +41,7 @@ This document defines standard copyright header templates for all source code fi
 
 ```python
 """
-ASX AI Trading System - [Module Name]
+AI Trading Bot System - [Module Name]
 
 Purpose: [Brief description of module's functionality]
 
@@ -76,7 +76,7 @@ from sklearn.ensemble import RandomForestClassifier
 
 ```python
 """
-ASX AI Trading System - Main Application Entry Point
+AI Trading Bot System - Main Application Entry Point
 
 Purpose: Streamlit dashboard for multi-model AI trading strategy analysis
 with realistic backtesting and performance metrics.
@@ -94,7 +94,7 @@ import streamlit as st
 
 ```python
 """
-ASX AI Trading System - [Component Name]
+AI Trading Bot System - [Component Name]
 
 Purpose: Streamlit UI component for [specific functionality].
 
@@ -111,7 +111,7 @@ import streamlit as st
 
 ```python
 """
-ASX AI Trading System - Unit Tests
+AI Trading Bot System - Unit Tests
 
 Purpose: Test suite for [module/functionality] validation.
 

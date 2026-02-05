@@ -1,4 +1,8 @@
-"""Database models for ASX Bot Trading System"""
+"""Database models for AI Trading Bot System (Multi-Market Architecture)
+
+Supports market-isolated data with .for_market() query helpers.
+Markets: ASX, USA, TWN
+"""
 
 from app.bot.models.database import Signal, ConfigProfile, ApiCredential, JobLog
 
