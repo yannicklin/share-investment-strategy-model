@@ -30,7 +30,7 @@ primary_region = "syd"  # Sydney (closest to ASX market)
     path = "/health"
 
 [processes]
-  app = "gunicorn --bind :8080 --workers 1 --timeout 300 'app.bot:create_app()'"
+  app = "gunicorn --bind :8080 --workers 1 --timeout 300 run_bot:app"
 
 [[vm]]
   size = "shared-cpu-1x"  # 1 vCPU

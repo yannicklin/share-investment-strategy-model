@@ -1,53 +1,66 @@
-"""
-GitHub Actions Workflow - Daily Signal Generation
-
-Dual-trigger reliability pattern:
-- First attempt: 08:00 AEST (22:00 UTC previous day) - Monday to Friday
-- Second attempt: 10:00 AEST (00:00 UTC) - Tuesday to Saturday (backup)
-
-The Flask endpoint /cron/daily-signals is idempotent, so:
-- First trigger: Calculates signal + sends notifications (~30 min)
-- Second trigger: Exits in ~5 seconds if work already done
-
-Cost: ~$0.00001 per second trigger (negligible)
-Reliability: 99.9%+ (catches GitHub Actions queue delays, cold start timeouts)
-"""
-
-name: ASX - Daily Signals (Dual Triggers)
+name: Daily Trading Signals (Multi-Market)
 
 on:
   schedule:
-    # FIRST ATTEMPT: 08:00 AEST = 22:00 UTC (previous day)
-    # Monday-Friday in AEST = Sunday-Thursday in UTC
-    - cron: '0 22 * * 0-4'
+    # ASX: Dual-trigger reliability
+    - cron: '0 22 * * 0-4'  # 08:00 AEST (primary - Mon-Fri AEST = Sun-Thu UTC)
+    - cron: '0 0 * * 1-5'   # 10:00 AEST (backup - Tue-Sat AEST = Mon-Fri UTC)
     
-    # SECOND ATTEMPT (BACKUP): 10:00 AEST = 00:00 UTC
-    # Tuesday-Saturday in AEST = Monday-Friday in UTC
-    - cron: '0 0 * * 1-5'
+    # Future markets (commented out until implemented):
+    # USA: - cron: '0 10 * * 1-5'  # 06:00 EST
+    # TWN: - cron: '0 23 * * 0-4'  # 07:00 CST
   
-  # Allow manual trigger for testing
+  # Allow manual trigger
   workflow_dispatch:
+    inputs:
+      market:
+        description: 'Market to generate signals for'
+        required: true
+        default: 'ASX'
+        type: choice
+        options:
+          - ASX
+          - USA
+          - TWN
 
 jobs:
-  trigger-daily-signals:
+  trigger-signals:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        market: [ASX]  # Expand to [ASX, USA, TWN] when ready
+      fail-fast: false
     
     steps:
-      - name: Trigger daily signal generation on Fly.io
+      - name: Trigger ${{ matrix.market }} Signal Generation
         run: |
-          curl -X POST https://asx-bot-trading.fly.dev/cron/daily-signals \
+          echo "🤖 Triggering signal generation for ${{ matrix.market }}"
+          
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            "${{ secrets.BOT_API_URL }}/cron/daily-signals?market=${{ matrix.market }}" \
             -H "Authorization: Bearer ${{ secrets.CRON_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -w "\nHTTP Status: %{http_code}\n" \
-            -o response.json
-      
-      - name: Display response
-        run: |
-          echo "Response from ASX Bot:"
-          cat response.json | jq '.'
-      
-      - name: Check if idempotent (optional logging)
-        run: |
+            -H "Content-Type: application/json")
+          
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          
+          echo "Response: $BODY"
+          
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "❌ Failed with HTTP $HTTP_CODE"
+            exit 1
+          fi
+          
+          # Check idempotency flags
+          ALREADY_CALC=$(echo "$BODY" | jq -r '.already_calculated // false')
+          SIGNALS_COUNT=$(echo "$BODY" | jq -r '.signals_generated // 0')
+          
+          echo "✅ ${{ matrix.market }}: $SIGNALS_COUNT signals generated"
+          
+          if [ "$ALREADY_CALC" = "true" ]; then
+            echo "ℹ️  Work already done (backup trigger)"
+          fi
+
           ALREADY_CALCULATED=$(cat response.json | jq -r '.already_calculated')
           ALREADY_SENT=$(cat response.json | jq -r '.already_sent')
           

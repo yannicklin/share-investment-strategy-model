@@ -39,7 +39,10 @@ def verify_cron_token():
 @cron_bp.route('/daily-signals', methods=['POST'])
 def trigger_daily_signals():
     """
-    Daily signal generation endpoint (idempotent)
+    Daily signal generation endpoint (idempotent, multi-market)
+    
+    Query params:
+        market: 'ASX', 'USA', or 'TWN' (default: 'ASX')
     
     Called by GitHub Actions:
     - First trigger: 08:00 AEST (22:00 UTC previous day)
@@ -52,14 +55,17 @@ def trigger_daily_signals():
         logger.warning("Unauthorized cron request - invalid token")
         return jsonify({'error': 'Unauthorized'}), 401
     
-    logger.info("Daily signals trigger received")
+    # Get market from query params (default: ASX)
+    market = request.args.get('market', 'ASX').upper()
+    
+    logger.info(f"Daily signals trigger received for {market}")
     
     try:
-        result = generate_daily_signals()
+        result = generate_daily_signals(market=market)
         return jsonify(result), 200
     except Exception as e:
-        logger.error(f"Daily signals failed: {str(e)}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Daily signals failed for {market}: {str(e)}", exc_info=True)
+        return jsonify({'error': str(e), 'market': market}), 500
 
 
 @cron_bp.route('/weekly-retrain', methods=['POST'])

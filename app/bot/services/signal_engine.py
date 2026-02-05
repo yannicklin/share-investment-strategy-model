@@ -1,103 +1,139 @@
 """
-Idempotent Signal Generator
+Multi-Market Signal Generator with Idempotent Notifications
 
-Implements dual-trigger reliability pattern as documented in:
-bot_trading_system_requirements.md Section 2.1.2
+Delegates to market-specific services (ASX/USA/TWN) for signal generation.
+Handles notification sending with idempotency tracking.
 
 Flow:
-1. First trigger (08:00 AEST): Calculate signal + send notifications
-2. Second trigger (10:00 AEST): Check if already done, skip if yes
+1. Market service generates signals (if not already done today)
+2. Check if notifications sent
+3. Send via Telegram/Email/SMS (first time only)
 
 Benefits:
 - No duplicate signals (database uniqueness constraint)
 - No duplicate notifications (sent_at timestamp check)
-- 99.9%+ reliability (catches GitHub Actions failures, cold start timeouts)
-- Cost: ~$0.00001 when second trigger finds work already done
+- Market isolation enforced via .for_market() helper
 """
 
 from datetime import date, datetime
-from app.bot import db
-from app.bot.models import Signal, JobLog
-from app.bot.services.notification_service import send_email, send_sms
+from app.bot.shared.models import Signal, JobLog, db
+from app.bot.services.notification_service import notify_signals
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-def generate_daily_signals():
+def generate_daily_signals(market='ASX'):
     """
-    Idempotent daily signal generation
+    Generate daily signals for specified market
     
+    Args:
+        market: 'ASX', 'USA', or 'TWN'
+        
     Returns:
         dict: {
+            'market': str,
             'already_calculated': bool,
-            'already_sent': bool,
-            'signal': str,
-            'confidence': float
+            'signals_generated': int,
+            'notifications_sent': bool
         }
     """
     today = date.today()
     start_time = datetime.utcnow()
     
     try:
-        # STEP 1: Check if signal already calculated today
-        existing_signal = Signal.query.filter_by(
+        # Get market-specific service
+        service = _get_market_service(market)
+        
+        if service is None:
+            return {
+                'error': f'Market {market} not supported',
+                'market': market
+            }
+        
+        # STEP 1: Generate signals (market-specific logic)
+        result = service.generate_daily_signals()
+        
+        # STEP 2: Send notifications for unsent signals
+        unsent_signals = Signal.for_market(market).filter_by(
             date=today,
-            job_type='daily'
-        ).first()
+            sent_at=None
+        ).all()
         
-        if not existing_signal:
-            logger.info(f"[{today}] First trigger - calculating signal...")
+        notifications_sent = False
+        
+        if unsent_signals:
+            logger.info(f"{market}: Sending notifications for {len(unsent_signals)} signals")
             
-            # Calculate signal (30 min job)
-            # TODO: Replace with actual AI consensus logic
-            signal_data = _run_ai_consensus()
+            # Send via configured channels
+            notify_results = notify_signals(unsent_signals)
             
-            # Store in database
-            new_signal = Signal(
-                date=today,
-                ticker=signal_data['ticker'],
-                signal=signal_data['signal'],
-                confidence=signal_data['confidence'],
-                job_type='daily'
-            )
-            db.session.add(new_signal)
-            db.session.commit()
-            
-            signal = new_signal
-            already_calculated = False
-            logger.info(f"[{today}] Signal calculated: {signal.signal} ({signal.confidence:.2%})")
+            # Mark signals as sent if any channel succeeded
+            if any(notify_results.values()):
+                for signal in unsent_signals:
+                    signal.sent_at = datetime.utcnow()
+                db.session.commit()
+                notifications_sent = True
+                logger.info(f"{market}: Notifications sent via {notify_results}")
+            else:
+                logger.warning(f"{market}: All notification channels failed")
         else:
-            # Second trigger: Already exists, exit in 5 seconds
-            signal = existing_signal
-            already_calculated = True
-            logger.info(f"[{today}] Second trigger - signal already calculated, skipping...")
+            logger.info(f"{market}: No new signals to notify")
         
-        # STEP 2: Check if notification already sent today
-        if not signal.sent_at:
-            logger.info(f"[{today}] Sending notifications...")
-            
-            # Send email/SMS (first time only)
-            send_email(
-                subject=f"ASX Signal: {signal.signal} ({signal.confidence:.0%})",
-                body=f"Today's signal for {signal.ticker}: {signal.signal}\nConfidence: {signal.confidence:.2%}"
-            )
-            send_sms(
-                message=f"ASX: {signal.signal} {signal.ticker} {signal.confidence:.0%}"
-            )
-            
-            # Mark as sent
-            signal.sent_at = datetime.utcnow()
-            db.session.commit()
-            
-            already_sent = False
-            logger.info(f"[{today}] Notifications sent")
-        else:
-            # Notification already sent (second trigger or retry)
-            already_sent = True
-            logger.info(f"[{today}] Notifications already sent at {signal.sent_at}, skipping...")
+        # Return consolidated result
+        return {
+            'market': market,
+            'already_calculated': result.get('already_calculated', False),
+            'signals_generated': result.get('signals_generated', 0),
+            'notifications_sent': notifications_sent,
+            'errors': result.get('errors', [])
+        }
         
-        # Log successful execution
+    except Exception as e:
+        logger.error(f"{market}: Signal generation failed: {str(e)}", exc_info=True)
+        
+        # Log failure
+        job_log = JobLog(
+            market=market,
+            job_type='daily-signal',
+            status='failure',
+            error_message=str(e),
+            duration_seconds=(datetime.utcnow() - start_time).total_seconds()
+        )
+        db.session.add(job_log)
+        db.session.commit()
+        
+        return {
+            'market': market,
+            'error': str(e)
+        }
+
+
+def _get_market_service(market):
+    """
+    Get market-specific signal service
+    
+    Args:
+        market: 'ASX', 'USA', or 'TWN'
+        
+    Returns:
+        Market-specific service instance or None
+    """
+    if market == 'ASX':
+        from app.bot.markets.asx.signal_service import ASXSignalService
+        return ASXSignalService()
+    elif market == 'USA':
+        # Future implementation
+        logger.warning("USA market not yet implemented")
+        return None
+    elif market == 'TWN':
+        # Future implementation
+        logger.warning("TWN market not yet implemented")
+        return None
+    else:
+        logger.error(f"Unknown market: {market}")
+        return None
+
         duration = (datetime.utcnow() - start_time).total_seconds()
         log = JobLog(
             job_type='daily-signals',

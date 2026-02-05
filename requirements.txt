@@ -11,7 +11,7 @@ gunicorn==21.2.0  # Production WSGI server for Fly.io
 # ============================================================================
 # Database
 # ============================================================================
-psycopg2-binary==2.9.9  # PostgreSQL adapter
+psycopg[binary]==3.1.18  # PostgreSQL adapter (psycopg3 with binary wheels)
 SQLAlchemy==2.0.23
 
 # ============================================================================

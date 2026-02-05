@@ -118,24 +118,21 @@ class ASXSignalService:
                 # Add ASX suffix (.AX)
                 full_ticker = ticker if ticker.endswith(self.ticker_suffix) else ticker + self.ticker_suffix
                 
-                # Fetch data from Yahoo Finance
-                data = yf.download(full_ticker, period='2y', progress=False)
+                # Generate signal using AI consensus
+                result = self._generate_signal_for_ticker(full_ticker, profile)
                 
-                if data.empty:
-                    logger.warning(f"{self.market}: No data for {full_ticker}")
+                if result is None:
+                    logger.warning(f"{self.market}: Skipped {full_ticker} (no data or no signal)")
                     continue
-                
-                # Call UNIVERSAL core model (market-agnostic)
-                model_builder = ModelBuilder()
-                predictions = model_builder.predict(data)
                 
                 # Create ASX signal (ISOLATED)
                 signal = Signal(
                     market=self.market,
                     ticker=ticker,  # Store without suffix
-                    signal=predictions['consensus'],
-                    confidence=predictions['confidence'],
-                    job_type='daily-signal'
+                    signal=result['signal'],
+                    confidence=result['confidence'],
+                    job_type='daily-signal',
+                    trigger_type='scheduled'
                 )
                 
                 db.session.add(signal)
@@ -146,6 +143,109 @@ class ASXSignalService:
         
         db.session.commit()
         return signals_count
+    
+    def _generate_signal_for_ticker(self, full_ticker, profile):
+        """
+        Generate trading signal for a single ticker using multi-model consensus
+        
+        Args:
+            full_ticker: Ticker with suffix (e.g., 'BHP.AX')
+            profile: ConfigProfile with strategy parameters
+            
+        Returns:
+            dict: {'signal': 'BUY'|'SELL'|'HOLD', 'confidence': float} or None if no data
+        """
+        try:
+            # Fetch historical data (2 years for proper indicator calculation)
+            data = yf.download(full_ticker, period='2y', progress=False, auto_adjust=True)
+            
+            if data.empty or len(data) < 100:
+                logger.warning(f"{self.market}: Insufficient data for {full_ticker}")
+                return None
+            
+            # Use Close price for predictions
+            prices = data['Close'].values
+            
+            # Calculate technical indicators
+            from core.model_builder import ModelBuilder
+            from core.config import Config
+            
+            # Train/load models for this ticker
+            # For bot: use lightweight models (RF + CatBoost) for speed
+            models_to_use = ['random_forest', 'catboost']
+            predictions = []
+            
+            for model_type in models_to_use:
+                try:
+                    # Create config for this model
+                    model_config = Config()
+                    model_config.model_type = model_type
+                    
+                    # Initialize builder with config
+                    builder = ModelBuilder(config=model_config)
+                    
+                    # Prepare features using ModelBuilder's own method
+                    # This requires implementing a simple feature engineering method
+                    X, y = self._prepare_simple_features(data)
+                    
+                    if len(X) < 30:
+                        continue
+                    
+                    # Train on historical data
+                    builder.train(X[:-1], y[:-1])
+                    
+                    # Predict next day
+                    prediction = builder.predict(X[-1:])
+                    
+                    # Convert prediction to signal
+                    current_price = prices[-1]
+                    predicted_return = (prediction - current_price) / current_price
+                    
+                    # Apply hurdle rate from profile
+                    hurdle_rate = profile.hurdle_rate if hasattr(profile, 'hurdle_rate') else 0.05
+                    
+                    if predicted_return > hurdle_rate:
+                        signal = 'BUY'
+                    elif predicted_return < -hurdle_rate:
+                        signal = 'SELL'
+                    else:
+                        signal = 'HOLD'
+                    
+                    predictions.append(signal)
+                    
+                except Exception as e:
+                    logger.warning(f"{self.market}: Model {model_type} failed for {full_ticker}: {str(e)}")
+                    continue
+            
+            if not predictions:
+                logger.warning(f"{self.market}: No valid predictions for {full_ticker}")
+                return None
+            
+            # Consensus: Majority vote
+            buy_count = predictions.count('BUY')
+            sell_count = predictions.count('SELL')
+            hold_count = predictions.count('HOLD')
+            
+            total = len(predictions)
+            
+            if buy_count > sell_count and buy_count > hold_count:
+                consensus = 'BUY'
+                confidence = buy_count / total
+            elif sell_count > buy_count and sell_count > hold_count:
+                consensus = 'SELL'
+                confidence = sell_count / total
+            else:
+                consensus = 'HOLD'
+                confidence = hold_count / total
+            
+            return {
+                'signal': consensus,
+                'confidence': round(confidence, 2)
+            }
+            
+        except Exception as e:
+            logger.error(f"{self.market}: Signal generation failed for {full_ticker}: {str(e)}")
+            return None
     
     def _is_trading_day(self):
         """
@@ -166,3 +266,48 @@ class ASXSignalService:
             return False
         
         return True
+    
+    def _prepare_simple_features(self, data):
+        """
+        Prepare features for model training using simple technical indicators
+        
+        Args:
+            data: DataFrame with OHLCV data
+            
+        Returns:
+            tuple: (X, y) features and target arrays
+        """
+        df = data.copy()
+        
+        # Calculate returns
+        df['Return'] = df['Close'].pct_change()
+        
+        # Simple moving averages
+        df['SMA_5'] = df['Close'].rolling(window=5).mean()
+        df['SMA_20'] = df['Close'].rolling(window=20).mean()
+        
+        # RSI (simplified)
+        delta = df['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / loss
+        df['RSI'] = 100 - (100 / (1 + rs))
+        
+        # Drop NaN rows
+        df = df.dropna()
+        
+        if len(df) < 30:
+            raise ValueError("Insufficient data after feature engineering")
+        
+        # Features: returns, SMAs, RSI
+        feature_cols = ['Return', 'SMA_5', 'SMA_20', 'RSI']
+        X = df[feature_cols].values
+        
+        # Target: next day's close price
+        y = df['Close'].shift(-1).ffill().values
+        
+        # Remove last row (no future target)
+        X = X[:-1]
+        y = y[:-1]
+        
+        return X, y

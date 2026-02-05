@@ -37,5 +37,5 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
-# Run with gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--timeout", "300", "--access-logfile", "-", "--error-logfile", "-", "app.bot:create_app()"]
+# Run with gunicorn (using run_bot:app for proper app initialization)
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--timeout", "300", "--access-logfile", "-", "--error-logfile", "-", "run_bot:app"]
