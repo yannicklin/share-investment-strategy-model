@@ -46,6 +46,23 @@ def create_app(config_name='production'):
     db.init_app(app)
     CORS(app)
     
+    # PRIVACY: Block all search engines and AI crawlers
+    @app.after_request
+    def add_privacy_headers(response):
+        """
+        Add HTTP headers to prevent indexing by:
+        - Traditional search engines (Google, Bing, Yahoo, Baidu, Yandex)
+        - AI crawlers (ChatGPT, Claude, Perplexity, Google Extended)
+        - Archive services (Internet Archive, Wayback Machine)
+        
+        Context: This is a PRIVATE family-only trading bot.
+        No public discovery allowed via search or AI training data.
+        """
+        response.headers['X-Robots-Tag'] = 'noindex, nofollow, noarchive, nosnippet, noimageindex'
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['Referrer-Policy'] = 'no-referrer'
+        return response
+    
     # Register blueprints
     from app.bot.api.cron_routes import cron_bp
     from app.bot.api.admin_ui_routes import admin_ui_bp
@@ -57,5 +74,10 @@ def create_app(config_name='production'):
     @app.route('/health')
     def health():
         return {'status': 'healthy', 'service': 'asx-bot'}, 200
+    
+    # Robots.txt endpoint (block all crawlers)
+    @app.route('/robots.txt')
+    def robots():
+        return app.send_static_file('robots.txt')
     
     return app

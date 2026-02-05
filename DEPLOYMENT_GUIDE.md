@@ -295,22 +295,53 @@ https://trading-bot-abc123.koyeb.app
 
 ---
 
-### **Step 6: Cloudflare DNS Record** (2 minutes)
+### **Step 6: Cloudflare DNS + AI Bot Blocking** (5 minutes)
 
 #### 6.1 Add CNAME in Cloudflare
-1. Go back to Cloudflare → "money-twoudia.com" site
+1. Go back to Cloudflare → "money-twoudia-top" site
 2. DNS → Add Record:
    ```
    Type: CNAME
-   Name: @  (represents money.twoudia.com)
+   Name: @  (represents money.twoudia.top)
    Target: trading-bot-abc123.koyeb.app  (from Step 5.4)
-   Proxy: 🔘 DNS Only (gray cloud) - IMPORTANT!
+   Proxy: 🟠 Proxied (ORANGE CLOUD) - CRITICAL for AI bot blocking!
    TTL: Auto
    ```
 
-⚠️ **CRITICAL**: Use **"DNS Only"** (gray cloud), NOT "Proxied" (orange cloud)
-- Koyeb health checks need direct connection
-- SSL still works (Koyeb provides Let's Encrypt)
+✅ **Use "Proxied"** (🟠 orange cloud) to enable Cloudflare network-level bot protection
+- Blocks AI crawlers even when they spoof user agents (GPTBot, ClaudeBot, PerplexityBot)
+- Koyeb health checks still work through Cloudflare proxy
+- SSL provided by Cloudflare (Let's Encrypt)
+- DDoS protection included
+
+#### 6.2 Enable FREE AI Bot Blocking (Network-Level Enforcement)
+1. Cloudflare Dashboard → Security → Bots
+2. Scroll to "AI Scrapers and Crawlers"
+3. Toggle: **ON** (blue)
+4. ✅ Now physically blocks:
+   - **GPTBot** (ChatGPT/OpenAI training)
+   - **ClaudeBot** (Anthropic/Claude training)
+   - **CCBot** (Common Crawl - used by many AI companies)
+   - **Bytespider** (TikTok/ByteDance AI)
+   - **PerplexityBot** (even when lying about user agent)
+   - **Google-Extended** (AI training, NOT search)
+   - **Amazonbot**, **ImagesiftBot**, and more
+
+**How It Works**:
+- Cloudflare's ML model fingerprints scraping tools across 57M requests/second globally
+- Detects AI bots even when they pretend to be real browsers
+- Auto-updated as new AI bots emerge (you don't need to do anything)
+
+**Defense Layers**:
+1. ✅ **Cloudflare AI Blocking** (Layer 1) - Network-level enforcement, blocks dishonest bots
+2. ✅ **robots.txt** (Layer 2) - Polite notice for honest bots
+3. ✅ **HTTP X-Robots-Tag** (Layer 3) - Header-level blocking
+4. ✅ **HTML Meta Tags** (Layer 4) - Page-level instructions
+
+**Why Use Cloudflare + robots.txt?**
+- Cloudflare might miss brand-new AI bots (released yesterday)
+- robots.txt provides legal evidence ("we explicitly said no")
+- Defense in depth (multiple layers = stronger privacy)
 
 ---
 
@@ -359,9 +390,27 @@ jobs:
 ## ✅ Deployment Verification Checklist
 
 ### DNS & Domain
-- [ ] `dig NS money.twoudia.com` shows Cloudflare nameservers
-- [ ] `https://money.twoudia.com/health` returns `{"status":"healthy"}`
-- [ ] SSL certificate valid (Let's Encrypt from Koyeb)
+- [ ] `dig NS money.twoudia.top` shows Cloudflare nameservers (ns1.cloudflare.com, ns2.cloudflare.com)
+- [ ] `https://money.twoudia.top/health` returns `{"status":"healthy"}`
+- [ ] SSL certificate valid (Let's Encrypt from Cloudflare Proxy)
+- [ ] CNAME is **Proxied** (🟠 orange cloud in Cloudflare DNS)
+
+### 🔒 **PRIVACY VERIFICATION (CRITICAL for Family-Only Use)**
+- [ ] `curl -I https://money.twoudia.top` shows `X-Robots-Tag: noindex, nofollow, noarchive, nosnippet, noimageindex`
+- [ ] `https://money.twoudia.top/robots.txt` returns `User-agent: * Disallow: /`
+- [ ] Admin dashboard `<head>` contains `<meta name="robots" content="noindex, nofollow">`
+- [ ] **Cloudflare AI Bot Blocking**: Security → Bots → "AI Scrapers and Crawlers" toggle is **ON** (blue)
+- [ ] **Cloudflare Proxy Status**: DNS record shows 🟠 orange cloud (Proxied)
+- [ ] Google Search Console NOT configured (intentionally)
+- [ ] Sitemap does NOT exist (intentionally - no `sitemap.xml`)
+- [ ] **Domain Strategy**: Using money.twoudia.top (private domain family) NOT money.twoudia.com (public site)
+- [ ] **Context**: This is a PRIVATE family-only trading bot. No public discovery allowed via:
+  - **Network-Level Blocking** (Cloudflare AI Bot Blocking - FREE):
+    - GPTBot, ClaudeBot, PerplexityBot, Bytespider, Google-Extended
+    - Detects bots even when they spoof user agents (ML-powered)
+  - **Application-Level Blocking** (robots.txt + HTTP headers):
+    - Traditional search engines (Google, Bing, Yahoo, DuckDuckGo, Baidu, Yandex)
+    - Archive services (Internet Archive, Wayback Machine)
 
 ### Database
 - [ ] Supabase project status: **Active**
@@ -393,7 +442,7 @@ jobs:
 
 ### Test 1: Manual Signal Generation
 ```bash
-curl -X POST https://money.twoudia.com/cron/daily-signals?market=ASX \
+curl -X POST https://money.twoudia.top/cron/daily-signals?market=ASX \
   -H "Authorization: Bearer your-api-bearer-token"
 
 # Expected response:
@@ -407,7 +456,7 @@ curl -X POST https://money.twoudia.com/cron/daily-signals?market=ASX \
 ```
 
 ### Test 2: Admin Dashboard
-1. Open: https://money.twoudia.com/admin/ui
+1. Open: https://money.twoudia.top/admin/ui
 2. Verify signal history displayed
 3. Check job execution logs
 
@@ -421,8 +470,23 @@ SELECT * FROM job_logs ORDER BY timestamp DESC LIMIT 5;
 ### Test 4: Auto-Stop/Wake
 1. Wait 5 minutes (no requests)
 2. Service should enter "Sleeping" state in Koyeb dashboard
-3. Make new request: `curl https://money.twoudia.com/health`
+3. Make new request: `curl https://money.twoudia.top/health`
 4. Service wakes in ~200ms (Light Sleep enabled)
+
+### Test 5: Cloudflare AI Bot Blocking (Privacy Verification)
+```bash
+# Check Cloudflare proxy is active
+curl -I https://money.twoudia.top | grep -i "cf-ray"
+# Expected: cf-ray: xxx-SIN (confirms Cloudflare proxy)
+
+# Verify robots.txt accessible
+curl https://money.twoudia.top/robots.txt
+# Expected: User-agent: * Disallow: /
+
+# Check HTTP security headers
+curl -I https://money.twoudia.top | grep -i "x-robots-tag"
+# Expected: x-robots-tag: noindex, nofollow, noarchive, nosnippet, noimageindex
+```
 
 ---
 
@@ -481,11 +545,19 @@ SELECT * FROM job_logs ORDER BY timestamp DESC LIMIT 5;
 3. Verify TELEGRAM_CHAT_ID is correct
 
 ### Issue: Domain not resolving
-**Symptom**: `money.twoudia.com` doesn't work
+**Symptom**: `money.twoudia.top` doesn't work
 **Solution**:
-1. Verify NS records at DNS provider: `dig NS money.twoudia.com`
+1. Verify NS records at DNS provider: `dig NS money.twoudia.top`
 2. Check Cloudflare CNAME record points to Koyeb domain
-3. Wait 5-30 minutes for DNS propagation
+3. Verify CNAME is **Proxied** (🟠 orange cloud)
+4. Wait 5-30 minutes for DNS propagation
+
+### Issue: Cloudflare AI bot blocking not working
+**Symptom**: AI bots still crawling site
+**Solution**:
+1. Verify CNAME is **Proxied** (🟠 orange cloud) - AI blocking ONLY works with proxy
+2. Security → Bots → "AI Scrapers and Crawlers" toggle is ON (blue)
+3. Check Cloudflare Analytics → Security Events to see blocked bots
 
 ### Issue: Auto-stop not working
 **Symptom**: Service always running
@@ -508,12 +580,25 @@ SELECT * FROM job_logs ORDER BY timestamp DESC LIMIT 5;
 
 **Deployment Complete!** 🚀
 
-Your AI Trading Bot is now live at `https://money.twoudia.com` with:
-- Daily automated signal generation
-- Telegram notifications
-- Always-on database (Supabase)
+ Your AI Trading Bot is now live at `https://money.twoudia.top` with:
+- **PRIVACY PROTECTED**: Cloudflare AI bot blocking + robots.txt + HTTP headers
+  - Network-level blocking of GPTBot, ClaudeBot, PerplexityBot, Bytespider, etc.
+  - Detects AI crawlers even when they spoof user agents
+  - Using private domain family (.top) for lower crawler attention
+- Daily automated signal generation (08:00 AEST Mon-Fri)
+- Telegram notifications (family-only)
+- Always-on database (Supabase PostgreSQL)
 - Auto-stop compute (Koyeb) to save costs
-- Automated backups to R2
+- Automated backups to Cloudflare R2
 
-**Total setup time**: ~70 minutes  
+**Total setup time**: ~75 minutes (added Cloudflare AI blocking setup)  
 **Ongoing cost**: $0.22/month ($2.64/year)
+
+**Privacy Verification**:
+```bash
+# Confirm Cloudflare proxy active
+curl -I https://money.twoudia.top | grep cf-ray
+
+# Verify AI bot blocking enabled
+# Cloudflare Dashboard → Security → Bots → "AI Scrapers and Crawlers" ON
+```

@@ -1,5 +1,22 @@
 # AI Trading Bot System - Koyeb Deployment Configuration
 # Docs: https://www.koyeb.com/docs/build-and-deploy/yaml-configuration
+#
+# 🔒 PRIVACY NOTICE: This is a PRIVATE family-only service
+# - NOT intended for public discovery or search indexing
+# - Blocks ALL search engines (Google, Bing, DuckDuckGo, Baidu, Yandex)
+# - Blocks ALL AI crawlers (ChatGPT, Claude, Perplexity, Google Extended)
+# - Blocks archive services (Internet Archive, Wayback Machine)
+# - Implements robots.txt (Disallow: /) and X-Robots-Tag HTTP headers
+# - Cloudflare AI Bot Blocking enabled (FREE - network-level enforcement)
+# - No sitemap, no SEO optimization, no public exposure
+#
+# Domain Strategy:
+# - twoudia.com = PUBLIC personal/portfolio site
+# - twoudia.top = PRIVATE archives/museum (restricted access)
+# - money.twoudia.top = PRIVATE trading bot (family-only, subdomain of private domain)
+#
+# Use Case: Personal/family stock trading alerts via Telegram
+# Access: Private URL (money.twoudia.top) known only to family members
 
 app:
   name: ai-trading-bot
