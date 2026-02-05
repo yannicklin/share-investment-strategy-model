@@ -12,6 +12,9 @@ A Python-based automated trading strategy system designed specifically for the *
     -   **Tax-Aware Dynamic Hurdle Rate**: AI signals are filtered through a "break-even + buffer" check that accounts for fees, market slippage, and your personal ATO tax bracket.
     -   **Fee Profiles**: Supports `Default` (Percentage-based + Clearing) and **`CMC Markets`** ($11 min or 0.10%) structures.
     -   **ATO Taxation**: Implements 2024-25 Individual Tax Brackets with a 50% CGT discount for holdings $\ge$ 12 months, calculated based on your annual income.
+    -   **Market Calendar Compliance**: Automatically excludes ASX holidays and weekends (dynamically fetched for backtest date range). Market half-days treated as off-days.
+    -   **Transaction Ledger**: Records every trade in machine-parseable format, saved to `data/ledgers/` folder (not shown in Dashboard).
+    -   **Portfolio Validation**: Pre-checks available cash before generating signals (skips ML execution if insufficient capital).
     -   **Market Constraints**: Enforces stop-loss rules and minimum holding periods.
     -   **Price Gaps**: Handles scenarios where stop-loss cannot be executed at the exact threshold due to market gaps.
 -   **Data Integration**: Seamlessly fetches historical and real-time data from Yahoo Finance (`yfinance`).
@@ -70,7 +73,7 @@ Simply open the repository in GitHub Codespaces to start developing immediately.
 -   **`core/`**:
     -   `config.py`: Global settings and defaults (Tickers, Capital, ATO Tax).
     -   `model_builder.py`: AI model factory (RF, XGB, CatBoost, Prophet, LSTM).
-    -   `backtest_engine.py`: Dual-mode simulation logic with consensus voting.
+    -   `backtest_engine.py`: Dual-mode simulation logic with consensus voting, market calendar compliance, transaction ledger, and portfolio validation.
     -   `index_manager.py`: Reliable constituent fetcher for market indices.
 -   **`ui/`**:
     -   `sidebar.py`: Navigation and parameter inputs.
@@ -82,8 +85,47 @@ Simply open the repository in GitHub Codespaces to start developing immediately.
 
 -   `tests/`: Unit tests for core logic.
 -   `models/`: Directory for persistent model storage.
+-   **`data/ledgers/`**: Transaction logs for completed backtests (see below).
 
-## ⚠️ Disclaimer
+## 📊 Transaction Ledger Access
+
+Every backtest automatically generates a **transaction ledger** (audit trail) saved to the `data/ledgers/` folder. These files are **not displayed in the Dashboard** but can be accessed directly for analysis.
+
+### File Location & Naming
+-   **Directory**: `data/ledgers/`
+-   **File Format**: CSV (machine-parseable, optimized for AI agents/scripts)
+-   **Naming Convention**: `backtest_{timestamp}.csv` (e.g., `backtest_2026-02-06_143022.csv`)
+
+### Ledger Contents
+Each transaction includes:
+-   Date (YYYY-MM-DD(DAY) format with weekday)
+-   Ticker, Action (BUY/SELL/HOLD), Quantity, Price
+-   Commission, Cash Before/After
+-   Portfolio positions snapshot
+
+### Memory & Performance
+-   **Memory-Optimized**: System keeps only ~2 KB active memory per backtest (not full ledger).
+-   **Batch Writes**: Ledger written to disk after each backtest completes, then cleared from memory.
+-   **Worst-Case** (Mode 1 on ASX 200): 1,000 backtests = ~600-800 MB total disk output.
+
+### Mode-Specific Generation
+-   **Mode 1 (Models Comparison)**: Each model → separate ledger file for performance evaluation.
+-   **Mode 2/3 (Time-Span/Super Stars)**: Models vote as consensus team → single ledger per test.
+
+### Accessing Ledger Files
+```bash
+# View ledger files
+ls -lh data/ledgers/
+
+# Open in Excel or text editor
+open data/ledgers/backtest_2026-02-06_143022.csv
+
+# Parse with Python/pandas
+import pandas as pd
+ledger = pd.read_csv("data/ledgers/backtest_2026-02-06_143022.csv")
+```
+
+---
 
 This software is for educational and research purposes only. It is **not** financial advice. Trading stocks involves significant risk of loss. Always perform your own due diligence and consult with a licensed financial advisor before making any investment decisions. The developers of this system are not responsible for any financial losses incurred through its use.
 
@@ -112,5 +154,5 @@ This software is for educational and research purposes only. It is **not** finan
 
 ---
 
-*Last Updated: February 1, 2026*  
+*Last Updated: February 6, 2026*  
 *Developed for ASX Trading Analysis*
