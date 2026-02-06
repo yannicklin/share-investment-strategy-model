@@ -294,7 +294,7 @@ class ModelBuilder:
         exp2 = df["Close"].ewm(span=26, adjust=False).mean()
         df["MACD"] = exp1 - exp2
         df["Signal_Line"] = df["MACD"].ewm(span=9, adjust=False).mean()
-        df["Daily_Return"] = df["Close"].pct_change()
+        df["Daily_Return"] = df["Close"].pct_change(fill_method=None)
 
         df["Target"] = df["Close"].shift(-1)
         df = df.dropna()

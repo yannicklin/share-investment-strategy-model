@@ -13,6 +13,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from core.utils import format_date_with_weekday
 
 
 def render_trade_details(ticker, res):
@@ -94,7 +95,7 @@ def render_trade_details(ticker, res):
             title_text=f"{ticker} Price (AUD)", secondary_y=True, showgrid=False
         )
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
         # 2. Statistics
         c1, c2, c3, c4 = st.columns(4)
@@ -113,10 +114,12 @@ def render_trade_details(ticker, res):
         if "cumulative_capital" in log_df.columns:
             log_df["cumulative_capital"] = log_df["cumulative_capital"].astype(float)
 
-        # Format dates
+        # Format dates with weekday abbreviation (e.g., "2023-03-03(FRI)")
         for d_col in ["buy_date", "sell_date"]:
             if d_col in log_df.columns:
-                log_df[d_col] = pd.to_datetime(log_df[d_col]).dt.date
+                log_df[d_col] = pd.to_datetime(log_df[d_col]).apply(
+                    lambda x: format_date_with_weekday(x)
+                )
 
         # Format display values
         trades_display = log_df.copy()

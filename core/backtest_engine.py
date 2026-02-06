@@ -133,7 +133,7 @@ class BacktestEngine:
             df["Close"].rolling(5).mean(),
             df["Close"].rolling(20).mean(),
         )
-        df["Daily_Return"] = df["Close"].pct_change()
+        df["Daily_Return"] = df["Close"].pct_change(fill_method=None)
         return df.dropna()
 
     def _prepare_data(self, ticker: str) -> tuple:
