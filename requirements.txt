@@ -1,6 +1,7 @@
 # Core AI and Data
 yfinance
 pandas
+pandas-market-calendars
 numpy
 scikit-learn
 catboost

@@ -33,11 +33,12 @@ static/
 *.pid
 
 # Data and Models
-models/*.pkl
-models/*.h5
-models/*.joblib
-models/index_cache.json
+data/models/*.pkl
+data/models/*.h5
+data/models/*.joblib
+data/models/index_cache.json
 data/downloads/
+data/ledgers/*.csv
 *.log
 
 # AI Model Training Artifacts

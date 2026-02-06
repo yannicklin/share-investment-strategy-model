@@ -1,0 +1,4 @@
+# Transaction ledgers directory
+# Ledger files are automatically generated during backtest execution
+# Files are not displayed in Dashboard - access via file system
+# Format: backtest_{timestamp}.csv (machine-parseable)

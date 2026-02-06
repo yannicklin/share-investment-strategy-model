@@ -15,6 +15,13 @@ import joblib
 from typing import List, Dict, Any, Callable, Optional
 from core.config import Config
 from core.model_builder import ModelBuilder
+from core.utils import (
+    format_date_with_weekday,
+    get_asx_trading_days,
+    calculate_trading_days_ahead,
+    validate_buy_capacity,
+)
+from core.transaction_ledger import TransactionLedger
 
 
 class BacktestEngine:
@@ -23,6 +30,8 @@ class BacktestEngine:
     def __init__(self, config: Config, model_builder: ModelBuilder):
         self.config = config
         self.model_builder = model_builder
+        self.ledger = TransactionLedger()
+        self.trading_days: Optional[pd.DatetimeIndex] = None
 
     def calculate_fees(self, trade_value: float) -> float:
         if self.config.cost_profile == "cmc_markets":
@@ -127,19 +136,33 @@ class BacktestEngine:
         df["Daily_Return"] = df["Close"].pct_change()
         return df.dropna()
 
-    def _core_run(
-        self,
-        ticker: str,
-        signal_func: Callable[[int, pd.DataFrame, List[str], float], bool],
-    ) -> Dict[str, Any]:
-        """The shared engine logic for both modes."""
+    def _prepare_data(self, ticker: str) -> tuple:
+        """Prepare and filter dataframe for backtesting.
+        
+        Returns:
+            (df, features, error_dict) - If error, df will be None
+        """
         raw_data = self.model_builder.fetch_data(ticker, self.config.backtest_years)
         if raw_data.empty:
-            return {"error": f"No data for {ticker}"}
+            return None, None, {"error": f"No data for {ticker}"}
 
         df = self._get_indicators(raw_data)
         if df.empty:
-            return {"error": f"Insufficient data for {ticker}"}
+            return None, None, {"error": f"Insufficient data for {ticker}"}
+
+        # Determine the official start/end dates for trading (excluding warm-up)
+        official_start = pd.Timestamp.now() - pd.DateOffset(
+            years=self.config.backtest_years
+        )
+        official_end = df.index[-1]
+
+        # Initialize trading days calendar (excludes weekends + ASX holidays)
+        self.trading_days = get_asx_trading_days(official_start, official_end)
+
+        # Filter dataframe to only include valid trading days
+        df = df[df.index.isin(self.trading_days)]
+        if df.empty:
+            return None, None, {"error": f"No valid trading days for {ticker}"}
 
         features = [
             "Open",
@@ -154,22 +177,39 @@ class BacktestEngine:
             "Signal_Line",
             "Daily_Return",
         ]
+        
+        return df, features, None
+
+    def _core_run(
+        self,
+        ticker: str,
+        signal_func: Callable[[int, pd.DataFrame, List[str], float], bool],
+        df: pd.DataFrame,
+        features: List[str],
+    ) -> Dict[str, Any]:
+        """The shared engine logic for both modes.
+        
+        Args:
+            ticker: Stock symbol
+            signal_func: Function(i, df, features, capital) -> bool
+            df: Pre-filtered dataframe (trading days only)
+            features: Feature columns list
+        """
 
         capital = self.config.init_capital
         position, buy_price, buy_date, buy_fees = 0.0, 0.0, None, 0.0
         trades = []
-
-        # Determine the official start date for trading (excluding warm-up)
-        official_start = pd.Timestamp.now() - pd.DateOffset(
-            years=self.config.backtest_years
-        )
+        positions_dict = {}  # Track positions for ledger
 
         for i in range(len(df) - 1):
             date, current_price = df.index[i], float(df.iloc[i]["Close"])
 
-            # Skip the warm-up period for actual trading
-            if date < official_start:
-                continue
+            # Portfolio validation before signal generation (for BUY signals only)
+            if position == 0:
+                validation = validate_buy_capacity(capital, {ticker: current_price})
+                if not validation["can_trade"]:
+                    # Skip signal generation if insufficient cash
+                    continue
 
             is_bullish = signal_func(
                 i,
@@ -180,30 +220,57 @@ class BacktestEngine:
 
             if position == 0 and is_bullish:
                 fees = self.calculate_fees(capital)
-                position = (capital - fees) / current_price
-                buy_price, buy_date, buy_fees = current_price, date, fees
-                capital = 0
-            elif position > 0:
-                unit_map = {
-                    "day": "days",
-                    "month": "months",
-                    "quarter": "weeks",
-                    "year": "years",
-                }
-                offset = (
-                    {"weeks": 13 * self.config.hold_period_value}
-                    if self.config.hold_period_unit == "quarter"
-                    else {
-                        unit_map[
-                            self.config.hold_period_unit
-                        ]: self.config.hold_period_value
-                    }
+                new_position = (capital - fees) / current_price
+                positions_before = {}
+                positions_after = {ticker: new_position}
+
+                # Add BUY entry to ledger
+                self.ledger.add_entry(
+                    date=date,
+                    ticker=ticker,
+                    action="BUY",
+                    quantity=new_position,
+                    price=current_price,
+                    commission=fees,
+                    cash_before=capital,
+                    cash_after=0.0,
+                    positions_before=positions_before,
+                    positions_after=positions_after,
+                    notes="Initial purchase",
                 )
 
-                # Check if enough time passed
+                position = new_position
+                buy_price, buy_date, buy_fees = current_price, date, fees
+                capital = 0
+                positions_dict = {ticker: position}
+
+            elif position > 0:
+                # Calculate sell date based on holding period unit
                 min_hold_passed = False
-                if buy_date is not None:
-                    min_hold_passed = date >= (buy_date + pd.DateOffset(**offset))
+                if buy_date is not None and self.trading_days is not None:
+                    if self.config.hold_period_unit.lower() == "day":
+                        # "Day" unit = TRADING DAYS (excludes weekends + holidays)
+                        target_date = calculate_trading_days_ahead(
+                            buy_date, self.config.hold_period_value, self.trading_days
+                        )
+                        if target_date is not None:
+                            min_hold_passed = date >= target_date
+                    else:
+                        # Other units (Week/Month/Quarter/Year) = CALENDAR DAYS
+                        unit_map = {
+                            "week": "weeks",
+                            "month": "months",
+                            "quarter": "weeks",  # Will be handled specially below
+                            "year": "years",
+                        }
+                        if self.config.hold_period_unit.lower() == "quarter":
+                            offset = {"weeks": 13 * self.config.hold_period_value}
+                        else:
+                            unit = unit_map.get(
+                                self.config.hold_period_unit.lower(), "months"
+                            )
+                            offset = {unit: self.config.hold_period_value}
+                        min_hold_passed = date >= (buy_date + pd.DateOffset(**offset))
 
                 low_p, high_p = float(df.iloc[i]["Low"]), float(df.iloc[i]["High"])
                 sl_p, tp_p = (
@@ -236,14 +303,33 @@ class BacktestEngine:
                         tax = self.calculate_ato_tax(
                             self.config.annual_income + g_profit * disc
                         ) - self.calculate_ato_tax(self.config.annual_income)
-                    capital = val - s_fees - tax
+                    new_capital = val - s_fees - tax
+
+                    positions_before = {ticker: position}
+                    positions_after = {}
+
+                    # Add SELL entry to ledger
+                    self.ledger.add_entry(
+                        date=date,
+                        ticker=ticker,
+                        action="SELL",
+                        quantity=position,
+                        price=sell_price,
+                        commission=s_fees,
+                        cash_before=0.0,
+                        cash_after=new_capital,
+                        positions_before=positions_before,
+                        positions_after=positions_after,
+                        notes=f"{reason} triggered",
+                    )
+
                     trades.append(
                         {
                             "buy_date": buy_date,
                             "sell_date": date,
-                            "profit_pct": (capital - (position * buy_price + buy_fees))
+                            "profit_pct": (new_capital - (position * buy_price + buy_fees))
                             / (position * buy_price + buy_fees),
-                            "cumulative_capital": capital,
+                            "cumulative_capital": new_capital,
                             "reason": reason,
                             "buy_price": buy_price,
                             "sell_price": sell_price,
@@ -251,7 +337,9 @@ class BacktestEngine:
                             "tax": tax,
                         }
                     )
+                    capital = new_capital
                     position = 0
+                    positions_dict = {}
 
         final_cap = position * float(df.iloc[-1]["Close"]) if position > 0 else capital
 
@@ -271,31 +359,18 @@ class BacktestEngine:
 
     def run_model_mode(self, ticker: str, model_type: str) -> Dict[str, Any]:
         """Mode 1: Evaluate a single specific model."""
+        # Clear ledger from previous run (no archiving)
+        self.ledger.clear()
+        
         self.config.model_type = model_type
         self.model_builder.load_or_build(ticker)  # Load once
 
-        raw_data = self.model_builder.fetch_data(ticker, self.config.backtest_years)
-        if raw_data.empty:
-            return {"error": f"No data for {ticker}"}
-        df = self._get_indicators(raw_data)
-        if df.empty:
-            return {"error": f"Insufficient data for {ticker}"}
+        # Prepare filtered data (trading days only)
+        df, features, error = self._prepare_data(ticker)
+        if error:
+            return error
 
-        features = [
-            "Open",
-            "High",
-            "Low",
-            "Close",
-            "Volume",
-            "MA5",
-            "MA20",
-            "RSI",
-            "MACD",
-            "Signal_Line",
-            "Daily_Return",
-        ]
-
-        # Bulk pre-calculate predictions
+        # Bulk pre-calculate predictions on FILTERED data
         all_preds = self._get_bulk_predictions(df, features, model_type)
 
         def signal(i, df_inner, features_inner, current_cap):
@@ -305,34 +380,29 @@ class BacktestEngine:
             pred_return = (pred - current_price) / current_price
             return pred_return > hurdle
 
-        return self._core_run(ticker, signal)
+        result = self._core_run(ticker, signal, df, features)
+        
+        # Save ledger to file and clear from memory
+        if "error" not in result:
+            ledger_filename = f"{ticker}_{model_type}_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
+            ledger_path = self.ledger.save_to_file(filename=ledger_filename)
+            result["ledger_path"] = ledger_path
+        
+        return result
 
     def run_strategy_mode(
         self, ticker: str, models: List[str], tie_breaker: Optional[str] = None
     ) -> Dict[str, Any]:
         """Mode 2: Evaluate strategy sensitivity using multi-model consensus."""
-        raw_data = self.model_builder.fetch_data(ticker, self.config.backtest_years)
-        if raw_data.empty:
-            return {"error": f"No data for {ticker}"}
-        df = self._get_indicators(raw_data)
-        if df.empty:
-            return {"error": f"Insufficient data for {ticker}"}
+        # Clear ledger from previous run (no archiving)
+        self.ledger.clear()
+        
+        # Prepare filtered data (trading days only)
+        df, features, error = self._prepare_data(ticker)
+        if error:
+            return error
 
-        features = [
-            "Open",
-            "High",
-            "Low",
-            "Close",
-            "Volume",
-            "MA5",
-            "MA20",
-            "RSI",
-            "MACD",
-            "Signal_Line",
-            "Daily_Return",
-        ]
-
-        # Bulk pre-calculate predictions for all models in the committee
+        # Bulk pre-calculate predictions for all models in the committee on FILTERED data
         committee_preds = {}
         for m_type in models:
             self.config.model_type = m_type
@@ -362,7 +432,15 @@ class BacktestEngine:
                 return tie_breaker_bullish
             return False
 
-        return self._core_run(ticker, signal)
+        result = self._core_run(ticker, signal, df, features)
+        
+        # Save ledger to file and clear from memory
+        if "error" not in result:
+            ledger_filename = f"{ticker}_consensus_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
+            ledger_path = self.ledger.save_to_file(filename=ledger_filename)
+            result["ledger_path"] = ledger_path
+        
+        return result
 
     def _get_bulk_predictions(
         self, df: pd.DataFrame, features: List[str], model_type: str

@@ -33,6 +33,6 @@ endif
 clean:
 	rm -rf .venv
 	rm -rf catboost_info
-	rm -rf models/*.joblib
-	rm -rf models/*.h5
+	rm -rf data/models/*.joblib
+	rm -rf data/models/*.h5
 	find . -type d -name "__pycache__" -exec rm -rf {} +

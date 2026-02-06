@@ -15,7 +15,7 @@ import re
 import requests
 from typing import List, Dict
 
-CACHE_FILE = "models/index_cache.json"
+CACHE_FILE = "data/models/index_cache.json"
 
 # Reliable sources for ASX Indices
 SOURCE_URLS = {
@@ -332,7 +332,7 @@ def update_index_data() -> Dict[str, str]:
             new_data[name] = DEFAULT_INDEX_DATA.get(name, [])
 
     # Save to cache
-    os.makedirs("models", exist_ok=True)
+    os.makedirs("data/models", exist_ok=True)
     with open(CACHE_FILE, "w") as f:
         json.dump(new_data, f)
 

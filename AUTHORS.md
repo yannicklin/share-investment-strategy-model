@@ -16,6 +16,8 @@
   - Multi-model AI framework implementation
   - Realistic backtesting engine with fees/taxes
   - Streamlit dashboard and UI components
+  - Trading constraints & market calendar integration (Feb 2026)
+  - Memory-optimized transaction ledger system (Feb 2026)
   - Documentation and project management
 - **Period**: January 2026 - Present
 
@@ -159,12 +161,18 @@ Currently, this is a solo project. Contributors will be listed here as they join
 
 ## 📊 Project Statistics
 
-**Current Status** (January 2026):
-- **Lines of Code**: ~2,000+ (Python)
-- **Modules**: 13 Python files
+**Current Status** (February 6, 2026):
+- **Lines of Code**: ~2,800+ (Python)
+- **Modules**: 15 Python files (added `core/utils.py`, `core/transaction_ledger.py`)
 - **Models Supported**: 5 AI algorithms
-- **Test Coverage**: Basic unit tests implemented
-- **Documentation**: Comprehensive (SOUL.md, AGENTS.md, requirements docs)
+- **Test Coverage**: Basic unit tests + integration verification script
+- **Documentation**: Comprehensive (SOUL.md, AGENTS.md, requirements docs, spec docs)
+- **New Features (Feb 2026)**:
+  - ASX holiday calendar integration (`pandas-market-calendars`)
+  - Portfolio validation before signal generation
+  - Transaction ledger (memory-optimized, batch writes)
+  - Trading days vs calendar days differentiation
+  - Machine-parseable audit trail (CSV format)
 
 ---
 
@@ -180,6 +188,6 @@ To everyone who has:
 
 ---
 
-*Last Updated: February 1, 2026*  
+*Last Updated: February 6, 2026*  
 *Copyright (c) 2026 Yannick*  
 *Licensed under MIT License*

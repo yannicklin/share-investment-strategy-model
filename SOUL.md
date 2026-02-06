@@ -94,6 +94,25 @@ Every "BUY" signal is filtered through a financial friction check:
 - **Purpose**: Prevents "death by a thousand cuts" from brokerage fees and ensures returns are meaningful even after the ATO's cut.
 - **Independence**: The AI predicts market moves, while the Decision Layer enforces financial sanity based on the user's personal tax profile.
 
+### Market Calendar Compliance
+Realistic backtesting requires respecting real-world trading constraints:
+- **ASX Calendar Integration**: Dynamic fetching of public holidays via `pandas-market-calendars`
+- **Market Half-Days**: Treated as off-days (no trading)
+- **Holding Period Precision**:
+  - "Day" = TRADING DAYS (excludes weekends + holidays)
+  - "Week/Month/Quarter/Year" = CALENDAR DAYS
+- **Portfolio Validation**: Pre-checks cash availability before generating signals
+
+**Why?** If backtests ignore market calendars, they produce unrealistic results.
+
+### Memory-Optimized Audit Trails
+Large-scale analysis requires efficient data management:
+- Keep minimal state in RAM (~2 KB per backtest)
+- Batch writes to disk after completion (not streaming I/O)
+- Machine-parseable transaction ledgers for script analysis
+
+**Why?** Enables 1,000+ backtests (200 stocks × 5 models) without performance degradation.
+
 ---
 
 ## 🛡️ Security & Safety Manifesto
@@ -113,88 +132,65 @@ Every "BUY" signal is filtered through a financial friction check:
 
 ---
 
-## 📈 Development Journey
+## 🎓 Technical Principles
 
-### Phase 1: Proof of Concept (January 2026)
-**Goal**: Validate that AI models can beat random stock picks
+### Model Selection & Ensemble Approach
 
-**Achieved**:
-- Implemented Random Forest baseline
-- Built simple backtest engine
-- Proved concept with ASX 50 data
+1. **Single Models Overfit - Use Consensus**
+   - Different models excel in different market conditions
+   - Consensus voting reduces bias and increases robustness
+   - Tie-breaker rules ensure decisive recommendations
 
-**Lesson Learned**: Single models overfit. Need ensemble approach.
+2. **Sequential Models Need Warm-Up**
+   - LSTM requires sufficient historical data (5+ years minimum)
+   - 90-day warm-up buffer ensures fair comparison with simpler models
+   - Prevents sequential models from missing early trading opportunities
 
-### Phase 2: Multi-Model Framework (January 2026)
-**Goal**: Add diversity to reduce model bias
+3. **Portability Matters**
+   - Prefer native Scikit-Learn implementations (Random Forest, Gradient Boosting)
+   - Avoid external C-library dependencies (e.g., `libomp` for XGBoost)
+   - Ensures code runs natively on any hardware without installation friction
 
-**Achieved**:
-- Integrated XGBoost, CatBoost, Prophet, LSTM
-- Implemented consensus voting
-- Added Model Comparison UI
-
-**Lesson Learned**: Different models excel in different market conditions.
-
-### Phase 3: Realism Enhancements (January 2026)
-**Goal**: Make backtesting reflect real trading
-
-**Achieved**:
-- CMC Markets fee structure
-- ATO 2024-25 tax brackets with CGT discount
-- Price gap handling for stop-loss
-- T+1 settlement logic
-
-**Lesson Learned**: Fees and taxes DRAMATICALLY impact ROI. Simulations that ignore them are misleading.
-
-### Phase 4: Strategy Analysis Tools (January 2026)
-**Goal**: Help users optimize holding periods
-
-**Achieved**:
-- Time-Span Comparison mode
-- Tie-breaker customization
-- Strategy sensitivity analysis
-- Super Stars Scanner for index-wide screening
-
-**Lesson Learned**: Short-term trading often underperforms due to fees. Long-term strategies with consensus show best risk-adjusted returns.
-
-### Phase 5: Reliability & Visual Intelligence (February 2026)
-**Goal**: Enhance system portability, visual context, and backtest accuracy.
-
-**Achieved**:
-- Replaced XGBoost with native Scikit-Learn **Gradient Boosting** for better hardware portability (Apple Silicon).
-- Implemented **90-day Warm-up Buffer** for fair comparison across all model types.
-- Added **Dual-Axis Visualization** (Portfolio vs. Share Price Trend) to all equity curves.
-- Integrated **Automatic ETF/Security Identification** labeling.
-- Enhanced Super Stars mode with **Yahoo Finance Links** and full company names.
-- Graceful error handling for stocks with insufficient data (e.g., new listings).
-
-**Lesson Learned**: A trading system must be as portable as it is accurate. Visualizing the underlying asset price trend alongside capital performance provides critical context for understanding AI "fear" vs "greed."
-
----
-
-## 🎓 Lessons Learned
-
-### Technical Insights
-
-1. **LSTM Requires Careful Tuning & Warm-up**
-   - Sequential models need sufficient data (5+ years)
-   - **Crucial**: Sequential models must be "primed" with a warm-up buffer (90 days) to ensure they can trade from the very first day of a backtest alongside simpler models.
-
-2. **Gradient Boosting is Reliable & Portable**
-   - Random Forest and Gradient Boosting (Scikit-Learn) provide the best mix of stability and performance.
-   - Avoiding external C-library dependencies (like `libomp` for XGBoost) ensures the code runs natively on any hardware without local installation friction.
-
-3. **Prophet Handles Seasonality**
+4. **Prophet Excels at Seasonality**
    - Best for stocks with predictable cycles
    - Struggles with highly volatile tech stocks
-   - Useful as a complementary model in consensus
+   - Valuable as complementary model in consensus
 
-4. **Data Preprocessing Matters**
-   - `RobustScaler` handles outliers better than `StandardScaler`.
-   - **Safety First**: Always validate feature array lengths before scaling to prevent crashes on "thin data" tickers.
+### Data Handling & Preprocessing
+
+1. **RobustScaler Over StandardScaler**
+   - Handles outliers better in volatile stock data
+   - Prevents extreme values from skewing normalization
+
+2. **Always Validate Feature Arrays**
+   - Check array lengths before scaling
+   - Prevents crashes on "thin data" tickers (newly listed stocks)
+   - Graceful error handling for insufficient data
+
+### Backtesting Realism
+
+1. **Fees and Taxes DRAMATICALLY Impact ROI**
+   - Simulations ignoring brokerage fees are misleading
+   - ATO CGT discount (50% for 12+ month holdings) significantly affects strategy choice
+   - Short-term trading often underperforms due to transaction costs
+
+2. **Market Calendar Constraints Are Non-Negotiable**
+   - Real-world backtesting must exclude weekends and public holidays
+   - Market half-days treated as off-days
+   - Holding period units matter: "Day" = trading days, "Month" = calendar days
+
+3. **Memory Optimization Enables Scale**
+   - Keep minimal state in RAM (~2 KB per backtest)
+   - Batch writes to disk (not streaming I/O)
+   - Enables 1,000+ backtests without performance degradation
+
+4. **Visual Context Matters**
+   - Dual-axis charts (portfolio vs share price) reveal AI behavior
+   - Helps distinguish "fear" (market dip) from "greed" (price surge)
+   - Realized equity curves show actual capital growth, not theoretical gains
 
 ---
 
-*Last Updated: February 3, 2026*
+*Last Updated: February 6, 2026*
 *Copyright (c) 2026 Yannick*  
 *Licensed under MIT License*

@@ -47,6 +47,23 @@ The goal is to build a Python-based trading strategy system for the Australian S
     - Currency: `"$0,0.00"` (NOT Python format `"$,.2f"`)
     - Percentage: `"0.00%"` (auto-multiplies by 100, NOT `".2%"`)
     - Integer: `"0"` for whole numbers
+14. **Trading Constraints & Market Calendar**:
+    - **ASX Calendar Compliance**: Use `get_asx_trading_days()` from `core/utils.py` to exclude weekends and holidays.
+    - **Market Half-Days**: Treat as off-days (no trading).
+    - **Portfolio Validation**: ALWAYS call `validate_buy_capacity()` BEFORE generating ML signals to prevent unnecessary computation when funds are insufficient.
+    - **Holding Period Units**:
+      - `"Day"` = **TRADING DAYS** (excludes weekends + holidays via `calculate_trading_days_ahead()`)
+      - `"Week"/"Month"/"Quarter"/"Year"` = **CALENDAR DAYS** (uses `pd.DateOffset()`)
+15. **Transaction Ledger**:
+    - **Memory-Optimized Design**: Keep only ~2 KB active state (portfolio + metrics + buffer), not full ledger.
+    - **Batch Writes**: Save to `data/ledgers/` on backtest completion, then clear from memory. NO streaming I/O.
+    - **Machine-Parseable Format**: CSV with 15 fields (date, ticker, action, quantity, price, commission, cash_before, cash_after, positions_before, positions_after, strategy, model_votes, confidence, notes).
+    - **Date Format**: Use `format_date_with_weekday()` → `"YYYY-MM-DD(DAY)"` (e.g., `"2026-02-06(THU)"`).
+    - **Ledger Generation**:
+      - **Mode 1 (Models Comparison)**: Each model → separate ledger file.
+      - **Mode 2/3 (Time-Span/Super Stars)**: Consensus voting → single ledger.
+    - **Lifecycle**: Cleared on rerun (no archiving), NOT accessible via Dashboard UI (file system only).
+    - **Location**: `data/ledgers/` folder, excluded from git via `.gitignore`.
 
 ## 3. Workflow & Automation Rules (Strict)
 
@@ -56,5 +73,5 @@ The goal is to build a Python-based trading strategy system for the Australian S
 4. **Code-Only Implementation**: Focus on editing the requested files. Do not chain multiple shell operations (like build or run) unless they are part of a verification step requested by the user.
 
 ---
-*Last Updated: 2026-02-03 (Hardware Portability & Workflow Safety Updates)*
+*Last Updated: 2026-02-06 (Trading Constraints & Transaction Ledger Integration)*
 *Note: This is a living document. Update it as project conventions evolve.*

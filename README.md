@@ -68,6 +68,28 @@ This project includes a devcontainer configuration for GitHub Codespaces:
 
 Simply open the repository in GitHub Codespaces to start developing immediately.
 
+## 🧪 Testing
+
+Run the test suite to verify core functionality and integration:
+
+```bash
+# Run all tests
+make test
+
+# Or manually with pytest
+uv run pytest tests/
+
+# Run specific test file
+uv run pytest tests/test_integration.py
+
+# Run with verbose output
+uv run pytest tests/ -v
+```
+
+**Test Coverage**:
+- **`test_core.py`**: Unit tests for model builder and backtest engine
+- **`test_integration.py`**: Integration tests for trading constraints, market calendar, and transaction ledger
+
 ## 📂 Project Structure
 
 -   **`core/`**:
@@ -83,9 +105,13 @@ Simply open the repository in GitHub Codespaces to start developing immediately.
     -   `components.py`: Shared UI elements (Realized Equity Curve, formatted logs).
 -   `ASX_AImodel.py`: Main Streamlit application entry point.
 
--   `tests/`: Unit tests for core logic.
--   `models/`: Directory for persistent model storage.
--   **`data/ledgers/`**: Transaction logs for completed backtests (see below).
+-   `tests/`: Unit and integration tests for core logic.
+    -   `test_core.py`: Unit tests for model builder and backtest engine.
+    -   `test_integration.py`: Integration tests for trading constraints and ledger.
+-   **`data/`**: Data directory.
+    -   `models/`: Trained AI models (.joblib, .h5 files).
+    -   `ledgers/`: Transaction logs for completed backtests (see below).
+    -   `downloads/`: Cached market data.
 
 ## 📊 Transaction Ledger Access
 
