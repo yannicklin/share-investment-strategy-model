@@ -15,6 +15,7 @@ from datetime import date, datetime, timedelta
 from app.bot import db
 from app.bot.models.database import Signal, ConfigProfile, JobLog
 from app.bot.services.signal_engine import generate_daily_signals
+from app.bot.api.auth_middleware import auth_required
 import logging
 
 admin_ui_bp = Blueprint('admin_ui', __name__, url_prefix='/admin')
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 @admin_ui_bp.route('/')
 @admin_ui_bp.route('/dashboard')
+@auth_required
 def dashboard():
     """Dashboard overview with status cards and recent activity"""
     
@@ -57,6 +59,7 @@ def dashboard():
 
 
 @admin_ui_bp.route('/config/profiles')
+@auth_required
 def config_profiles():
     """List all trading strategy profiles"""
     profiles = ConfigProfile.query.order_by(ConfigProfile.created_at.desc()).all()
@@ -64,6 +67,7 @@ def config_profiles():
 
 
 @admin_ui_bp.route('/config/profiles/new', methods=['GET', 'POST'])
+@auth_required
 def create_profile():
     """Create new trading profile"""
     if request.method == 'POST':
@@ -95,6 +99,7 @@ def create_profile():
 
 
 @admin_ui_bp.route('/config/profiles/<int:id>/edit', methods=['GET', 'POST'])
+@auth_required
 def edit_profile(id):
     """Edit existing trading profile"""
     profile = ConfigProfile.query.get_or_404(id)
@@ -126,6 +131,7 @@ def edit_profile(id):
 
 
 @admin_ui_bp.route('/config/profiles/<int:id>/delete', methods=['POST'])
+@auth_required
 def delete_profile(id):
     """Delete trading profile"""
     profile = ConfigProfile.query.get_or_404(id)
@@ -143,6 +149,7 @@ def delete_profile(id):
 
 
 @admin_ui_bp.route('/signals')
+@auth_required
 def signals():
     """View signal history with filters"""
     # TODO: Implement signal viewer with date range filter
@@ -151,6 +158,7 @@ def signals():
 
 
 @admin_ui_bp.route('/logs')
+@auth_required
 def job_logs():
     """View job execution logs"""
     # TODO: Implement log viewer with status filter
@@ -159,6 +167,7 @@ def job_logs():
 
 
 @admin_ui_bp.route('/trigger/manual', methods=['POST'])
+@auth_required
 def manual_trigger():
     """Manually trigger daily signal generation"""
     try:
@@ -180,3 +189,19 @@ def manual_trigger():
         flash(f'Error triggering signals: {str(e)}', 'error')
     
     return redirect(url_for('admin_ui.dashboard'))
+
+
+@admin_ui_bp.route('/whitelist')
+@auth_required
+def admin_whitelist():
+    """Admin whitelist management page"""
+    from app.bot.shared.models import AdminWhitelist
+    from app.bot.services.phone_utils import format_phone_display
+    
+    admins = AdminWhitelist.query.order_by(AdminWhitelist.created_at.desc()).all()
+    
+    # Add display phone to each admin (if stored)
+    for admin in admins:
+        admin.display_phone = admin.display_phone if hasattr(admin, 'display_phone') and admin.display_phone else '****'
+    
+    return render_template('admin_whitelist.html', admins=admins)

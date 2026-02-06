@@ -53,6 +53,7 @@ class Signal(MarketIsolatedModel, db.Model):
     job_type = db.Column(db.String(50), default='daily-signal')
     trigger_type = db.Column(db.String(20), default='scheduled')
     sent_at = db.Column(db.DateTime, nullable=True)
+    notes = db.Column(db.Text, nullable=True)  # For resource availability warnings
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     __table_args__ = (
@@ -129,3 +130,204 @@ class JobLog(MarketIsolatedModel, db.Model):
     
     def __repr__(self):
         return f"<JobLog {self.market}:{self.job_type} {self.status}>"
+
+
+class Portfolio(MarketIsolatedModel, db.Model):
+    """
+    Current portfolio holdings (isolated per market)
+    
+    Market Isolation: Each market has independent portfolio tracking
+    Tracks cash and stock positions for resource availability checks
+    """
+    __tablename__ = 'portfolios'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    market = db.Column(db.String(10), nullable=False, index=True)
+    cash = db.Column(db.Float, nullable=False, default=0.0)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    __table_args__ = (
+        UniqueConstraint('market', name='uq_portfolio_market'),
+        {'comment': 'Current portfolio holdings with market isolation'}
+    )
+    
+    def __repr__(self):
+        return f"<Portfolio {self.market} cash=${self.cash:.2f}>"
+
+
+class Position(MarketIsolatedModel, db.Model):
+    """
+    Stock positions in portfolio (isolated per market)
+    
+    Market Isolation: ASX positions cannot appear in USA/TWN portfolios
+    Tracks quantity of each stock owned
+    """
+    __tablename__ = 'positions'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    market = db.Column(db.String(10), nullable=False, index=True)
+    ticker = db.Column(db.String(20), nullable=False)
+    quantity = db.Column(db.Float, nullable=False, default=0.0)
+    avg_price = db.Column(db.Float, nullable=True)  # Average purchase price
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    __table_args__ = (
+        UniqueConstraint('market', 'ticker', name='uq_position_market_ticker'),
+        {'comment': 'Stock positions with market isolation'}
+    )
+    
+    def __repr__(self):
+        return f"<Position {self.market}:{self.ticker} {self.quantity} units>"
+
+
+class Transaction(MarketIsolatedModel, db.Model):
+    """
+    Transaction history ledger (isolated per market)
+    
+    Market Isolation: Complete audit trail per market for compliance
+    Records all buy/sell actions with full context
+    """
+    __tablename__ = 'transactions'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    market = db.Column(db.String(10), nullable=False, index=True)
+    date = db.Column(db.Date, nullable=False, index=True)
+    ticker = db.Column(db.String(20), nullable=False)
+    action = db.Column(db.String(10), nullable=False)  # BUY, SELL
+    quantity = db.Column(db.Float, nullable=False)
+    price = db.Column(db.Float, nullable=False)
+    commission = db.Column(db.Float, nullable=False, default=0.0)
+    cash_before = db.Column(db.Float, nullable=False)
+    cash_after = db.Column(db.Float, nullable=False)
+    strategy = db.Column(db.String(50), nullable=True)
+    confidence = db.Column(db.Float, nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    
+    __table_args__ = (
+        {'comment': 'Transaction audit trail with market isolation'}
+    )
+    
+    def __repr__(self):
+        return f"<Transaction {self.market}:{self.ticker} {self.action} {self.quantity} @ ${self.price}>"
+
+
+# ============================================================================
+# Admin Authentication Models (No Market Isolation - Global Admin Access)
+# ============================================================================
+
+class AdminWhitelist(db.Model):
+    """
+    Whitelisted phone numbers for admin access (no market isolation - global)
+    
+    Security: Phone numbers stored as bcrypt hashes for privacy
+    Used for: Authorization check before sending verification codes
+    Display: Formatted phone stored for UI display (e.g., +61-431-121-011)
+    """
+    __tablename__ = 'admin_whitelist'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    phone_number_hash = db.Column(db.String(255), nullable=False, unique=True, index=True)
+    display_phone = db.Column(db.String(50), nullable=True)  # Formatted phone for display (+61-431-121-011)
+    notification_preference = db.Column(db.String(20), default='telegram')  # telegram, sms, both
+    is_active = db.Column(db.Boolean, default=True, nullable=False, index=True)  # Can be deactivated
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by = db.Column(db.String(255), nullable=True)  # Admin who added this entry
+    
+    __table_args__ = (
+        {'comment': 'Whitelisted phone numbers for admin authentication'}
+    )
+    
+    def __repr__(self):
+        return f"<AdminWhitelist {self.display_phone or self.phone_number_hash[:16]+'...'} via {self.notification_preference}>"
+
+
+class VerificationCode(db.Model):
+    """
+    One-time verification codes for phone authentication
+    
+    Security:
+    - Codes are hashed (SHA-256) before storage
+    - Single-use only (marked used after verification)
+    - Expire after configurable time (default: 5 minutes)
+    - Rate limited per phone number
+    """
+    __tablename__ = 'verification_codes'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    phone_number_hash = db.Column(db.String(255), nullable=False, index=True)
+    code_hash = db.Column(db.String(255), nullable=False)  # SHA-256 hash of 6-digit code
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    expires_at = db.Column(db.DateTime, nullable=False, index=True)
+    used_at = db.Column(db.DateTime, nullable=True)
+    attempts = db.Column(db.Integer, default=0)
+    ip_address = db.Column(db.String(45), nullable=True)  # Support IPv6 (max 45 chars)
+    request_id = db.Column(db.String(32), nullable=False, unique=True)  # For tracking
+    
+    __table_args__ = (
+        {'comment': 'One-time verification codes for admin authentication'}
+    )
+    
+    def __repr__(self):
+        status = 'used' if self.used_at else ('expired' if datetime.utcnow() > self.expires_at else 'active')
+        return f"<VerificationCode {self.request_id} {status}>"
+
+
+class AdminSession(db.Model):
+    """
+    Active admin sessions after successful authentication
+    
+    Security:
+    - Session tokens are cryptographically secure random strings (32 bytes)
+    - Tokens stored server-side (not JWT)
+    - Sessions expire after configurable time (default: 24 hours)
+    - Can be revoked individually (logout) or globally
+    """
+    __tablename__ = 'admin_sessions'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    session_token = db.Column(db.String(64), nullable=False, unique=True, index=True)  # 32 bytes = 64 hex chars
+    phone_number_hash = db.Column(db.String(255), nullable=False, index=True)
+    ip_address = db.Column(db.String(45), nullable=True)
+    user_agent = db.Column(db.String(512), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    last_activity = db.Column(db.DateTime, default=datetime.utcnow)
+    expires_at = db.Column(db.DateTime, nullable=False, index=True)
+    
+    __table_args__ = (
+        {'comment': 'Active admin sessions for authenticated users'}
+    )
+    
+    def __repr__(self):
+        status = 'expired' if datetime.utcnow() > self.expires_at else 'active'
+        return f"<AdminSession {self.session_token[:16]}... {status}>"
+
+
+class AuthLog(db.Model):
+    """
+    Audit trail for all authentication events
+    
+    Used for:
+    - Security monitoring (detect brute force attacks)
+    - Troubleshooting authentication issues
+    - Compliance auditing
+    """
+    __tablename__ = 'auth_logs'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    event_type = db.Column(db.String(50), nullable=False, index=True)  # request_code, verify_code, login, logout, session_expired
+    phone_number_masked = db.Column(db.String(20), nullable=True)  # Last 4 digits only: ****5678
+    phone_number_hash = db.Column(db.String(255), nullable=True, index=True)  # For correlation
+    ip_address = db.Column(db.String(45), nullable=True, index=True)
+    success = db.Column(db.Boolean, nullable=False, default=False)
+    error_message = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    
+    __table_args__ = (
+        {'comment': 'Audit trail for authentication events'}
+    )
+    
+    def __repr__(self):
+        result = '✅' if self.success else '❌'
+        return f"<AuthLog {result} {self.event_type} {self.phone_number_masked} at {self.created_at}>"

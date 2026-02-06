@@ -19,12 +19,14 @@ SQLAlchemy==2.0.23
 # Security & Encryption
 # ============================================================================
 cryptography==41.0.7  # AES-256 backup encryption
+bcrypt==4.1.2  # Phone number hashing for admin auth
 
 # ============================================================================
 # Market Data & AI Models
 # ============================================================================
 yfinance==0.2.33  # Yahoo Finance data
 pandas==2.1.4
+pandas-market-calendars==4.3.3  # Trading day validation
 numpy==1.26.2
 
 # Machine Learning (from main branch requirements)

@@ -24,7 +24,7 @@ Resources: 1GB RAM shared machine, 1 vCPU
 RAM Usage: ~470MB peak (47% utilization)
 Outputs:
   - BUY/SELL/HOLD signals → PostgreSQL
-  - Email/SMS alerts → SendGrid/Telnyx
+  - Email/SMS/Telegram/LINE alerts → SendGrid/Telnyx/LINE Messaging API
   - JSON webhook → OpenClaw (if connected)
 Idempotency: YES (database checks prevent duplicate signals/notifications)
 Auto-Suspend: Yes (after job completes)
@@ -184,7 +184,7 @@ Backup includes: Portfolio, signals (30 days), configs (SENSITIVE), job logs
     * Broker API credentials (tokens, secrets)
     * Model hyperparameters (algorithm selection, parameters)
     * Risk limits (position sizes, stop-losses, capital allocation)
-    * Notification settings (email/SMS credentials)
+    * Notification settings (email/SMS/Telegram/LINE credentials)
   - **Git YAML (Read-Only)**: Non-sensitive defaults and documentation
     * Default profile templates
     * Fee structure reference tables
@@ -272,11 +272,19 @@ Backup includes: Portfolio, signals (30 days), configs (SENSITIVE), job logs
 #### 2.2.1 Notification Service (`notifier.py`)
 - **Purpose**: Deliver signals to external systems
 - **Channels**:
-  - **Email**: Daily summary reports with signal table
+  - **Email**: Daily summary reports with signal table (SendGrid)
+  - **SMS**: Critical alerts via SMS (Twilio/Telnyx - paid)
+  - **Telegram Bot**: Mobile push notifications with trade buttons (FREE unlimited)
+  - **LINE Messaging API**: Asia-Pacific push notifications (FREE 500/month, popular in Taiwan 90%+ penetration)
   - **Slack/Discord Webhooks**: Real-time alerts for HIGH confidence signals
-  - **Telegram Bot**: Mobile push notifications with trade buttons
   - **REST API**: JSON endpoint for agent consumption
   - **Message Queue**: Publish to Kafka/RabbitMQ for event-driven systems
+
+**Multi-Channel Support**:
+- Supports simultaneous delivery (e.g., `telegram+line`, `all`)
+- Graceful fallback if primary channel fails
+- Per-admin notification preferences (database-driven)
+- Cost-optimized: Telegram (FREE) + LINE (FREE <500 msg) for most users
 
 #### 2.2.2 Data Fetcher (`data_pipeline.py`)
 - **Purpose**: Automated daily data updates
@@ -406,12 +414,23 @@ CREATE TABLE config_profiles (
 ```sql
 CREATE TABLE api_credentials (
     id SERIAL PRIMARY KEY,
-    service VARCHAR(50) NOT NULL,    -- 'telnyx', 'sendgrid', 'broker'
-    credential_type VARCHAR(20) NOT NULL, -- 'api_key', 'token', 'secret'
-    encrypted_value TEXT NOT NULL,   -- AES-256 encrypted
-    created_at TIMESTAMP NOT NULL
+    service_name VARCHAR(100) UNIQUE NOT NULL,  -- 'telegram', 'line', 'sendgrid', 'twilio'
+    encrypted_value TEXT NOT NULL,              -- AES-256 encrypted API key/token
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
 );
 ```
+**Supported Services**:
+- `telegram`: Telegram Bot Token (FREE unlimited messages)
+- `line`: LINE Channel Access Token (FREE 500 messages/month, then $0.05/msg)
+- `sendgrid`: Email API key
+- `twilio`: SMS API credentials (paid per message)
+
+**LINE Cost Analysis** (February 2026):
+- FREE tier: 500 push messages/month
+- Typical bot usage: ~130-200 messages/month (3-5 admins × daily signals + alerts)
+- Paid tier: $0.05/message for 501-25,000 messages
+- **Recommendation**: Use Telegram (unlimited free) + LINE (free tier) for redundancy
 
 **Table: `job_logs`** (Execution history)
 ```sql

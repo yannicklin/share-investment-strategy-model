@@ -1,0 +1,420 @@
+<!--
+AI Trading Bot System - Authentication Modal Component
+
+Phone-based authentication modal with verification code flow:
+1. User enters phone number (+61 format)
+2. System sends 6-digit code via Telegram
+3. User enters code (5 minutes expiration)
+4. Session created with secure cookie
+
+Usage:
+    Include in base.html before </body>:
+    {% include 'auth_modal.html' %}
+    
+Author: Yannick
+Copyright (c) 2026 Yannick
+-->
+
+<!-- Authentication Modal Overlay -->
+<div id="authModal" class="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50 hidden">
+    <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+        <!-- Modal Header -->
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h3 class="text-lg font-semibold text-gray-900">
+                <i class="fas fa-shield-alt text-blue-600 mr-2"></i>
+                Admin Authentication
+            </h3>
+            <p class="text-sm text-gray-600 mt-1">
+                Verify your phone number to access admin panel
+            </p>
+        </div>
+        
+        <!-- Modal Body -->
+        <div class="px-6 py-4">
+            <!-- Step 1: Phone Number Input -->
+            <div id="step1" class="step-container">
+                <form id="phoneForm" onsubmit="requestCode(event)">
+                    <div class="mb-4">
+                        <label for="phoneInput" class="block text-sm font-medium text-gray-700 mb-2">
+                            Phone Number
+                        </label>
+                        <div class="relative">
+                            <input 
+                                type="tel" 
+                                id="phoneInput" 
+                                name="phone" 
+                                placeholder="0431121011 or +61-431-121-011"
+                                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                required
+                            >
+                            <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                                <i class="fas fa-phone text-gray-400"></i>
+                            </div>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">
+                            Accepts: 0431121011, +61431121011, 0431-121-011
+                        </p>
+                    </div>
+                    
+                    <!-- Error Message -->
+                    <div id="phoneError" class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg hidden">
+                        <div class="flex items-start">
+                            <i class="fas fa-exclamation-circle text-red-500 mt-0.5 mr-2"></i>
+                            <p class="text-sm text-red-700" id="phoneErrorText"></p>
+                        </div>
+                    </div>
+                    
+                    <button 
+                        type="submit" 
+                        id="requestCodeBtn"
+                        class="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    >
+                        <span id="requestCodeText">
+                            <i class="fas fa-paper-plane mr-2"></i>
+                            Send Verification Code
+                        </span>
+                        <span id="requestCodeLoading" class="hidden">
+                            <i class="fas fa-spinner fa-spin mr-2"></i>
+                            Sending...
+                        </span>
+                    </button>
+                </form>
+            </div>
+            
+            <!-- Step 2: Code Verification -->
+            <div id="step2" class="step-container hidden">
+                <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div class="flex items-start">
+                        <i class="fas fa-info-circle text-blue-500 mt-0.5 mr-2"></i>
+                        <p class="text-sm text-blue-700">
+                            Check your Telegram for a 6-digit verification code
+                        </p>
+                    </div>
+                </div>
+                
+                <form id="codeForm" onsubmit="verifyCode(event)">
+                    <div class="mb-4">
+                        <label for="codeInput" class="block text-sm font-medium text-gray-700 mb-2">
+                            Verification Code
+                        </label>
+                        <div class="flex gap-2 justify-center">
+                            <input type="text" maxlength="1" class="code-digit w-12 h-12 text-center text-2xl font-bold border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" data-index="0">
+                            <input type="text" maxlength="1" class="code-digit w-12 h-12 text-center text-2xl font-bold border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" data-index="1">
+                            <input type="text" maxlength="1" class="code-digit w-12 h-12 text-center text-2xl font-bold border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" data-index="2">
+                            <input type="text" maxlength="1" class="code-digit w-12 h-12 text-center text-2xl font-bold border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" data-index="3">
+                            <input type="text" maxlength="1" class="code-digit w-12 h-12 text-center text-2xl font-bold border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" data-index="4">
+                            <input type="text" maxlength="1" class="code-digit w-12 h-12 text-center text-2xl font-bold border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" data-index="5">
+                        </div>
+                    </div>
+                    
+                    <!-- Timer Display -->
+                    <div class="text-center mb-4">
+                        <p class="text-sm text-gray-600">
+                            Code expires in <span id="codeTimer" class="font-semibold text-blue-600">5:00</span>
+                        </p>
+                    </div>
+                    
+                    <!-- Error Message -->
+                    <div id="codeError" class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg hidden">
+                        <div class="flex items-start">
+                            <i class="fas fa-exclamation-circle text-red-500 mt-0.5 mr-2"></i>
+                            <p class="text-sm text-red-700" id="codeErrorText"></p>
+                        </div>
+                    </div>
+                    
+                    <button 
+                        type="submit" 
+                        id="verifyCodeBtn"
+                        class="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed mb-2"
+                    >
+                        <span id="verifyCodeText">
+                            <i class="fas fa-check mr-2"></i>
+                            Verify Code
+                        </span>
+                        <span id="verifyCodeLoading" class="hidden">
+                            <i class="fas fa-spinner fa-spin mr-2"></i>
+                            Verifying...
+                        </span>
+                    </button>
+                    
+                    <button 
+                        type="button" 
+                        onclick="goBackToPhone()"
+                        class="w-full bg-gray-100 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 transition-colors"
+                    >
+                        <i class="fas fa-arrow-left mr-2"></i>
+                        Back to Phone Number
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Authentication JavaScript -->
+<script>
+    // Global state
+    let authState = {
+        phone: '',
+        requestId: '',
+        timerInterval: null,
+        expiresAt: null
+    };
+    
+    // Check authentication status on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        checkAuthStatus();
+    });
+    
+    // Check if user is authenticated
+    async function checkAuthStatus() {
+        try {
+            const response = await fetch('/api/admin/auth/status');
+            const data = await response.json();
+            
+            if (!data.authenticated) {
+                // Not authenticated - show modal
+                showAuthModal();
+            }
+        } catch (error) {
+            console.error('Error checking auth status:', error);
+            // Show modal on error (fail-safe)
+            showAuthModal();
+        }
+    }
+    
+    // Show authentication modal
+    function showAuthModal() {
+        document.getElementById('authModal').classList.remove('hidden');
+        document.getElementById('phoneInput').focus();
+    }
+    
+    // Hide authentication modal
+    function hideAuthModal() {
+        document.getElementById('authModal').classList.add('hidden');
+    }
+    
+    // Request verification code
+    async function requestCode(event) {
+        event.preventDefault();
+        
+        const phone = document.getElementById('phoneInput').value.trim();
+        const btn = document.getElementById('requestCodeBtn');
+        const btnText = document.getElementById('requestCodeText');
+        const btnLoading = document.getElementById('requestCodeLoading');
+        const errorDiv = document.getElementById('phoneError');
+        const errorText = document.getElementById('phoneErrorText');
+        
+        // No client-side validation - server will normalize and validate
+        if (!phone) {
+            showError(errorDiv, errorText, 'Please enter a phone number');
+            return;
+        }
+        
+        // Disable button and show loading
+        btn.disabled = true;
+        btnText.classList.add('hidden');
+        btnLoading.classList.remove('hidden');
+        errorDiv.classList.add('hidden');
+        
+        try {
+            const response = await fetch('/api/admin/auth/request-code', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ phone })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                // Save state and move to step 2
+                authState.phone = phone;
+                authState.requestId = data.request_id;
+                authState.expiresAt = Date.now() + (data.expires_in * 1000);
+                
+                // Switch to code entry step
+                goToCodeStep();
+                startTimer();
+            } else {
+                // Show error
+                showError(errorDiv, errorText, data.error || 'Failed to send code');
+            }
+        } catch (error) {
+            console.error('Error requesting code:', error);
+            showError(errorDiv, errorText, 'Network error. Please try again.');
+        } finally {
+            // Re-enable button
+            btn.disabled = false;
+            btnText.classList.remove('hidden');
+            btnLoading.classList.add('hidden');
+        }
+    }
+    
+    // Verify code
+    async function verifyCode(event) {
+        event.preventDefault();
+        
+        // Get code from digit inputs
+        const digits = document.querySelectorAll('.code-digit');
+        const code = Array.from(digits).map(d => d.value).join('');
+        
+        if (code.length !== 6) {
+            const errorDiv = document.getElementById('codeError');
+            const errorText = document.getElementById('codeErrorText');
+            showError(errorDiv, errorText, 'Please enter all 6 digits');
+            return;
+        }
+        
+        const btn = document.getElementById('verifyCodeBtn');
+        const btnText = document.getElementById('verifyCodeText');
+        const btnLoading = document.getElementById('verifyCodeLoading');
+        const errorDiv = document.getElementById('codeError');
+        const errorText = document.getElementById('codeErrorText');
+        
+        // Disable button and show loading
+        btn.disabled = true;
+        btnText.classList.add('hidden');
+        btnLoading.classList.remove('hidden');
+        errorDiv.classList.add('hidden');
+        
+        try {
+            const response = await fetch('/api/admin/auth/verify-code', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    phone: authState.phone,
+                    code: code,
+                    request_id: authState.requestId
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                // Authentication successful - reload page or redirect
+                stopTimer();
+                window.location.href = data.redirect_url || '/admin/dashboard';
+            } else {
+                // Show error
+                showError(errorDiv, errorText, data.error || 'Invalid verification code');
+                
+                // Clear code inputs
+                digits.forEach(d => d.value = '');
+                digits[0].focus();
+            }
+        } catch (error) {
+            console.error('Error verifying code:', error);
+            showError(errorDiv, errorText, 'Network error. Please try again.');
+        } finally {
+            // Re-enable button
+            btn.disabled = false;
+            btnText.classList.remove('hidden');
+            btnLoading.classList.add('hidden');
+        }
+    }
+    
+    // Show error message
+    function showError(errorDiv, errorText, message) {
+        errorText.textContent = message;
+        errorDiv.classList.remove('hidden');
+    }
+    
+    // Go to code entry step
+    function goToCodeStep() {
+        document.getElementById('step1').classList.add('hidden');
+        document.getElementById('step2').classList.remove('hidden');
+        
+        // Focus first digit
+        document.querySelector('.code-digit').focus();
+    }
+    
+    // Go back to phone entry
+    function goBackToPhone() {
+        stopTimer();
+        document.getElementById('step2').classList.add('hidden');
+        document.getElementById('step1').classList.remove('hidden');
+        document.getElementById('phoneInput').focus();
+        
+        // Clear code inputs
+        document.querySelectorAll('.code-digit').forEach(d => d.value = '');
+        document.getElementById('codeError').classList.add('hidden');
+    }
+    
+    // Start countdown timer
+    function startTimer() {
+        updateTimerDisplay();
+        
+        authState.timerInterval = setInterval(() => {
+            updateTimerDisplay();
+            
+            // Check if expired
+            if (Date.now() >= authState.expiresAt) {
+                stopTimer();
+                const errorDiv = document.getElementById('codeError');
+                const errorText = document.getElementById('codeErrorText');
+                showError(errorDiv, errorText, 'Code expired. Please request a new one.');
+            }
+        }, 1000);
+    }
+    
+    // Stop timer
+    function stopTimer() {
+        if (authState.timerInterval) {
+            clearInterval(authState.timerInterval);
+            authState.timerInterval = null;
+        }
+    }
+    
+    // Update timer display
+    function updateTimerDisplay() {
+        const remaining = Math.max(0, authState.expiresAt - Date.now());
+        const minutes = Math.floor(remaining / 60000);
+        const seconds = Math.floor((remaining % 60000) / 1000);
+        
+        const display = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        document.getElementById('codeTimer').textContent = display;
+    }
+    
+    // Auto-advance to next digit input
+    document.addEventListener('DOMContentLoaded', function() {
+        const digits = document.querySelectorAll('.code-digit');
+        
+        digits.forEach((digit, index) => {
+            digit.addEventListener('input', function(e) {
+                // Move to next digit if filled
+                if (this.value.length === 1 && index < digits.length - 1) {
+                    digits[index + 1].focus();
+                }
+                
+                // Auto-submit when all 6 digits filled
+                if (index === digits.length - 1 && this.value.length === 1) {
+                    const allFilled = Array.from(digits).every(d => d.value.length === 1);
+                    if (allFilled) {
+                        // Small delay for better UX
+                        setTimeout(() => {
+                            document.getElementById('codeForm').dispatchEvent(new Event('submit'));
+                        }, 300);
+                    }
+                }
+            });
+            
+            // Handle backspace
+            digit.addEventListener('keydown', function(e) {
+                if (e.key === 'Backspace' && this.value === '' && index > 0) {
+                    digits[index - 1].focus();
+                }
+            });
+            
+            // Only allow numbers
+            digit.addEventListener('keypress', function(e) {
+                if (!/[0-9]/.test(e.key)) {
+                    e.preventDefault();
+                }
+            });
+        });
+    });
+</script>

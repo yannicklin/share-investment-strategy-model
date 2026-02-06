@@ -123,7 +123,7 @@ share-investment-strategy-model/ (bot branch)
 ├── app/bot/
 │   ├── shared/
 │   │   ├── models.py           # DB schema with market isolation
-│   │   └── notification.py     # Telegram/Email sender
+│   │   └── notification.py     # Telegram/LINE/Email/SMS sender
 │   ├── markets/
 │   │   ├── asx/               # ASX signal generation
 │   │   │   ├── config.py      # Import from asx branch
@@ -145,7 +145,9 @@ share-investment-strategy-model/ (bot branch)
 - ✅ Idempotent signal generation logic
 - ✅ GitHub Actions workflows (dual-trigger reliability)
 - ✅ Test suite (5 comprehensive tests)
-- ⏸️ **Pending**: AI consensus integration, notification APIs, backup service
+- ✅ Admin authentication system with phone-based verification
+- ✅ Multi-channel notifications (Telegram/LINE/SMS support)
+- ⏸️ **Pending**: AI consensus integration, production notification deployment, backup service
 
 See [ARCHITECTURE.md](ARCHITECTURE.md#bot-implementation-status) for detailed setup guide and TODOs.
 

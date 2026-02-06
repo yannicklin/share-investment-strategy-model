@@ -54,6 +54,7 @@ Each branch is a standalone implementation with market-specific configurations. 
     - Currency: `"$0,0.00"` (NOT Python format `"$,.2f"`)
     - Percentage: `"0.00%"` (auto-multiplies by 100, NOT `".2%"`)
     - Integer: `"0"` for whole numbers
+14. **Multi-Channel Notifications**: System supports Telegram, LINE Messaging API, Email, and SMS for alerts and admin authentication. LINE integration is documented and ready for implementation (see `/docs/LINE_MESSAGING_INTEGRATION_GUIDE.md`). FREE tier (500 msg/month) covers typical bot usage.
 
 ## 3. Workflow & Automation Rules (Strict)
 

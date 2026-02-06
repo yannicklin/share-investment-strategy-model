@@ -66,9 +66,13 @@ def create_app(config_name='production'):
     # Register blueprints
     from app.bot.api.cron_routes import cron_bp
     from app.bot.api.admin_ui_routes import admin_ui_bp
+    from app.bot.api.auth_routes import auth_routes
+    from app.bot.api.whitelist_routes import whitelist_routes
     
     app.register_blueprint(cron_bp)
     app.register_blueprint(admin_ui_bp)
+    app.register_blueprint(auth_routes)
+    app.register_blueprint(whitelist_routes)
     
     # Health check endpoint
     @app.route('/health')

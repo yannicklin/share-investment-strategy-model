@@ -26,6 +26,43 @@
 
 ---
 
+## 📱 Recent Updates (February 2026)
+
+### LINE Messaging API Integration Support Added
+
+**Status**: Documentation complete, implementation ready
+
+The system now supports **LINE Messaging API** as an additional notification channel, alongside Telegram and SMS:
+
+- **Market Relevance**: LINE has 90%+ penetration in Taiwan, 80%+ in Japan, 90%+ in Thailand
+- **Cost**: FREE for up to 500 messages/month (sufficient for personal/small bot usage)
+- **Integration**: Multi-channel support (telegram, line, sms, or combinations like "telegram+line")
+- **Implementation**: Full guide available in `/docs/LINE_MESSAGING_INTEGRATION_GUIDE.md`
+
+**Admin Authentication System**:
+- Phone-based verification via Telegram/LINE/SMS
+- Flexible phone number input (local or E.164 formats accepted)
+- Admin whitelist management UI at `/admin/whitelist`
+- Per-admin notification preferences (telegram/line/sms/all)
+
+**Key Benefits for Taiwan Market**:
+- No VPN required (unlike Telegram, sometimes blocked)
+- Higher reliability and user familiarity
+- Professional appearance (official business channels)
+- Rich messaging support (Flex Messages, buttons)
+
+**Related Documentation**:
+- [LINE Integration Guide](docs/LINE_MESSAGING_INTEGRATION_GUIDE.md) - Complete setup guide
+- [Auth Enhancements](docs/AUTH_ENHANCEMENTS_PHONE_WHITELIST.md) - Phone normalization & admin management
+- [Admin Auth Implementation](docs/ADMIN_AUTH_IMPLEMENTATION.md) - Full authentication system
+
+**Cost Comparison** (per 500 messages/month):
+- Telegram: $0 (unlimited free)
+- LINE: $0 (free tier)
+- SMS: $37.50-75 (Twilio/Telnyx)
+
+---
+
 ## 1. Program Objective
 
 Develop a Python-based stock trading strategy system using AI models trained on **historical stock data** (OHLCV, MACD, technical indicators) to:
@@ -62,7 +99,7 @@ The system follows a **hybrid multi-market architecture** with two organizationa
 #### **SHARED Components** (Universal across all markets)
 - **Database Schema** (`app/bot/shared/models.py`): Single source of truth with market isolation via `.for_market()` helper
 - **ML Algorithms** (`core/`): Universal logic works for any ticker (ASX, USA, TWN)
-- **Notification Services** (`app/bot/shared/notification.py`): Telegram/Email/SMS logic shared across markets
+- **Notification Services** (`app/bot/shared/notification.py`): Telegram/LINE/Email/SMS logic shared across markets
 - **API Credentials** (`api_credentials` table): No market column - credentials are global
 
 #### **SEPARATE Components** (Market-specific implementations)
@@ -332,7 +369,7 @@ Each market operates independently with zero cross-contamination:
 | **Signal Generation** | SEPARATE (`markets/asx/signal_service.py`) | Market-specific validation, trading hours |
 | **Admin UI** | SEPARATE (`markets/asx/routes.py`) | Market-specific branding, custom layouts |
 | **Configuration** | SEPARATE (`markets/asx/config.py`) | Trading hours, ticker suffix, holidays |
-| **Notifications** | SHARED (`shared/notification.py`) | Same Telegram/Email logic for all |
+| **Notifications** | SHARED (`shared/notification.py`) | Same Telegram/LINE/Email/SMS logic for all |
 
 ---
 
@@ -373,7 +410,7 @@ share-investment-strategy-model/
 │       │
 │       ├── shared/                     # SHARED: Common functionality
 │       │   ├── models.py               # Database models (Signal, ConfigProfile, JobLog)
-│       │   ├── notification.py         # Telegram/Email/SMS sender
+│       │   ├── notification.py         # Telegram/LINE/Email/SMS sender
 │       │   ├── base_routes.py          # Root routes (/health, /admin/home)
 │       │   └── templates/
 │       │       ├── base.html           # Base template with market switcher
@@ -493,7 +530,7 @@ CREATE INDEX idx_job_logs_created ON job_logs(created_at);
 ```sql
 CREATE TABLE api_credentials (
     id SERIAL PRIMARY KEY,
-    service_name VARCHAR(100) UNIQUE NOT NULL,  -- 'telegram', 'sendgrid'
+    service_name VARCHAR(100) UNIQUE NOT NULL,  -- 'telegram', 'line', 'sendgrid', 'twilio'
     encrypted_value TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
@@ -501,8 +538,9 @@ CREATE TABLE api_credentials (
 ```
 
 **Key Points**:
-- No `market` column - credentials like Telegram token are universal
-- All markets share same notification services
+- No `market` column - credentials like Telegram token, LINE Channel Access Token are universal
+- All markets share same notification services (Telegram FREE unlimited, LINE FREE 500/month, Email, SMS)
+- **LINE cost**: $0 for <500 msg/month, then $0.05/msg | **Taiwan 90%+ penetration**
 
 ---
 
@@ -995,7 +1033,7 @@ app/bot/
 │   └── database.py      # SQLAlchemy models (Signal, ConfigProfile, ApiCredential, JobLog)
 ├── services/
 │   ├── signal_engine.py # Idempotent signal generator (dual-trigger logic)
-│   └── notification_service.py  # Email/SMS/Telegram (mockups)
+│   └── notification_service.py  # Telegram/LINE/Email/SMS (Telegram implemented, LINE ready)
 └── utils/               # Empty (for future utilities)
 ```
 
@@ -1069,7 +1107,7 @@ if not signal.sent_at:
 - **Security**: cryptography (AES-256 backup encryption)
 - **Market data**: yfinance, pandas, numpy
 - **AI models**: scikit-learn, catboost, prophet
-- **Notifications**: requests (Telegram), placeholders for SendGrid/Telnyx
+- **Notifications**: requests (Telegram, LINE), placeholders for SendGrid/Telnyx
 - **Cloud**: boto3 (Tigris S3-compatible storage)
 - **Testing**: pytest, pytest-flask, pytest-cov
 
@@ -1230,7 +1268,7 @@ Each market operates independently with zero cross-contamination:
 | **Signal Generation** | SEPARATE (`markets/asx/signal_service.py`) | Market-specific validation, trading hours |
 | **Admin UI** | SEPARATE (`markets/asx/routes.py`) | Market-specific branding, custom layouts |
 | **Configuration** | SEPARATE (`markets/asx/config.py`) | Trading hours, ticker suffix, holidays |
-| **Notifications** | SHARED (`shared/notification.py`) | Same Telegram/Email logic for all |
+| **Notifications** | SHARED (`shared/notification.py`) | Same Telegram/LINE/Email/SMS logic for all |
 
 ---
 
@@ -1271,7 +1309,7 @@ share-investment-strategy-model/
 │       │
 │       ├── shared/                     # SHARED: Common functionality
 │       │   ├── models.py               # Database models (Signal, ConfigProfile, JobLog)
-│       │   ├── notification.py         # Telegram/Email/SMS sender
+│       │   ├── notification.py         # Telegram/LINE/Email/SMS sender
 │       │   ├── base_routes.py          # Root routes (/health, /admin/home)
 │       │   └── templates/
 │       │       ├── base.html           # Base template with market switcher
@@ -1391,7 +1429,7 @@ CREATE INDEX idx_job_logs_created ON job_logs(created_at);
 ```sql
 CREATE TABLE api_credentials (
     id SERIAL PRIMARY KEY,
-    service_name VARCHAR(100) UNIQUE NOT NULL,  -- 'telegram', 'sendgrid'
+    service_name VARCHAR(100) UNIQUE NOT NULL,  -- 'telegram', 'line', 'sendgrid', 'twilio'
     encrypted_value TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
@@ -1399,8 +1437,9 @@ CREATE TABLE api_credentials (
 ```
 
 **Key Points**:
-- No `market` column - credentials like Telegram token are universal
-- All markets share same notification services
+- No `market` column - credentials like Telegram token, LINE Channel Access Token are universal
+- All markets share same notification services (Telegram FREE unlimited, LINE FREE 500/month, Email, SMS)
+- **LINE cost**: $0 for <500 msg/month, then $0.05/msg | **Taiwan 90%+ penetration**
 
 ---
 
@@ -1898,7 +1937,7 @@ app/bot/
 │   └── database.py      # SQLAlchemy models (Signal, ConfigProfile, ApiCredential, JobLog)
 ├── services/
 │   ├── signal_engine.py # Idempotent signal generator (dual-trigger logic)
-│   └── notification_service.py  # Email/SMS/Telegram (mockups)
+│   └── notification_service.py  # Telegram/LINE/Email/SMS (Telegram implemented, LINE ready)
 └── utils/               # Empty (for future utilities)
 ```
 
@@ -1972,7 +2011,7 @@ if not signal.sent_at:
 - **Security**: cryptography (AES-256 backup encryption)
 - **Market data**: yfinance, pandas, numpy
 - **AI models**: scikit-learn, catboost, prophet
-- **Notifications**: requests (Telegram), placeholders for SendGrid/Telnyx
+- **Notifications**: requests (Telegram, LINE), placeholders for SendGrid/Telnyx
 - **Cloud**: boto3 (Tigris S3-compatible storage)
 - **Testing**: pytest, pytest-flask, pytest-cov
 

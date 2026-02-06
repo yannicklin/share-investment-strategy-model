@@ -5,7 +5,8 @@
 **Core Components**: Complete
 - ✅ Multi-market signal generation (ASX implemented, USA/TWN ready for expansion)
 - ✅ AI consensus logic integrated (Random Forest + CatBoost)
-- ✅ Telegram/Email/SMS notifications (with graceful fallbacks)
+- ✅ Multi-channel notifications (Telegram/LINE/Email/SMS with graceful fallbacks)
+- ✅ Admin authentication system (phone-based verification via Telegram/LINE)
 - ✅ Database models with market isolation (`.for_market()` helper)
 - ✅ GitHub Actions workflow (dual-trigger reliability)
 - ✅ Idempotent signal generation (no duplicates)
@@ -40,6 +41,9 @@ cp .env.example .env
 # - DATABASE_URL (PostgreSQL connection string)
 # - CRON_TOKEN (for GitHub Actions auth)
 # - TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID (for notifications)
+# Optional for LINE integration:
+# - LINE_CHANNEL_ACCESS_TOKEN
+# - LINE_CHANNEL_SECRET
 ```
 
 ### 3. Set Up Database

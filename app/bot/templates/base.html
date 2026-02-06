@@ -52,12 +52,21 @@
                         <a href="{{ url_for('admin_ui.job_logs') }}" class="px-3 py-2 rounded-md text-sm font-medium {% if 'logs' in request.endpoint %}text-blue-600 bg-blue-50{% else %}text-gray-700 hover:text-blue-600 hover:bg-gray-50{% endif %}">
                             <i class="fas fa-list mr-1"></i> Job Logs
                         </a>
+                        <a href="{{ url_for('admin_ui.admin_whitelist') }}" class="px-3 py-2 rounded-md text-sm font-medium {% if 'whitelist' in request.endpoint %}text-blue-600 bg-blue-50{% else %}text-gray-700 hover:text-blue-600 hover:bg-gray-50{% endif %}">
+                            <i class="fas fa-shield-alt mr-1"></i> Whitelist
+                        </a>
                     </div>
                 </div>
-                <div class="flex items-center">
+                <div class="flex items-center space-x-4">
                     <span class="text-sm text-gray-500">
                         <i class="fas fa-server mr-1"></i> Sydney
                     </span>
+                    <button 
+                        onclick="logout()" 
+                        class="text-sm text-gray-700 hover:text-red-600 px-3 py-2 rounded-md hover:bg-red-50 transition-colors"
+                    >
+                        <i class="fas fa-sign-out-alt mr-1"></i> Logout
+                    </button>
                 </div>
             </div>
         </div>
@@ -109,5 +118,33 @@
     </footer>
 
     {% block scripts %}{% endblock %}
+    
+    <!-- Logout Function -->
+    <script>
+        async function logout() {
+            if (confirm('Are you sure you want to logout?')) {
+                try {
+                    const response = await fetch('/api/admin/auth/logout', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        window.location.href = '/admin/dashboard';
+                    } else {
+                        alert('Logout failed. Please try again.');
+                    }
+                } catch (error) {
+                    console.error('Logout error:', error);
+                    alert('Logout failed. Please try again.');
+                }
+            }
+        }
+    </script>
+    
+    <!-- Authentication Modal -->
+    {% include 'auth_modal.html' %}
 </body>
 </html>

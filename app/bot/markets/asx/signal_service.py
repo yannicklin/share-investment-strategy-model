@@ -2,11 +2,16 @@
 ASX Signal Generation Service
 
 Market-specific implementation for Australian Securities Exchange.
-Inherits from BaseSignalService to reduce duplication.
+Now includes:
+- Trading day validation using pandas_market_calendars
+- Resource availability checks (cash/stock holdings)
+- Transaction ledger integration
 """
 
 from datetime import datetime, date
 from app.bot.shared.models import Signal, ConfigProfile, JobLog, db
+from app.bot.services.trading_day_utils import is_trading_day
+from app.bot.services.portfolio_service import PortfolioService
 from core.model_builder import ModelBuilder
 from .config import (
     MARKET_CODE, TICKER_SUFFIX, PUBLIC_HOLIDAYS,
@@ -31,6 +36,7 @@ class ASXSignalService:
     def __init__(self):
         self.market = MARKET_CODE
         self.ticker_suffix = TICKER_SUFFIX
+        self.portfolio = PortfolioService(MARKET_CODE)
     
     def generate_daily_signals(self):
         """
@@ -58,9 +64,9 @@ class ASXSignalService:
                 'already_sent': True,
                 'signals_generated': 0
             }
-        
-        # Validate trading day
-        if not self._is_trading_day():
+         using pandas_market_calendars
+        if not is_trading_day(self.market):
+            logger.info(f"{self.market}: Not a trading day (weekend/holiday)
             logger.info(f"{self.market}: Not a trading day, skipping")
             return {
                 'already_calculated': False,
@@ -110,7 +116,7 @@ class ASXSignalService:
         }
     
     def _process_profile(self, profile):
-        """Process one ASX trading profile"""
+        """Process one ASX trading profile with resource availability checks"""
         signals_count = 0
         
         for ticker in profile.stocks:
@@ -125,6 +131,30 @@ class ASXSignalService:
                     logger.warning(f"{self.market}: Skipped {full_ticker} (no data or no signal)")
                     continue
                 
+                # ✅ NEW: Validate resource availability before signal
+                signal_type = result['signal']
+                notes = ""
+                
+                if signal_type == 'BUY':
+                    # Check if we have cash to buy
+                    # Fetch current price for validation
+                    price = self._get_current_price(full_ticker)
+                    if price is None:
+                        logger.warning(f"{self.market}: Cannot get price for {ticker}, skipping BUY signal")
+                        continue
+                    
+                    can_buy, reason = self.portfolio.can_buy(ticker, price, quantity=1)
+                    if not can_buy:
+                        logger.warning(f"{self.market}: Cannot BUY {ticker}: {reason}")
+                        notes = f"Resource check failed: {reason}"
+                
+                elif signal_type == 'SELL':
+                    # Check if we have stock to sell
+                    can_sell, reason = self.portfolio.can_sell(ticker, quantity=1)
+                    if not can_sell:
+                        logger.warning(f"{self.market}: Cannot SELL {ticker}: {reason}")
+                        notes = f"Resource check failed: {reason}"
+                
                 # Create ASX signal (ISOLATED)
                 signal = Signal(
                     market=self.market,
@@ -132,7 +162,8 @@ class ASXSignalService:
                     signal=result['signal'],
                     confidence=result['confidence'],
                     job_type='daily-signal',
-                    trigger_type='scheduled'
+                    trigger_type='scheduled',
+                    notes=notes if notes else None
                 )
                 
                 db.session.add(signal)
@@ -247,25 +278,33 @@ class ASXSignalService:
             logger.error(f"{self.market}: Signal generation failed for {full_ticker}: {str(e)}")
             return None
     
-    def _is_trading_day(self):
+    def _get_current_price(self, full_ticker):
         """
-        ASX-specific trading day validation
+        Fetch current price for a ticker.
         
-        Returns False if:
-        - Weekend (Saturday/Sunday)
-        - Public holiday (ASX closed)
+        Args:
+            full_ticker: Ticker with suffix (e.g., 'BHP.AX')
+        
+        Returns:
+            Current price or None if unavailable
         """
-        today = date.today()
-        
-        # Weekend check
-        if today.weekday() >= 5:  # 5=Saturday, 6=Sunday
-            return False
-        
-        # Public holiday check
-        if today.strftime('%Y-%m-%d') in PUBLIC_HOLIDAYS:
-            return False
-        
-        return True
+        try:
+            ticker_obj = yf.Ticker(full_ticker)
+            info = ticker_obj.info
+            
+            # Try different price fields
+            price = info.get('currentPrice') or info.get('regularMarketPrice')
+            
+            if price is None:
+                # Fallback: get latest close from history
+                hist = ticker_obj.history(period='1d')
+                if not hist.empty:
+                    price = hist['Close'].iloc[-1]
+            
+            return price
+        except Exception as e:
+            logger.error(f"{self.market}: Failed to get price for {full_ticker}: {str(e)}")
+            return None
     
     def _prepare_simple_features(self, data):
         """
