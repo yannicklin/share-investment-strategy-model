@@ -61,45 +61,33 @@ See [CLOUD_PRICING_COMPARISON.md](CLOUD_PRICING_COMPARISON.md) for full architec
 -   **Performance Metrics**: Track Net ROI, Win Rate, and Total Trades with standardized **2-decimal precision** (numeral.js format).
 -   **T+1 Reinvestment Logic**: Simulates realistic brokerage cash flow where capital from a sale is available for the next trading day.
 
-## 🛠️ Installation
+## 🛠️ Local Development
 
-1.  **Clone the repository**:
-    ```bash
-    git clone <repository-url>
-    cd share-investment-strategy-model
-    git checkout asx  # Switch to desired market branch (asx/usa/twn)
-    ```
-
-> **Important**: Each branch is a standalone market implementation. Use `git branch` to see available markets.
-
-2.  **Using `uv` (Recommended)**:
-    This project is optimized for `uv`. Install dependencies and run in one go:
-    ```bash
-    uv run streamlit run ASX_AImodel.py
-    ```
-
-3.  **Manual Installation**:
-    ```bash
-    python -m venv venv
-    source venv/bin/activate  # On Windows: venv\Scripts\activate
-    pip install -r requirements.txt
-    ```
-
-## 💻 Usage
-
-### Streamlit Dashboard
-Launch the interactive dashboard to configure parameters, run backtests, and view AI recommendations:
+### 1. Install Dependencies
 ```bash
-uv run streamlit run ASX_AImodel.py
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
-### GitHub Codespaces (Cloud Development)
-This project includes a devcontainer configuration for GitHub Codespaces:
-- **Pre-configured**: Debian base + Python 3.12 + UV + SSH
-- **Automatic setup**: Dependencies installed on container creation
-- **SSH access**: Enabled via `gh codespace ssh`
+### 2. Configure Environment
+```bash
+cp .env.example .env
+# Edit .env with your credentials (DATABASE_URL, TELEGRAM_BOT_TOKEN, etc.)
+```
 
-Simply open the repository in GitHub Codespaces to start developing immediately.
+### 3. Run Locally
+```bash
+python run_bot.py
+```
+
+### 4. Run Tests
+```bash
+pytest tests/bot/ -v
+```
+
+## 🏗️ Deployment
+Refer to **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)** for step-by-step production setup on Koyeb.
 
 ## 📂 Project Structure
 

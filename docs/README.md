@@ -11,8 +11,7 @@ All essential system documentation is maintained in the project root:
 - **[ARCHITECTURE.md](../ARCHITECTURE.md)** - Complete system architecture, database schemas, multi-market design
 - **[README.md](../README.md)** - Project overview, installation, usage
 - **[AGENTS.md](../AGENTS.md)** - AI agent development guidelines, core mandates
-- **[BOT_QUICKSTART.md](../BOT_QUICKSTART.md)** - Quick start guide for bot deployment
-- **[bot_trading_system_requirements.md](../bot_trading_system_requirements.md)** - Original system requirements
+- **[DEPLOYMENT_GUIDE.md](../DEPLOYMENT_GUIDE.md)** - Production deployment guide (Koyeb/Supabase)
 - **[SOUL.md](../SOUL.md)** - Project philosophy, values, architectural principles
 - **[AUTHORS.md](../AUTHORS.md)** - Contributors and acknowledgments
 

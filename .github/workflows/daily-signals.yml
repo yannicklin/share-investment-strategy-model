@@ -61,8 +61,8 @@ jobs:
             echo "ℹ️  Work already done (backup trigger)"
           fi
 
-          ALREADY_CALCULATED=$(cat response.json | jq -r '.already_calculated')
-          ALREADY_SENT=$(cat response.json | jq -r '.already_sent')
+          ALREADY_CALCULATED=$(echo "$BODY" | jq -r '.already_calculated // false')
+          ALREADY_SENT=$(echo "$BODY" | jq -r '.already_sent // false')
           
           if [ "$ALREADY_CALCULATED" = "true" ]; then
             echo "✅ Second trigger detected - signal already calculated (idempotent)"

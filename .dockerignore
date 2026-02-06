@@ -37,7 +37,7 @@ backups/
 *.log
 catboost_info/
 
-# Environment files (use Fly.io secrets instead)
+# Environment files (use Koyeb secrets instead)
 .env
 .env.local
 .env.example
@@ -49,13 +49,12 @@ catboost_info/
 
 # Documentation
 docs/
-BOT_FRAMEWORK_README.md
-bot_trading_system_requirements.md
-infrastructure_comparison.md
 AUTHORS.md
 CODE_HEADERS.md
 SOUL.md
 AGENTS.md
+ARCHITECTURE.md
+DEPLOYMENT_GUIDE.md
 
 # Test files
 tests/

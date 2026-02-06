@@ -33,7 +33,21 @@ Each branch is a standalone implementation with market-specific configurations. 
 - `ui/`: Modular Streamlit dashboard components.
 - `ASX_AImodel.py`: Main application entry point.
 
-## 2. Core Mandates
+## 2. Lab-to-Production Workflow (Porting Rules)
+
+Agents must respect the distinct roles of the project branches:
+
+1.  **Market Branches (`asx`, `usa`, `twn`) — The "Research Labs"**:
+    - Used for backtesting, parameter tuning, and algorithm evaluation.
+    - If you are asked to "optimize" or "test" a strategy, work in these branches.
+    - Result: Found the best `Config` parameters (hurdle rates, stop losses) for a specific market.
+
+2.  **Bots Branch (`bots`) — The "Production Service"**:
+    - Used for automated signal execution and notification.
+    - **Sync Mandate**: Before implementing signal generation, you MUST check the corresponding lab branch for the latest optimized `Config`.
+    - **Porting**: Copy the proven parameters into `app/bot/markets/{market}/config.py` and implement market-specific nuances in the `signal_service.py`.
+
+## 3. Core Mandates
 
 1. **Documentation-First Development**: Always update `ARCHITECTURE.md` before implementing changes.
 2. **Security Priorities**: NEVER commit API keys or sensitive financial data.
@@ -64,5 +78,5 @@ Each branch is a standalone implementation with market-specific configurations. 
 4. **Code-Only Implementation**: Focus on editing the requested files. Do not chain multiple shell operations (like build or run) unless they are part of a verification step requested by the user.
 
 ---
-*Last Updated: 2026-02-03 (Hardware Portability & Workflow Safety Updates)*
+*Last Updated: 2026-02-06 (Lab-to-Production Workflow Update)*
 *Note: This is a living document. Update it as project conventions evolve.*

@@ -568,6 +568,23 @@ curl -I https://money.twoudia.top | grep -i "x-robots-tag"
 
 ---
 
+## ✅ Why Dockerfile vs Buildpacks?
+
+**Buildpacks are great for simple Flask apps, but this AI trading bot needs Dockerfile for:**
+
+| Requirement | Buildpacks | Dockerfile |
+|-------------|------------|------------|
+| **Custom system deps** (gcc, g++, libpq-dev) | ❌ Not supported | ✅ Full control |
+| **AI/ML libraries** (scikit-learn, tensorflow) | ⚠️ May fail (missing C compilers) | ✅ Installs gcc/g++ |
+| **PostgreSQL client tools** (pg_dump for backups) | ❌ Not included | ✅ postgresql-client |
+| **Explicit Python 3.12** | ⚠️ Auto-detects (may pick 3.11) | ✅ python:3.12-slim |
+| **Multi-stage builds** (smaller images) | ❌ Not supported | ✅ FROM base AS... |
+| **Non-root user** (security) | ⚠️ Runs as root | ✅ useradd botuser |
+| **Custom health check** (DB connectivity) | ❌ Basic HTTP only | ✅ HEALTHCHECK with curl |
+| **Production WSGI** (gunicorn workers/timeouts) | ⚠️ Generic config | ✅ Custom CMD |
+
+---
+
 ## 📚 Reference Links
 
 - **Koyeb Docs**: https://www.koyeb.com/docs

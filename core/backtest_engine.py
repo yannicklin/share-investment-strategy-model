@@ -125,7 +125,7 @@ class BacktestEngine:
             df["Close"].rolling(5).mean(),
             df["Close"].rolling(20).mean(),
         )
-        df["Daily_Return"] = df["Close"].pct_change()
+        df["Daily_Return"] = df["Close"].pct_change(fill_method=None)
         return df.dropna()
 
     def _core_run(
@@ -161,9 +161,7 @@ class BacktestEngine:
         trades = []
 
         # Determine the official start date for trading (excluding warm-up)
-        official_start = pd.Timestamp.now() - pd.DateOffset(
-            years=self.config.backtest_years
-        )
+        official_start = pd.Timestamp.now() - pd.DateOffset(years=self.config.backtest_years)
 
         for i in range(len(df) - 1):
             date, current_price = df.index[i], float(df.iloc[i]["Close"])
@@ -194,11 +192,7 @@ class BacktestEngine:
                 offset = (
                     {"weeks": 13 * self.config.hold_period_value}
                     if self.config.hold_period_unit == "quarter"
-                    else {
-                        unit_map[
-                            self.config.hold_period_unit
-                        ]: self.config.hold_period_value
-                    }
+                    else {unit_map[self.config.hold_period_unit]: self.config.hold_period_value}
                 )
 
                 # Check if enough time passed
@@ -386,9 +380,7 @@ class BacktestEngine:
             X_seq = np.array([X_scaled[i - seq_len : i] for i in valid_indices])
 
             # Batch predict with a smaller batch size to avoid GPU memory overflow on M3
-            raw_preds = self.model_builder.model.predict(
-                X_seq, batch_size=64, verbose=0
-            ).flatten()
+            raw_preds = self.model_builder.model.predict(X_seq, batch_size=64, verbose=0).flatten()
 
             # Pad the beginning with zeros (no predictions for first seq_len days)
             all_preds = np.zeros(len(df), dtype=np.float32)
@@ -404,10 +396,7 @@ class BacktestEngine:
             forecast = self.model_builder.model.predict(prophet_df)
             return forecast["yhat"].values.astype(np.float32)
 
-        elif (
-            self.model_builder.model is not None
-            and self.model_builder.scaler is not None
-        ):
+        elif self.model_builder.model is not None and self.model_builder.scaler is not None:
             # Standard SKLearn-like models
             X_scaled = self.model_builder.scaler.transform(X_all).astype(np.float32)
             return self.model_builder.model.predict(X_scaled).astype(np.float32)

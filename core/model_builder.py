@@ -102,23 +102,20 @@ class ModelBuilder:
         elif m_type == "lstm":
             import tensorflow as tf
             from tensorflow.keras.models import Sequential
-            from tensorflow.keras.layers import LSTM, Dense, Dropout
+            from tensorflow.keras.layers import LSTM, Dense, Dropout, Input
 
             logging.info("Initialized LSTM model.")
             model = Sequential(
                 [
-                    LSTM(
-                        32,
-                        return_sequences=True,
-                        input_shape=(self.sequence_length, input_dim),
-                    ),
+                    Input(shape=(self.sequence_length, input_dim)),
+                    LSTM(32, return_sequences=True),
                     Dropout(0.1),
                     LSTM(16, return_sequences=False),
                     Dense(8, activation="relu"),
                     Dense(1),
                 ]
             )
-            model.compile(optimizer="adam", loss="mean_squared_error")
+            model.compile(optimizer="adam", loss="mse")
             return model
 
         logging.info("Initialized RandomForest model.")
@@ -141,9 +138,7 @@ class ModelBuilder:
 
             # If still MultiIndex, collapse it
             if isinstance(data.columns, pd.MultiIndex):
-                data.columns = [
-                    str(c[0]) if isinstance(c, tuple) else str(c) for c in data.columns
-                ]
+                data.columns = [str(c[0]) if isinstance(c, tuple) else str(c) for c in data.columns]
 
         # 2. Force Flat String Columns and Clean names
         data.columns = [str(c).strip() for c in data.columns]
@@ -295,7 +290,7 @@ class ModelBuilder:
         exp2 = df["Close"].ewm(span=26, adjust=False).mean()
         df["MACD"] = exp1 - exp2
         df["Signal_Line"] = df["MACD"].ewm(span=9, adjust=False).mean()
-        df["Daily_Return"] = df["Close"].pct_change()
+        df["Daily_Return"] = df["Close"].pct_change(fill_method=None)
 
         df["Target"] = df["Close"].shift(-1)
         df = df.dropna()
@@ -331,9 +326,7 @@ class ModelBuilder:
 
         X, y = self.prepare_features(data)
         if len(X) < 1:
-            raise ValueError(
-                f"Insufficient data rows for {ticker} after feature engineering."
-            )
+            raise ValueError(f"Insufficient data rows for {ticker} after feature engineering.")
 
         self.scaler = self._init_scaler()
         X_scaled = self.scaler.fit_transform(X)
@@ -349,9 +342,7 @@ class ModelBuilder:
                 self.model.fit(X_scaled, y)
         elif m_type == "prophet":
             try:
-                prophet_df = pd.DataFrame(
-                    {"ds": data.index, "y": data["Close"].values.flatten()}
-                )
+                prophet_df = pd.DataFrame({"ds": data.index, "y": data["Close"].values.flatten()})
                 prophet_df["ds"] = pd.to_datetime(prophet_df["ds"]).dt.tz_localize(None)
                 prophet_df = prophet_df.dropna()
                 self.model = self._init_model()
@@ -364,16 +355,14 @@ class ModelBuilder:
             self.model.fit(X_scaled, y)
 
         os.makedirs(self.config.model_path, exist_ok=True)
-        model_filename = os.path.join(
-            self.config.model_path, f"{ticker}_{m_type}_model.joblib"
-        )
+        model_filename = os.path.join(self.config.model_path, f"{ticker}_{m_type}_model.joblib")
         if m_type == "lstm" and hasattr(self.model, "save"):
-            h5_path = model_filename.replace(".joblib", ".h5")
-            self.model.save(h5_path)
+            keras_path = model_filename.replace(".joblib", ".keras")
+            self.model.save(keras_path)
             joblib.dump(
                 {
                     "scaler": self.scaler,
-                    "lstm_h5": h5_path,
+                    "keras_path": keras_path,
                     "model_class": self.model.__class__.__name__,
                 },
                 model_filename,
@@ -398,35 +387,30 @@ class ModelBuilder:
         else:
             data_bundle = joblib.load(model_filename)
             self.scaler = data_bundle["scaler"]
-            if "lstm_h5" in data_bundle:
+            if "keras_path" in data_bundle or "lstm_h5" in data_bundle:
                 try:
                     from tensorflow.keras.models import load_model
 
-                    self.model = load_model(data_bundle["lstm_h5"])
+                    path = data_bundle.get("keras_path") or data_bundle.get("lstm_h5")
+                    self.model = load_model(path)
                 except Exception:
                     self.model = data_bundle.get("model")
             else:
                 self.model = data_bundle.get("model")
             return "loaded"
 
-    def predict(
-        self, current_data: np.ndarray, date: Optional[pd.Timestamp] = None
-    ) -> float:
+    def predict(self, current_data: np.ndarray, date: Optional[pd.Timestamp] = None) -> float:
         if self.model is None:
             raise ValueError("Model not loaded.")
         m_type = self.config.model_type
         if m_type == "prophet" and hasattr(self.model, "predict"):
-            future = pd.DataFrame(
-                {"ds": [(date + pd.DateOffset(days=1)).tz_localize(None)]}
-            )
+            future = pd.DataFrame({"ds": [(date + pd.DateOffset(days=1)).tz_localize(None)]})
             return float(self.model.predict(future)["yhat"].iloc[0])
         if m_type == "lstm" and hasattr(self.model, "predict"):
             if len(current_data.shape) == 2:
                 X = self.scaler.transform(current_data)
                 return float(
-                    self.model.predict(
-                        X.reshape(1, self.sequence_length, -1), verbose=0
-                    )[0][0]
+                    self.model.predict(X.reshape(1, self.sequence_length, -1), verbose=0)[0][0]
                 )
             return 0.0
         X_input = (
