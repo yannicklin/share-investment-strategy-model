@@ -74,7 +74,7 @@ uv.lock
 .pythonlibs
 
 # IDEs and Editors
-.vscode/
+# .vscode/
 .idea/
 *.swp
 *.swo
