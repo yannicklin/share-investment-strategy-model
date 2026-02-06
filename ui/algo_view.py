@@ -28,7 +28,7 @@ def render_algorithm_comparison(ticker, ticker_res):
     for m_name, res in ticker_res.items():
         # Skip error entries for the summary leaderboard
         if isinstance(res, dict) and "error" not in res:
-            display_name = m_name.upper()
+            display_name = m_name
             summary.append(
                 {
                     "Algorithm": display_name,
@@ -78,8 +78,8 @@ def render_algorithm_comparison(ticker, ticker_res):
             st.plotly_chart(fig, width="stretch")
 
         st.subheader("Individual Model Analysis")
-        # Use both display name and internal type for tab uniqueness
-        tabs = st.tabs([f"{m['Algorithm']} ({m['Model']})" for m in summary])
+        # Use only the internal model name for tabs as requested
+        tabs = st.tabs([m["Model"] for m in summary])
         for i, m_info in enumerate(summary):
             with tabs[i]:
                 render_trade_details(ticker, ticker_res[m_info["Model"]])

@@ -29,7 +29,7 @@ def render_strategy_sensitivity(ticker, ticker_res, models=None, tie_breaker=Non
         m_count = len(models)
         if m_count % 2 == 0:
             # Even number of models requires a tie-breaker
-            tb_name = tie_breaker.upper() if tie_breaker else models[0].upper()
+            tb_name = tie_breaker if tie_breaker else models[0]
             st.info(
                 f"Decision Engine: Consensus ({m_count} models) with Tie-Breaker: {tb_name}"
             )
@@ -37,7 +37,7 @@ def render_strategy_sensitivity(ticker, ticker_res, models=None, tie_breaker=Non
             # Odd number of models has a natural majority
             st.info(f"Decision Engine: Consensus (Majority Vote of {m_count} models)")
     elif models and len(models) == 1:
-        st.info(f"Decision Engine: Single Model ({models[0].upper()})")
+        st.info(f"Decision Engine: Single Model ({models[0]})")
     else:
         st.info("Decision Engine: Consensus (Majority Vote) of selected AI models.")
 

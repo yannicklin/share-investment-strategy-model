@@ -101,16 +101,13 @@ class ModelBuilder:
         elif m_type == "lstm":
             import tensorflow as tf
             from tensorflow.keras.models import Sequential
-            from tensorflow.keras.layers import LSTM, Dense, Dropout
+            from tensorflow.keras.layers import LSTM, Dense, Dropout, Input
 
             logging.info("Initialized LSTM model.")
             model = Sequential(
                 [
-                    LSTM(
-                        32,
-                        return_sequences=True,
-                        input_shape=(self.sequence_length, input_dim),
-                    ),
+                    Input(shape=(self.sequence_length, input_dim)),
+                    LSTM(32, return_sequences=True),
                     Dropout(0.1),
                     LSTM(16, return_sequences=False),
                     Dense(8, activation="relu"),
@@ -367,12 +364,12 @@ class ModelBuilder:
             self.config.model_path, f"{ticker}_{m_type}_model.joblib"
         )
         if m_type == "lstm" and hasattr(self.model, "save"):
-            h5_path = model_filename.replace(".joblib", ".h5")
-            self.model.save(h5_path)
+            keras_path = model_filename.replace(".joblib", ".keras")
+            self.model.save(keras_path)
             joblib.dump(
                 {
                     "scaler": self.scaler,
-                    "lstm_h5": h5_path,
+                    "keras_path": keras_path,
                     "model_class": self.model.__class__.__name__,
                 },
                 model_filename,
@@ -397,11 +394,12 @@ class ModelBuilder:
         else:
             data_bundle = joblib.load(model_filename)
             self.scaler = data_bundle["scaler"]
-            if "lstm_h5" in data_bundle:
+            if "keras_path" in data_bundle or "lstm_h5" in data_bundle:
                 try:
                     from tensorflow.keras.models import load_model
 
-                    self.model = load_model(data_bundle["lstm_h5"])
+                    path = data_bundle.get("keras_path") or data_bundle.get("lstm_h5")
+                    self.model = load_model(path)
                 except Exception:
                     self.model = data_bundle.get("model")
             else:

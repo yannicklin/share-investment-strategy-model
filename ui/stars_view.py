@@ -23,7 +23,7 @@ def render_super_stars(index_name, all_ticker_res, models=None, tie_breaker=None
         m_count = len(models)
         if m_count % 2 == 0:
             # Even number of models requires a tie-breaker
-            tb_name = tie_breaker.upper() if tie_breaker else models[0].upper()
+            tb_name = tie_breaker if tie_breaker else models[0]
             st.info(
                 f"Ranking stocks based on Consensus ({m_count} models) with Tie-Breaker: {tb_name}"
             )
@@ -33,7 +33,7 @@ def render_super_stars(index_name, all_ticker_res, models=None, tie_breaker=None
                 f"Ranking stocks based on Consensus (Majority Vote of {m_count} models)"
             )
     elif models and len(models) == 1:
-        st.info(f"Ranking stocks based on Single Model ({models[0].upper()})")
+        st.info(f"Ranking stocks based on Single Model ({models[0]})")
     else:
         st.info("Ranking all stocks in the index based on Consensus AI performance.")
 
