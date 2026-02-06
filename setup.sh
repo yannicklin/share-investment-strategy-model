@@ -64,17 +64,24 @@ fi
 echo "📦 Installing/Updating dependencies..."
 PYTHON_VENV=".venv/bin/python3"
 
-# Force arm64 for installation if on Apple Silicon to ensure correct wheels
-if [ "$IS_APPLE_SILICON" == "true" ]; then
-    INSTALL_CMD="/usr/bin/arch -arm64 $PYTHON_VENV"
+# Detect if UV is available (Codespace/Linux) or use pip (macOS)
+if command -v uv >/dev/null 2>&1; then
+    echo "🚀 Using UV for fast dependency installation..."
+    uv venv .venv 2>/dev/null || true  # Create venv if not exists
+    uv pip install -r requirements.txt --native-tls
 else
-    INSTALL_CMD="$PYTHON_VENV"
-fi
+    # Force arm64 for installation if on Apple Silicon to ensure correct wheels
+    if [ "$IS_APPLE_SILICON" == "true" ]; then
+        INSTALL_CMD="/usr/bin/arch -arm64 $PYTHON_VENV"
+    else
+        INSTALL_CMD="$PYTHON_VENV"
+    fi
 
-# Use pip directly from the venv to avoid architecture mismatches with global tools like uv
-echo "🐍 Using venv pip for reliable installation..."
-$INSTALL_CMD -m pip install --upgrade pip
-$INSTALL_CMD -m pip install -e "."
+    # Use pip directly from the venv to avoid architecture mismatches with global tools like uv
+    echo "🐍 Using venv pip for reliable installation..."
+    $INSTALL_CMD -m pip install --upgrade pip
+    $INSTALL_CMD -m pip install -e "."
+fi
 
 echo "✅ Setup complete!"
 FINAL_ARCH=$($INSTALL_CMD -c "import platform; print(platform.machine())")
