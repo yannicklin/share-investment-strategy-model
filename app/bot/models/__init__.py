@@ -1,9 +1,8 @@
-"""Database models for AI Trading Bot System (Multi-Market Architecture)
-
-Supports market-isolated data with .for_market() query helpers.
-Markets: ASX, USA, TWN
+"""
+AI Trading Bot System - Database Models Entry Point
+All models are imported from the shared market-isolated architecture.
 """
 
-from app.bot.models.database import Signal, ConfigProfile, ApiCredential, JobLog
+from app.bot.shared.models import Signal, ConfigProfile, ApiCredential, JobLog, db
 
-__all__ = ['Signal', 'ConfigProfile', 'ApiCredential', 'JobLog']
+__all__ = ["Signal", "ConfigProfile", "ApiCredential", "JobLog", "db"]

@@ -26,13 +26,13 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def generate_daily_signals(market='ASX'):
+def generate_daily_signals(market="ASX"):
     """
     Generate daily signals for specified market
-    
+
     Args:
         market: 'ASX', 'USA', or 'TWN'
-        
+
     Returns:
         dict: {
             'market': str,
@@ -43,34 +43,28 @@ def generate_daily_signals(market='ASX'):
     """
     today = date.today()
     start_time = datetime.utcnow()
-    
+
     try:
         # Get market-specific service
         service = _get_market_service(market)
-        
+
         if service is None:
-            return {
-                'error': f'Market {market} not supported',
-                'market': market
-            }
-        
+            return {"error": f"Market {market} not supported", "market": market}
+
         # STEP 1: Generate signals (market-specific logic)
         result = service.generate_daily_signals()
-        
+
         # STEP 2: Send notifications for unsent signals
-        unsent_signals = Signal.for_market(market).filter_by(
-            date=today,
-            sent_at=None
-        ).all()
-        
+        unsent_signals = Signal.for_market(market).filter_by(date=today, sent_at=None).all()
+
         notifications_sent = False
-        
+
         if unsent_signals:
             logger.info(f"{market}: Sending notifications for {len(unsent_signals)} signals")
-            
+
             # Send via configured channels
             notify_results = notify_signals(unsent_signals)
-            
+
             # Mark signals as sent if any channel succeeded
             if any(notify_results.values()):
                 for signal in unsent_signals:
@@ -82,54 +76,52 @@ def generate_daily_signals(market='ASX'):
                 logger.warning(f"{market}: All notification channels failed")
         else:
             logger.info(f"{market}: No new signals to notify")
-        
+
         # Return consolidated result
         return {
-            'market': market,
-            'already_calculated': result.get('already_calculated', False),
-            'signals_generated': result.get('signals_generated', 0),
-            'notifications_sent': notifications_sent,
-            'errors': result.get('errors', [])
+            "market": market,
+            "already_calculated": result.get("already_calculated", False),
+            "signals_generated": result.get("signals_generated", 0),
+            "notifications_sent": notifications_sent,
+            "errors": result.get("errors", []),
         }
-        
+
     except Exception as e:
         logger.error(f"{market}: Signal generation failed: {str(e)}", exc_info=True)
-        
+
         # Log failure
         job_log = JobLog(
             market=market,
-            job_type='daily-signal',
-            status='failure',
+            job_type="daily-signal",
+            status="failure",
             error_message=str(e),
-            duration_seconds=(datetime.utcnow() - start_time).total_seconds()
+            duration_seconds=(datetime.utcnow() - start_time).total_seconds(),
         )
         db.session.add(job_log)
         db.session.commit()
-        
-        return {
-            'market': market,
-            'error': str(e)
-        }
+
+        return {"market": market, "error": str(e)}
 
 
 def _get_market_service(market):
     """
     Get market-specific signal service
-    
+
     Args:
         market: 'ASX', 'USA', or 'TWN'
-        
+
     Returns:
         Market-specific service instance or None
     """
-    if market == 'ASX':
+    if market == "ASX":
         from app.bot.markets.asx.signal_service import ASXSignalService
+
         return ASXSignalService()
-    elif market == 'USA':
+    elif market == "USA":
         # Future implementation
         logger.warning("USA market not yet implemented")
         return None
-    elif market == 'TWN':
+    elif market == "TWN":
         # Future implementation
         logger.warning("TWN market not yet implemented")
         return None
@@ -137,49 +129,13 @@ def _get_market_service(market):
         logger.error(f"Unknown market: {market}")
         return None
 
-        duration = (datetime.utcnow() - start_time).total_seconds()
-        log = JobLog(
-            job_type='daily-signals',
-            status='success',
-            duration_seconds=int(duration)
-        )
-        db.session.add(log)
-        db.session.commit()
-        
-        return {
-            'status': 'success',
-            'date': str(today),
-            'signal': signal.signal,
-            'ticker': signal.ticker,
-            'confidence': signal.confidence,
-            'already_calculated': already_calculated,
-            'already_sent': already_sent,
-            'trigger_type': 'first' if not already_calculated else 'second_redundancy'
-        }
-        
-    except Exception as e:
-        logger.error(f"[{today}] Signal generation failed: {str(e)}", exc_info=True)
-        
-        # Log failed execution
-        duration = (datetime.utcnow() - start_time).total_seconds()
-        log = JobLog(
-            job_type='daily-signals',
-            status='failure',
-            duration_seconds=int(duration),
-            error_message=str(e)
-        )
-        db.session.add(log)
-        db.session.commit()
-        
-        raise
-
 
 def _run_ai_consensus():
     """
     Run multi-model AI consensus (placeholder)
-    
+
     TODO: Integrate with core/model_builder.py from main branch
-    
+
     Returns:
         dict: {
             'ticker': str,
@@ -188,8 +144,4 @@ def _run_ai_consensus():
         }
     """
     # MOCKUP: Replace with actual model consensus logic
-    return {
-        'ticker': 'BHP.AX',
-        'signal': 'BUY',
-        'confidence': 0.82
-    }
+    return {"ticker": "BHP.AX", "signal": "BUY", "confidence": 0.82}
