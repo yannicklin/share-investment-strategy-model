@@ -1,0 +1,96 @@
+# AI Trading System - Git Ignore
+# Updated: 2026-01-23 for Streamlit + AI architecture
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+dist/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Testing
+htmlcov/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.cover
+
+# Streamlit
+static/
+
+# Development process tracking
+.pid/
+*.pid
+
+# Data and Models
+data/models/*.pkl
+data/models/*.h5
+data/models/*.keras
+data/models/*.joblib
+data/models/index_cache.json
+data/downloads/
+data/ledgers/*.csv
+*.log
+
+# AI Model Training Artifacts
+catboost_info/
+**/catboost_info/
+learn_error.tsv
+test_error.tsv
+time_left.tsv
+catboost_training.json
+catboost_meta.json
+*.cmdstan/
+logs/                   # TensorFlow: Training logs and checkpoints
+runs/                   # TensorFlow: TensorBoard logs
+checkpoints/            # TensorFlow: Model checkpoints
+events.out.tfevents.*   # TensorFlow: TensorBoard event files
+*.pb                    # TensorFlow: Protocol buffer files
+saved_model/            # TensorFlow: SavedModel format
+
+# Environment variables
+.env
+.envrc
+.env.local
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# UV package manager
+uv.lock
+.pythonlibs
+
+# IDEs and Editors
+# .vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+.temp/
+~$*.*
