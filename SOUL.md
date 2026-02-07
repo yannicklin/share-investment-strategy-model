@@ -28,7 +28,7 @@ Many trading simulators ignore the harsh realities of:
 - **Brokerage Fees**: Every trade costs money
 - **Tax Implications**: CGT discounts matter for long-term holdings
 - **Market Gaps**: Stop-loss orders don't always execute at your price
-- **T+1 Settlement**: You can't instantly reinvest sale proceeds
+- **T+2 Settlement**: You can't instantly reinvest sale proceeds; cash takes 2 trading days to clear.
 
 **Philosophy**: If it doesn't work with real-world constraints, it doesn't work.
 

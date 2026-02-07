@@ -46,17 +46,13 @@ class Config:
     scaler_type: str = "robust"  # "standard" or "robust"
     model_type: str = "random_forest"
     # Available: ["random_forest", "gradient_boosting", "catboost", "prophet", "lstm"]
-    model_types: List[str] = field(
-        default_factory=lambda: ["random_forest", "catboost"]
-    )
+    model_types: List[str] = field(default_factory=lambda: ["random_forest", "catboost"])
     data_source: str = "yfinance"
 
     # Cost & Tax Profiles
-    cost_profile: str = "default"  # "default" or "cmc_markets"
+    cost_profile: str = "default"  # "default", "cmc_markets", or "tiger_au"
     annual_income: float = 90000.0  # Annual income for tax bracket calculation
-    hurdle_risk_buffer: float = (
-        0.005  # 0.5% extra buffer to account for slippage/volatility
-    )
+    hurdle_risk_buffer: float = 0.005  # 0.5% extra buffer to account for slippage/volatility
 
 
 def load_config() -> Config:

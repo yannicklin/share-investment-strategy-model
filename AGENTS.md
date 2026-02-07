@@ -62,20 +62,18 @@ Agents must respect the distinct roles of the project branches:
 8. **Fair Comparison (Warm-up)**: Fetch 90 days of additional historical data *before* the backtest start date to prime technical indicators and sequence-based models (LSTM).
 9. **Index Management**: Always maintain an automated way to refresh stock symbols from live market lists (e.g., `index_manager.py`).
 10. **Data Preprocessing**: Support both `StandardScaler` and `RobustScaler`. Always validate array shapes before scaling to prevent crashes on "thin data" tickers.
-11. **Performance Optimization**: Use `st.session_state` in the UI to cache results.
-12. **Input Validation**: All ticker inputs MUST be validated against Yahoo Finance API before processing — use `validate_ticker()` function.
+    - **ASX Calendar Compliance**: Use `get_trading_days('ASX', ...)` to exclude weekends and holidays.
+    - **T+2 Settlement Enforcement**: Strictly enforce a 2-trading-day delay for cash clearance after a sale for ASX market. Funds from a Monday sale are available on Wednesday at 10:15 AM.
+    - **Holding Period Units**:
+      - `"Day"` = **TRADING DAYS** (excludes weekends + holidays)
+      - `"Week"/"Month"/"Year"` = **CALENDAR DAYS** (uses `pd.DateOffset()`)
+15. **Performance Optimization**: Use `st.session_state` in the UI to cache results.
+16. **Input Validation**: All ticker inputs MUST be validated against Yahoo Finance API before processing.
 13. **Display Formatting**: Use numeral.js format strings for Streamlit NumberColumn:
     - Currency: `"$0,0.00"` (NOT Python format `"$,.2f"`)
     - Percentage: `"0.00%"` (auto-multiplies by 100, NOT `".2%"`)
     - Integer: `"0"` for whole numbers
 14. **Multi-Channel Notifications**: System supports Telegram, LINE Messaging API, Email, and SMS for alerts and admin authentication. LINE integration is documented and ready for implementation (see `/docs/LINE_MESSAGING_INTEGRATION_GUIDE.md`). FREE tier (500 msg/month) covers typical bot usage.
-
-## 3. Workflow & Automation Rules (Strict)
-
-1. **Manual Commits Only**: NEVER run `git commit` or `git add` unless the user explicitly requests a commit. Do not assume a successful change implies a checkpoint is wanted.
-2. **No Automatic Background Tasks**: NEVER start the dashboard or tests in the background (e.g., `make run &`) automatically after an edit. Wait for the user to request the start.
-3. **Respect Local Environment**: Do not attempt to install system-level libraries (e.g., `brew install`). Stick strictly to `requirements.txt` via the local virtual environment.
-4. **Code-Only Implementation**: Focus on editing the requested files. Do not chain multiple shell operations (like build or run) unless they are part of a verification step requested by the user.
 
 ---
 *Last Updated: 2026-02-06 (Lab-to-Production Workflow Update)*
