@@ -404,15 +404,27 @@ class BacktestEngine:
     def _get_bulk_predictions(
         self, df: pd.DataFrame, features: List[str], model_type: str
     ) -> np.ndarray:
+        # Validate Input Shape
+        if df.empty or len(features) == 0:
+            return np.zeros(len(df), dtype=np.float32)
+
         X_all = df[features].values.astype(np.float32)
-        if (
-            model_type == "lstm"
-            and self.model_builder.model
-            and self.model_builder.scaler
-        ):
+
+        # Guard against single-feature mismatch
+        if X_all.ndim == 1:
+            X_all = X_all.reshape(-1, 1)
+
+        # Ensure model is ready
+        if self.model_builder.model is None:
+            return np.zeros(len(df), dtype=np.float32)
+
+        if model_type == "lstm" and self.model_builder.scaler:
             seq_len = 30
             X_scaled = self.model_builder.scaler.transform(X_all).astype(np.float32)
             valid_indices = np.arange(seq_len, len(df))
+            if len(valid_indices) == 0:
+                return np.zeros(len(df), dtype=np.float32)
+
             X_seq = np.array([X_scaled[i - seq_len : i] for i in valid_indices])
             raw_preds = self.model_builder.model.predict(
                 X_seq, batch_size=64, verbose=0
@@ -420,14 +432,17 @@ class BacktestEngine:
             all_preds = np.full(len(df), raw_preds[0], dtype=np.float32)
             all_preds[seq_len:] = raw_preds
             return all_preds
-        elif model_type == "prophet" and self.model_builder.model:
+
+        elif model_type == "prophet":
             p_df = pd.DataFrame({"ds": df.index}).copy()
             p_df["ds"] = p_df["ds"].dt.tz_localize(None) + pd.DateOffset(days=1)
             return self.model_builder.model.predict(p_df)["yhat"].values.astype(
                 np.float32
             )
-        elif self.model_builder.model and self.model_builder.scaler:
+
+        elif self.model_builder.scaler:
             return self.model_builder.model.predict(
                 self.model_builder.scaler.transform(X_all)
             ).astype(np.float32)
+
         return np.zeros(len(df), dtype=np.float32)

@@ -329,15 +329,36 @@ class ModelBuilder:
         )
 
     def load_or_build(self, ticker: str) -> str:
-        path = os.path.join(
-            self.config.model_path, f"{ticker}_{self.config.model_type}_model.joblib"
+        # Construct absolute path to avoid directory confusion
+        model_filename = os.path.abspath(
+            os.path.join(
+                self.config.model_path,
+                f"{ticker}_{self.config.model_type}_model.joblib",
+            )
         )
-        if self.config.rebuild_model or not os.path.exists(path):
+
+        if self.config.rebuild_model or not os.path.exists(model_filename):
             self.train(ticker)
             return "trained"
-        bundle = joblib.load(path)
-        self.scaler, self.model = bundle["scaler"], bundle["model"]
-        return "loaded"
+
+        try:
+            bundle = joblib.load(model_filename)
+            self.scaler = bundle["scaler"]
+            self.model = bundle["model"]
+
+            # Validation check to ensure scaler is fitted
+            if not hasattr(self.scaler, "mean_") and not hasattr(
+                self.scaler, "center_"
+            ):
+                # If scaler looks unfitted, force retrain
+                self.train(ticker)
+                return "retrained_corrupt"
+
+            return "loaded"
+        except Exception:
+            # If load fails, retrain immediately
+            self.train(ticker)
+            return "retrained_error"
 
     def predict(
         self, current_data: np.ndarray, date: Optional[pd.Timestamp] = None
