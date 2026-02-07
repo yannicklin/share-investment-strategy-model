@@ -24,7 +24,9 @@ def main():
     """Main execution flow for the dashboard."""
     try:
         # st.set_page_config must be the very first Streamlit command
-        st.set_page_config(page_title="ASX AI Trading System", layout="wide")
+        st.set_page_config(
+            page_title="Australian Stock AI Strategy Lab", page_icon="🇦🇺", layout="wide"
+        )
         render_app()
     except Exception as e:
         st.error(f"⚠️ A critical error occurred: {e}")
