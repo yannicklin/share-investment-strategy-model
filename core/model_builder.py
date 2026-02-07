@@ -1,8 +1,9 @@
 """
-ASX AI Trading System - Model Builder
+AI Trading Bot System - Model Builder
 
 Purpose: Factory for creating and training machine learning models with
-standardized interfaces for prediction and backtesting.
+standardized interfaces for prediction and backtesting. Optimized for
+Taiwan market with KD indicator support.
 
 Author: Yannick
 Copyright (c) 2026 Yannick
@@ -191,9 +192,6 @@ class ModelBuilder:
     def is_etf(self, ticker: str) -> bool:
         """Determines if a ticker is an ETF using yfinance info."""
         try:
-            # We don't want to call .info for every run, so we might want a small cache
-            # or just rely on the quoteType if we had it.
-            # For now, a quick fetch is fine as it's only called during rendering once per ticker.
             info = yf.Ticker(ticker).info
             return info.get("quoteType") == "ETF"
         except Exception:
@@ -232,7 +230,7 @@ class ModelBuilder:
         if not tickers:
             return
         end_date = pd.Timestamp.now()
-        start_date = end_date - pd.DateOffset(years=years)
+        start_date = end_date - pd.DateOffset(years=years) - pd.DateOffset(days=90)
         to_fetch = [t for t in tickers if f"{t}_{years}" not in self._data_cache]
         if not to_fetch:
             return
@@ -287,11 +285,20 @@ class ModelBuilder:
         rs = gain / loss
         df["RSI"] = 100 - (100 / (1 + rs))
 
-        exp1 = df["Close"].ewm(span=12, adjust=False).mean()
-        exp2 = df["Close"].ewm(span=26, adjust=False).mean()
-        df["MACD"] = exp1 - exp2
+        # Technical Indicators
+        df["MACD"] = (
+            df["Close"].ewm(span=12, adjust=False).mean()
+            - df["Close"].ewm(span=26, adjust=False).mean()
+        )
         df["Signal_Line"] = df["MACD"].ewm(span=9, adjust=False).mean()
         df["Daily_Return"] = df["Close"].pct_change(fill_method=None)
+
+        # KD (Stochastic Oscillator) - Taiwan favorite
+        low_9 = df["Low"].rolling(window=9).min()
+        high_9 = df["High"].rolling(window=9).max()
+        rsv = (df["Close"] - low_9) / (high_9 - low_9) * 100
+        df["K"] = rsv.ewm(com=2).mean()
+        df["D"] = df["K"].ewm(com=2).mean()
 
         df["Target"] = df["Close"].shift(-1)
         df = df.dropna()
@@ -307,6 +314,8 @@ class ModelBuilder:
             "RSI",
             "MACD",
             "Signal_Line",
+            "K",
+            "D",
             "Daily_Return",
         ]
         X = df[features].values
@@ -332,11 +341,12 @@ class ModelBuilder:
             )
 
         self.scaler = self._init_scaler()
-        X_scaled = self.scaler.fit_transform(X)
+        self.scaler.fit_transform(X)
 
         m_type = self.config.model_type
         if m_type == "lstm":
             try:
+                X_scaled = self.scaler.transform(X)
                 X_seq, y_seq = self._create_sequences(X_scaled, y)
                 self.model = self._init_model(input_dim=X.shape[1])
                 self.model.fit(X_seq, y_seq, batch_size=32, epochs=10, verbose=0)
@@ -353,9 +363,11 @@ class ModelBuilder:
                 self.model = self._init_model()
                 self.model.fit(prophet_df)
             except Exception:
+                X_scaled = self.scaler.transform(X)
                 self.model = self._init_model()
                 self.model.fit(X_scaled, y)
         else:
+            X_scaled = self.scaler.transform(X)
             self.model = self._init_model()
             self.model.fit(X_scaled, y)
 
