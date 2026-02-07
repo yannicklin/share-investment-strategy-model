@@ -24,11 +24,11 @@ class Config:
             "2454.TW",  # MediaTek (聯發科)
             "2308.TW",  # Delta (台達電)
             "2303.TW",  # UMC (聯電)
-            "2881.TW",  # Fubon Financial (富邦金)
             "2882.TW",  # Cathay Financial (國泰金)
             "2412.TW",  # Chunghwa Telecom (中華電)
             "2382.TW",  # Quanta (廣達)
             "3711.TW",  # ASE Technology (日月光)
+            "006208.TW", # 富邦台50 EFT
         ]
     )
     backtest_years: int = 5
