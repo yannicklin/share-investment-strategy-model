@@ -344,9 +344,10 @@ class BacktestEngine:
 
         def signal(i, df_inner, features_inner, current_cap):
             hurdle = self.get_hurdle_rate(current_cap)
-            return (all_preds[i] - float(df_inner.iloc[i]["Close"])) / float(
-                df_inner.iloc[i]["Close"]
-            ) > hurdle
+            current_price = float(df_inner.iloc[i]["Close"])
+            if current_price <= 1e-9:
+                return False
+            return (all_preds[i] - current_price) / current_price > hurdle
 
         result = self._core_run(ticker, signal, df, features)
         if "error" not in result:
