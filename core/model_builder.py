@@ -263,6 +263,9 @@ class ModelBuilder:
             df["Inst_Net_Buy"] = 0
 
         df["Target"] = df["Close"].shift(-1)
+
+        # CLEANUP: Handle Inf values created by division (e.g. RSI gain/loss)
+        df.replace([np.inf, -np.inf], np.nan, inplace=True)
         df = df.dropna()
 
         features = [

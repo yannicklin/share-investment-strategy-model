@@ -120,10 +120,12 @@ class BacktestEngine:
         df["K"] = rsv.ewm(com=2).mean()
         df["D"] = df["K"].ewm(com=2).mean()
 
-        # Institutional Net Buy (FinMind Feature) - Ensure it exists
+        # Institutional Net Buy (FinMind Feature)
         if "Inst_Net_Buy" not in df.columns:
             df["Inst_Net_Buy"] = 0.0
 
+        # CLEANUP: Handle Inf values created by division (e.g. RSI gain/loss)
+        df.replace([np.inf, -np.inf], np.nan, inplace=True)
         return df.dropna()
 
     def _prepare_data(
