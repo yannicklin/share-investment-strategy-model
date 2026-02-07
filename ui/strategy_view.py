@@ -22,12 +22,14 @@ def render_strategy_sensitivity(ticker, ticker_res, models=None, tie_breaker=Non
         if st.session_state["active_builder"].is_etf(ticker):
             etf_label = " 🏷️ (ETF)"
 
-    # Fetch long name
+    # Fetch long name & ETF status
     company_name = ""
+    etf_label = ""
     if "active_builder" in st.session_state:
-        company_name = (
-            f"({st.session_state['active_builder'].get_company_name(ticker)})"
-        )
+        builder = st.session_state["active_builder"]
+        company_name = f"({builder.get_company_name(ticker)})"
+        if builder.is_etf(ticker):
+            etf_label = " 🛡️ [ETF]"
 
     st.header(f"⏳ Time-Span Comparison: {ticker}{company_name}{etf_label}")
 
