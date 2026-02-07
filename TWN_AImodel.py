@@ -166,19 +166,22 @@ def main():
             "👈 Use the sidebar to configure your Taiwan trading strategy and click 'Run Analysis'."
         )
 
+        st.subheader("🇹🇼 Taiwan Market Notes")
         col1, col2 = st.columns(2)
         with col1:
-            st.subheader("🇹🇼 Taiwan Market Rules")
             st.write("- **T+2 Settlement**: Strict cash clearing enforcement.")
-            st.write("- **No Capital Gains Tax**: 0% CGT for individuals.")
-            st.write("- **High Friction (STT)**: 0.3% tax on every sell order.")
-            st.write("- **Circuit Breakers**: Daily price limit of ±10%.")
-
+            st.write(
+                "- **0% Capital Gains Tax**: Currently tax-free for domestic stocks (subject to future regulation changes)."
+            )
+            st.write(
+                "- **DataSource (FinMind)**: Enhanced with Institutional Net Buy features."
+            )
         with col2:
-            st.subheader("🏢 Supported Brokers")
-            st.write("- **Fubon Securities (富邦)**: Python SDK support.")
-            st.write("- **First Securities (第一)**: High reliability.")
-            st.write("- **Standard Online**: 0.1425% default rate.")
+            st.write("- **High Friction (STT)**: 0.3% tax on every sell order.")
+            st.write(
+                "- **Circuit Breakers**: Daily price limit of ±10%. (Execution simulation reflects these gaps)."
+            )
+            st.write("- **Currency**: All figures in TWD (New Taiwan Dollar).")
 
 
 if __name__ == "__main__":

@@ -70,15 +70,17 @@ Taiwan-specific broker profiles:
 ## 4. Market Characteristics & Data
 
 ### 4.1 Data Sources
-- **Yahoo Finance (`yfinance`)**:
+- **FinMind API (Primary)**:
+    - **Enhanced Features**: Includes OHLCV + **Institutional Net Buy (三大法人)**.
+    - **Stability**: Highly reliable for Taiwan market data.
+- **Yahoo Finance (`yfinance`) (Fallback)**:
     - **TWSE Tickers**: `[4-digit].TW` (e.g., `2330.TW`)
     - **TPEx Tickers**: `[4-digit].TWO` (e.g., `6488.TWO`)
-- **Taiwan-Specific Features**: KD (Stochastic), RSI, Institutional Net Buy (if available), Margin Balance.
 
 ### 4.2 Trading Rules
 - **Trading Hours**: 09:00 - 13:30 Taiwan Standard Time (TST).
-- **Price Limits**: Daily movement limited to **±10%**.
-- **Lot Size**: Standard trading unit is **1,000 shares** (Odd lot trading allowed but with lower liquidity).
+- **Price Limits (Ceiling/Floor)**: Daily movement limited to **±10%**. The system respects these limits in execution simulation.
+- **Lot Size**: Standard trading unit is **1,000 shares**.
 
 ---
 

@@ -242,14 +242,22 @@ def render_sidebar(config: Config):
     )
 
     with st.sidebar.expander("Costs & Taxes"):
-        profile_options = ["default", "fubon_twn", "first_twn"]
-        config.cost_profile = st.selectbox(
+        profile_options = {
+            "default": "一般券商 (Default)",
+            "fubon_twn": "富邦證券",
+            "first_twn": "第一證券",
+        }
+        selected_label = st.selectbox(
             "Broker Profile",
-            profile_options,
-            index=profile_options.index(config.cost_profile)
+            list(profile_options.values()),
+            index=list(profile_options.keys()).index(config.cost_profile)
             if config.cost_profile in profile_options
             else 0,
         )
+        # Map label back to profile key
+        config.cost_profile = [
+            k for k, v in profile_options.items() if v == selected_label
+        ][0]
         config.annual_income = st.number_input(
             "Annual Income (NTD)",
             value=float(config.annual_income),

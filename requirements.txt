@@ -1,5 +1,6 @@
 # Core AI and Data
 yfinance
+FinMind
 pandas
 pandas_market_calendars
 numpy

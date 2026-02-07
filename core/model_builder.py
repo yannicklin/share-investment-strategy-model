@@ -1,9 +1,9 @@
 """
-AI Trading Bot System - Model Builder
+Taiwan Stock AI Trading System - Model Builder (FinMind-Centric)
 
-Purpose: Factory for creating and training machine learning models with
-standardized interfaces for prediction and backtesting. Optimized for
-Taiwan market with KD indicator support.
+Purpose: Factory for creating and training machine learning models.
+Uses FinMind as the primary source for Taiwan market data, including
+Institutional Flows and KD indicators.
 
 Author: Yannick
 Copyright (c) 2026 Yannick
@@ -17,14 +17,11 @@ import yfinance as yf
 import time
 import logging
 
-# Suppress heavy logging and warnings from backends
+# Suppress heavy logging
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
-os.environ["STAN_LOG_LEVEL"] = "ERROR"
-os.environ["CMDSTANPY_LOG_LEVEL"] = "ERROR"
-logging.getLogger("cmdstanpy").setLevel(logging.ERROR)
 logging.getLogger("prophet").setLevel(logging.ERROR)
 
-from typing import Optional, Any, Dict, List
+from typing import Optional, Any, Dict, List, Tuple
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.preprocessing import StandardScaler, RobustScaler
 from core.config import Config
@@ -39,47 +36,41 @@ class ModelBuilder:
         self.scaler: Optional[Any] = None
         self.sequence_length = 30
         self._data_cache: Dict[str, pd.DataFrame] = {}
+        self._stock_info_cache: Optional[pd.DataFrame] = None
 
     def _init_scaler(self) -> Any:
-        if self.config.scaler_type == "robust":
-            return RobustScaler()
-        return StandardScaler()
+        return (
+            RobustScaler() if self.config.scaler_type == "robust" else StandardScaler()
+        )
 
     @classmethod
     def get_available_models(cls) -> List[str]:
-        """Returns a list of models that have their dependencies installed."""
         available = ["random_forest", "gradient_boosting"]
-
         try:
             from catboost import CatBoostRegressor
 
             available.append("catboost")
-        except (ImportError, Exception):
+        except ImportError:
             pass
-
         try:
             from prophet import Prophet
 
             available.append("prophet")
-        except (ImportError, Exception):
+        except ImportError:
             pass
-
         try:
             import tensorflow as tf
 
             available.append("lstm")
-        except (ImportError, Exception):
+        except ImportError:
             pass
-
         return available
 
     def _init_model(self, input_dim: int = 0) -> Any:
         m_type = self.config.model_type
-
         if m_type == "catboost":
             from catboost import CatBoostRegressor
 
-            logging.info("Initialized CatBoost model.")
             return CatBoostRegressor(
                 n_estimators=100,
                 learning_rate=0.05,
@@ -88,101 +79,57 @@ class ModelBuilder:
                 thread_count=-1,
                 allow_writing_files=False,
             )
-
         elif m_type == "gradient_boosting":
-            logging.info("Initialized Scikit-Learn Gradient Boosting model.")
             return GradientBoostingRegressor(n_estimators=100, random_state=42)
-
         elif m_type == "prophet":
             from prophet import Prophet
 
-            logging.info("Initialized Prophet model.")
             return Prophet(daily_seasonality=True, yearly_seasonality=True)
-
         elif m_type == "lstm":
             import tensorflow as tf
             from tensorflow.keras.models import Sequential
-            from tensorflow.keras.layers import LSTM, Dense, Dropout, Input
+            from tensorflow.keras.layers import (
+                LSTM,
+                Dense,
+                Dropout,
+                Input,
+                BatchNormalization,
+            )
 
-            logging.info("Initialized LSTM model.")
             model = Sequential(
                 [
                     Input(shape=(self.sequence_length, input_dim)),
-                    LSTM(32, return_sequences=True),
-                    Dropout(0.1),
-                    LSTM(16, return_sequences=False),
-                    Dense(8, activation="relu"),
+                    LSTM(64, return_sequences=True),
+                    BatchNormalization(),
+                    Dropout(0.2),
+                    LSTM(32, return_sequences=False),
+                    Dense(16, activation="relu"),
                     Dense(1),
                 ]
             )
-            model.compile(optimizer="adam", loss="mean_squared_error")
+            model.compile(optimizer="adam", loss="huber")
             return model
-
-        logging.info("Initialized RandomForest model.")
         return RandomForestRegressor(n_estimators=100, random_state=42)
 
-    def _normalize_df(self, df: pd.DataFrame, ticker: str) -> pd.DataFrame:
-        """Forces any yfinance response into a clean, flat TitleCase DataFrame."""
-        if df is None or (isinstance(df, pd.DataFrame) and df.empty):
-            return pd.DataFrame()
-
-        data = df.copy()
-
-        # 1. Handle MultiIndex (Ticker/Price complexity)
-        if isinstance(data.columns, pd.MultiIndex):
-            # Try to extract the specific ticker level
-            for i in range(data.columns.nlevels):
-                if ticker in data.columns.get_level_values(i):
-                    data = data.xs(ticker, axis=1, level=i)
-                    break
-
-            # If still MultiIndex, collapse it
-            if isinstance(data.columns, pd.MultiIndex):
-                data.columns = [
-                    str(c[0]) if isinstance(c, tuple) else str(c) for c in data.columns
-                ]
-
-        # 2. Force Flat String Columns and Clean names
-        data.columns = [str(c).strip() for c in data.columns]
-
-        # 3. Handle 'Ticker.Price' format
-        new_cols = []
-        for c in data.columns:
-            if "." in c and ticker.lower() in c.lower():
-                new_cols.append(c.split(".")[-1])
-            else:
-                new_cols.append(c)
-        data.columns = new_cols
-
-        # 4. Final Standardization Map
-        name_map = {
-            "close": "Close",
-            "adj close": "Close",
-            "open": "Open",
-            "high": "High",
-            "low": "Low",
-            "volume": "Volume",
-        }
-
-        mapping = {}
-        for c in data.columns:
-            low_c = c.lower()
-            if low_c in name_map:
-                mapping[c] = name_map[low_c]
-
-        if mapping:
-            data.rename(columns=mapping, inplace=True)
-
-        # 5. Strict Deduplication & Type Casting
-        data = data.loc[:, ~data.columns.duplicated()]
-        for col in ["Close", "Open", "High", "Low", "Volume"]:
-            if col in data.columns:
-                data[col] = pd.to_numeric(data[col], errors="coerce")
-
-        return data
-
     def get_company_name(self, ticker: str) -> str:
-        """Fetches the long name of the company from yfinance."""
+        """Fetch Chinese name using FinMind primarily."""
+        try:
+            from FinMind.data import DataLoader
+
+            dl = DataLoader()
+            if self._stock_info_cache is None:
+                self._stock_info_cache = dl.taiwan_stock_info()
+
+            stock_id = ticker.split(".")[0]
+            match = self._stock_info_cache[
+                self._stock_info_cache["stock_id"] == stock_id
+            ]
+            if not match.empty:
+                return match.iloc[0]["stock_name"]
+        except Exception:
+            pass
+
+        # Fallback to Yahoo
         try:
             info = yf.Ticker(ticker).info
             return info.get("longName", ticker)
@@ -190,12 +137,11 @@ class ModelBuilder:
             return ticker
 
     def is_etf(self, ticker: str) -> bool:
-        """Determines if a ticker is an ETF using yfinance info."""
-        try:
-            info = yf.Ticker(ticker).info
-            return info.get("quoteType") == "ETF"
-        except Exception:
-            return False
+        stock_id = ticker.split(".")[0]
+        # Taiwan ETFs usually start with 00 or 03
+        if stock_id.startswith("00") or stock_id.startswith("03"):
+            return True
+        return False
 
     def fetch_data(self, ticker: str, years: int) -> pd.DataFrame:
         cache_key = f"{ticker}_{years}"
@@ -203,89 +149,102 @@ class ModelBuilder:
             return self._data_cache[cache_key]
 
         end_date = pd.Timestamp.now()
-        # Add a 60-day warm-up buffer (approx 2 months of trading days)
-        # so that indicators and LSTM sequences are ready on the actual start date.
         start_date = end_date - pd.DateOffset(years=years) - pd.DateOffset(days=90)
 
-        for attempt in range(3):
-            try:
-                data = yf.download(
-                    ticker,
-                    start=start_date,
-                    end=end_date,
-                    auto_adjust=True,
-                    progress=False,
-                    threads=False,
+        # PRIMARY: FinMind
+        try:
+            from FinMind.data import DataLoader
+
+            dl = DataLoader()
+            stock_id = ticker.split(".")[0]
+            df = dl.taiwan_stock_daily(
+                stock_id=stock_id,
+                start_date=start_date.strftime("%Y-%m-%d"),
+                end_date=end_date.strftime("%Y-%m-%d"),
+            )
+            if not df.empty:
+                df = df.rename(
+                    columns={
+                        "open": "Open",
+                        "max": "High",
+                        "min": "Low",
+                        "close": "Close",
+                        "Trading_Volume": "Volume",
+                    }
                 )
-                if not data.empty:
-                    norm = self._normalize_df(data, ticker)
-                    self._data_cache[cache_key] = norm
-                    return norm
-                time.sleep(1)
-            except Exception:
-                pass
+                df["date"] = pd.to_datetime(df["date"])
+                df.set_index("date", inplace=True)
+
+                # Add Institutional Net Buy
+                try:
+                    inst = dl.taiwan_stock_institutional_investors(
+                        stock_id=stock_id,
+                        start_date=start_date.strftime("%Y-%m-%d"),
+                        end_date=end_date.strftime("%Y-%m-%d"),
+                    )
+                    if not inst.empty:
+                        inst["date"] = pd.to_datetime(inst["date"])
+                        # Sum up Buy - Sell for all institutions
+                        inst["net"] = inst["buy"] - inst["sell"]
+                        inst_pivot = inst.pivot_table(
+                            index="date", values="net", aggfunc="sum"
+                        ).fillna(0)
+                        df["Inst_Net_Buy"] = inst_pivot["net"]
+                    else:
+                        df["Inst_Net_Buy"] = 0
+                except Exception:
+                    df["Inst_Net_Buy"] = 0
+
+                df.fillna(0, inplace=True)
+                self._data_cache[cache_key] = df
+                return df
+        except Exception as e:
+            logging.warning(
+                f"FinMind failed for {ticker}: {e}. Falling back to YFinance."
+            )
+
+        # FALLBACK: Yahoo Finance
+        try:
+            data = yf.download(
+                ticker, start=start_date, end=end_date, auto_adjust=True, progress=False
+            )
+            if not data.empty:
+                # Basic normalization
+                df = data.copy()
+                if isinstance(df.columns, pd.MultiIndex):
+                    df.columns = [
+                        c[0] if isinstance(c, tuple) else c for c in df.columns
+                    ]
+                df.rename(
+                    columns={
+                        "Open": "Open",
+                        "High": "High",
+                        "Low": "Low",
+                        "Close": "Close",
+                        "Volume": "Volume",
+                    },
+                    inplace=True,
+                )
+                df["Inst_Net_Buy"] = 0
+                self._data_cache[cache_key] = df
+                return df
+        except Exception:
+            pass
+
         return pd.DataFrame()
 
     def prefetch_data_batch(self, tickers: List[str], years: int):
-        if not tickers:
-            return
-        end_date = pd.Timestamp.now()
-        start_date = end_date - pd.DateOffset(years=years) - pd.DateOffset(days=90)
-        to_fetch = [t for t in tickers if f"{t}_{years}" not in self._data_cache]
-        if not to_fetch:
-            return
-
-        for i in range(0, len(to_fetch), 20):
-            batch = to_fetch[i : i + 20]
-            try:
-                data = yf.download(
-                    batch,
-                    start=start_date,
-                    end=end_date,
-                    auto_adjust=True,
-                    progress=False,
-                    threads=False,
-                    group_by="ticker",
-                )
-                if data.empty:
-                    continue
-                for t in batch:
-                    try:
-                        # Extract ticker data carefully
-                        if len(batch) == 1:
-                            t_df = data
-                        else:
-                            if isinstance(
-                                data.columns, pd.MultiIndex
-                            ) and t in data.columns.get_level_values(0):
-                                t_df = data[t]
-                            else:
-                                t_df = data
-                        norm = self._normalize_df(t_df, t)
-                        if not norm.empty:
-                            self._data_cache[f"{t}_{years}"] = norm
-                    except Exception:
-                        continue
-            except Exception:
-                pass
+        for ticker in tickers:
+            self.fetch_data(ticker, years)
 
     def prepare_features(self, data: pd.DataFrame):
         df = data.copy()
-
-        # Double check Close is a Series
-        if "Close" not in df.columns:
-            raise KeyError(f"Column 'Close' missing. Found: {list(df.columns)}")
-
-        df["MA5"] = df["Close"].rolling(window=5).mean()
-        df["MA20"] = df["Close"].rolling(window=20).mean()
-
+        df["MA5"] = df["Close"].rolling(5).mean()
+        df["MA20"] = df["Close"].rolling(20).mean()
         delta = df["Close"].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        rs = gain / loss
-        df["RSI"] = 100 - (100 / (1 + rs))
-
-        # Technical Indicators
+        gain = (delta.where(delta > 0, 0)).rolling(14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+        df["RSI"] = 100 - (100 / (1 + (gain / loss)))
         df["MACD"] = (
             df["Close"].ewm(span=12, adjust=False).mean()
             - df["Close"].ewm(span=26, adjust=False).mean()
@@ -293,12 +252,15 @@ class ModelBuilder:
         df["Signal_Line"] = df["MACD"].ewm(span=9, adjust=False).mean()
         df["Daily_Return"] = df["Close"].pct_change(fill_method=None)
 
-        # KD (Stochastic Oscillator) - Taiwan favorite
-        low_9 = df["Low"].rolling(window=9).min()
-        high_9 = df["High"].rolling(window=9).max()
-        rsv = (df["Close"] - low_9) / (high_9 - low_9) * 100
+        # KD
+        low_9 = df["Low"].rolling(9).min()
+        high_9 = df["High"].rolling(9).max()
+        rsv = (df["Close"] - low_9) / (high_9 - low_9 + 1e-9) * 100
         df["K"] = rsv.ewm(com=2).mean()
         df["D"] = df["K"].ewm(com=2).mean()
+
+        if "Inst_Net_Buy" not in df.columns:
+            df["Inst_Net_Buy"] = 0
 
         df["Target"] = df["Close"].shift(-1)
         df = df.dropna()
@@ -316,11 +278,10 @@ class ModelBuilder:
             "Signal_Line",
             "K",
             "D",
+            "Inst_Net_Buy",
             "Daily_Return",
         ]
-        X = df[features].values
-        y = df["Target"].values
-        return X, y
+        return df[features].values, df["Target"].values
 
     def _create_sequences(self, data_scaled, target):
         X_seq, y_seq = [], []
@@ -333,90 +294,50 @@ class ModelBuilder:
         data = self.fetch_data(ticker, self.config.backtest_years)
         if data.empty:
             raise ValueError(f"No data for {ticker}")
-
         X, y = self.prepare_features(data)
-        if len(X) < 1:
-            raise ValueError(
-                f"Insufficient data rows for {ticker} after feature engineering."
-            )
-
         self.scaler = self._init_scaler()
-        self.scaler.fit_transform(X)
+        X_scaled = self.scaler.fit_transform(X)
 
         m_type = self.config.model_type
         if m_type == "lstm":
             try:
-                X_scaled = self.scaler.transform(X)
                 X_seq, y_seq = self._create_sequences(X_scaled, y)
                 self.model = self._init_model(input_dim=X.shape[1])
-                self.model.fit(X_seq, y_seq, batch_size=32, epochs=10, verbose=0)
+                self.model.fit(X_seq, y_seq, batch_size=32, epochs=50, verbose=0)
             except Exception:
                 self.model = self._init_model()
                 self.model.fit(X_scaled, y)
         elif m_type == "prophet":
             try:
-                prophet_df = pd.DataFrame(
+                p_df = pd.DataFrame(
                     {"ds": data.index, "y": data["Close"].values.flatten()}
                 )
-                prophet_df["ds"] = pd.to_datetime(prophet_df["ds"]).dt.tz_localize(None)
-                prophet_df = prophet_df.dropna()
+                p_df["ds"] = pd.to_datetime(p_df["ds"]).dt.tz_localize(None)
                 self.model = self._init_model()
-                self.model.fit(prophet_df)
+                self.model.fit(p_df.dropna())
             except Exception:
-                X_scaled = self.scaler.transform(X)
                 self.model = self._init_model()
                 self.model.fit(X_scaled, y)
         else:
-            X_scaled = self.scaler.transform(X)
             self.model = self._init_model()
             self.model.fit(X_scaled, y)
 
         os.makedirs(self.config.model_path, exist_ok=True)
-        model_filename = os.path.join(
-            self.config.model_path, f"{ticker}_{m_type}_model.joblib"
+        joblib.dump(
+            {"model": self.model, "scaler": self.scaler},
+            os.path.join(self.config.model_path, f"{ticker}_{m_type}_model.joblib"),
         )
-        if m_type == "lstm" and hasattr(self.model, "save"):
-            keras_path = model_filename.replace(".joblib", ".keras")
-            self.model.save(keras_path)
-            joblib.dump(
-                {
-                    "scaler": self.scaler,
-                    "keras_path": keras_path,
-                    "model_class": self.model.__class__.__name__,
-                },
-                model_filename,
-            )
-        else:
-            joblib.dump(
-                {
-                    "model": self.model,
-                    "scaler": self.scaler,
-                    "model_class": self.model.__class__.__name__,
-                },
-                model_filename,
-            )
 
     def load_or_build(self, ticker: str) -> str:
-        model_filename = os.path.join(
+        path = os.path.join(
             self.config.model_path, f"{ticker}_{self.config.model_type}_model.joblib"
         )
-        if self.config.rebuild_model or not os.path.exists(model_filename):
+        if self.config.rebuild_model or not os.path.exists(path):
             self.train(ticker)
             return "trained"
-        else:
-            data_bundle = joblib.load(model_filename)
-            self.scaler = data_bundle["scaler"]
-            if "keras_path" in data_bundle or "lstm_h5" in data_bundle:
-                try:
-                    from tensorflow.keras.models import load_model
-
-                    path = data_bundle.get("keras_path") or data_bundle.get("lstm_h5")
-                    self.model = load_model(path)
-                except Exception:
-                    self.model = data_bundle.get("model")
-            else:
-                self.model = data_bundle.get("model")
-            return "loaded"
+        bundle = joblib.load(path)
+        self.scaler, self.model = bundle["scaler"], bundle["model"]
+        return "loaded"
 
     def predict(
         self, current_data: np.ndarray, date: Optional[pd.Timestamp] = None
@@ -424,33 +345,18 @@ class ModelBuilder:
         if self.model is None:
             raise ValueError("Model not loaded.")
         m_type = self.config.model_type
-        if m_type == "prophet" and hasattr(self.model, "predict"):
+        if m_type == "prophet":
             future = pd.DataFrame(
                 {"ds": [(date + pd.DateOffset(days=1)).tz_localize(None)]}
             )
             return float(self.model.predict(future)["yhat"].iloc[0])
-        if m_type == "lstm" and hasattr(self.model, "predict"):
-            if len(current_data.shape) == 2:
-                X = self.scaler.transform(current_data)
-                return float(
-                    self.model.predict(
-                        X.reshape(1, self.sequence_length, -1), verbose=0
-                    )[0][0]
-                )
-            return 0.0
-        X_input = (
-            current_data[-1].reshape(1, -1)
-            if len(current_data.shape) == 2
-            else current_data.reshape(1, -1)
-        )
+        if m_type == "lstm":
+            X = self.scaler.transform(current_data)
+            return float(
+                self.model.predict(X.reshape(1, self.sequence_length, -1), verbose=0)[
+                    0
+                ][0]
+            )
+        X_input = current_data[-1].reshape(1, -1)
         X_scaled = self.scaler.transform(X_input)
         return float(self.model.predict(X_scaled)[0])
-
-    def get_latest_features(self, ticker: str) -> Optional[np.ndarray]:
-        data = self.fetch_data(ticker, 1)
-        if data.empty:
-            return None
-        X, y = self.prepare_features(data)
-        if len(X) < self.sequence_length:
-            return None
-        return X[-self.sequence_length :]

@@ -25,6 +25,12 @@ This is a Python-based research infrastructure designed for the cold, clinical a
 
 
 
+6. **Taiwan Market Mandate**:
+    - **T+2 Settlement**: Strictly enforce a 2-trading-day delay for cash clearance after a sale for Taiwan market.
+    - **Institutional Data**: Prioritize FinMind data for Institutional Flows (三大法人) and KD indicators.
+    - **Price Limits**: Respect the ±10% daily ceiling/floor in all execution simulations.
+    - **Fee Realism**: Use localized profiles (Fubon, First) with realistic online trading discounts.
+
 ...
 
 ---

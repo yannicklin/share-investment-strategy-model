@@ -2,7 +2,7 @@
 Taiwan Stock AI Trading System - Backtesting Engine
 
 Purpose: Simulates trading strategies on historical Taiwan market data with realistic
-constraints (fees, STT, price gaps, T+2 settlement).
+constraints (fees, STT, price gaps, T+2 settlement, ±10% limits).
 
 Author: Yannick
 Copyright (c) 2026 Yannick
@@ -36,92 +36,90 @@ class BacktestEngine:
     def calculate_fees(self, trade_value: float, is_sell: bool = False) -> float:
         """
         Taiwan Fee Structure:
-        - Brokerage: 0.1425% (buy & sell)
-        - STT: 0.3% (sell side only)
+        - Brokerage: 0.1425% (standard online discount applied per profile)
+        - STT: 0.3% (sell side only, grouped with fees per user preference)
         - Minimum Brokerage: NT$20
         """
         # 1. Brokerage Fee
         broker_rate = self.config.brokerage_rate
         if self.config.cost_profile == "fubon_twn":
-            broker_rate = 0.0006  # Example discounted rate (60% off) for Fubon
+            broker_rate = 0.001425 * 0.4  # Conservative 0.057%
         elif self.config.cost_profile == "first_twn":
-            broker_rate = 0.001425  # Standard for First Securities
+            broker_rate = 0.001425 * 0.6  # Conservative 0.0855%
 
         brokerage = max(20.0, trade_value * broker_rate)
 
         # 2. Securities Transaction Tax (Sell-side only)
-        stt = 0.0
-        if is_sell:
-            stt = trade_value * 0.003
-
+        stt = trade_value * 0.003 if is_sell else 0.0
         return brokerage + stt
 
-    def calculate_ato_tax(self, income: float) -> float:
-        """Taiwan has NO capital gains tax for individuals."""
-        return 0.0
+    def calculate_income_tax(self, income: float) -> float:
+        """
+        Taiwan Individual Income Tax (2024 Brackets).
+
+        Note: Domestic stock capital gains are technically 0%, but we implement
+        the logic for hurdle-aware income context as requested.
+        """
+        if income <= 560000:
+            return income * 0.05
+        if income <= 1260000:
+            return income * 0.12 - 39200
+        if income <= 2520000:
+            return income * 0.20 - 140000
+        if income <= 4720000:
+            return income * 0.30 - 392000
+        return income * 0.40 - 864000
 
     def get_marginal_tax_rate(self, income: float) -> float:
-        """Taiwan has NO capital gains tax for individuals."""
-        return 0.0
+        """Determines the marginal tax rate based on 2024 Taiwan brackets."""
+        if income <= 560000:
+            return 0.05
+        if income <= 1260000:
+            return 0.12
+        if income <= 2520000:
+            return 0.20
+        if income <= 4720000:
+            return 0.30
+        return 0.40
 
     def get_hurdle_rate(self, current_capital: float) -> float:
         """Calculates the minimum return % required to break even in Taiwan."""
         if current_capital <= 0:
             return 0.0
 
-        # 1. Transactional Friction (Fees)
-        # Round-trip: Buy (0.1425%) + Sell (0.1425% + 0.3% STT) = ~0.585%
+        # 1. Transactional Friction (Grouped Brokerage + STT)
         entry_fee = self.calculate_fees(current_capital, is_sell=False)
         exit_fee = self.calculate_fees(current_capital, is_sell=True)
         fees_pct = (entry_fee + exit_fee) / current_capital
 
+        # 2. Risk Buffer (No Income Tax gross-up for Taiwan domestic stocks)
+        # As per current regulation, CGT is 0%, so we do not apply the tax multiplier.
+        # This keeps the hurdle rate focused on fees + pure risk buffer.
         return fees_pct + self.config.hurdle_risk_buffer
 
     def _get_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
         if data is None or data.empty:
             return pd.DataFrame()
-
         df = data.copy()
-        standard_cols = ["Close", "Open", "High", "Low", "Volume"]
 
-        for col in ["Close", "Open", "High", "Low"]:
-            if col not in df.columns:
-                found = False
-                for c in df.columns:
-                    if col.lower() in str(c).lower():
-                        df.rename(columns={c: col}, inplace=True)
-                        found = True
-                        break
-                if not found:
-                    raise KeyError(f"CRITICAL: Column '{col}' not found.")
-
-        for col in standard_cols:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors="coerce")
-
-        df = df.dropna(subset=["Close", "Open", "High", "Low"])
-
-        # Technical Indicators
-        df["MACD"] = df["Close"].ewm(span=12).mean() - df["Close"].ewm(span=26).mean()
-        df["Signal_Line"] = df["MACD"].ewm(span=9).mean()
-
+        # Standard indicators
+        df["MA5"] = df["Close"].rolling(5).mean()
+        df["MA20"] = df["Close"].rolling(20).mean()
         delta = df["Close"].diff()
         gain = (delta.where(delta > 0, 0)).rolling(14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-        df["RSI"] = 100 - (100 / (1 + (gain / loss)))
+        df["RSI"] = 100 - (100 / (1 + (gain / (loss + 1e-9) + 1e-9)))
+        df["MACD"] = df["Close"].ewm(span=12).mean() - df["Close"].ewm(span=26).mean()
+        df["Signal_Line"] = df["MACD"].ewm(span=9).mean()
+        df["Daily_Return"] = df["Close"].pct_change(fill_method=None)
 
-        # KD (Stochastic Oscillator) - Extremely popular in Taiwan
-        low_9 = df["Low"].rolling(window=9).min()
-        high_9 = df["High"].rolling(window=9).max()
-        rsv = (df["Close"] - low_9) / (high_9 - low_9) * 100
+        # KD
+        low_9 = df["Low"].rolling(9).min()
+        high_9 = df["High"].rolling(9).max()
+        rsv = (df["Close"] - low_9) / (high_9 - low_9 + 1e-9) * 100
         df["K"] = rsv.ewm(com=2).mean()
         df["D"] = df["K"].ewm(com=2).mean()
 
-        df["MA5"], df["MA20"] = (
-            df["Close"].rolling(5).mean(),
-            df["Close"].rolling(20).mean(),
-        )
-        df["Daily_Return"] = df["Close"].pct_change(fill_method=None)
         return df.dropna()
 
     def _prepare_data(
@@ -130,7 +128,6 @@ class BacktestEngine:
         raw_data = self.model_builder.fetch_data(ticker, self.config.backtest_years)
         if raw_data.empty:
             return None, None, {"error": f"No data for {ticker}"}
-
         df = self._get_indicators(raw_data)
         if df.empty:
             return None, None, {"error": f"Insufficient data for {ticker}"}
@@ -139,13 +136,8 @@ class BacktestEngine:
             years=self.config.backtest_years
         )
         official_end = pd.Timestamp(df.index[-1])
-
-        # Using ASX calendar as proxy (need to update utils.py for TWN)
         self.trading_days = get_asx_trading_days(official_start, official_end)
-
         df = df[df.index.isin(self.trading_days)]
-        if df.empty:
-            return None, None, {"error": f"No valid trading days for {ticker}"}
 
         features = [
             "Open",
@@ -160,9 +152,9 @@ class BacktestEngine:
             "Signal_Line",
             "K",
             "D",
+            "Inst_Net_Buy",
             "Daily_Return",
         ]
-
         return df, features, None
 
     def _core_run(
@@ -175,11 +167,12 @@ class BacktestEngine:
         capital = self.config.init_capital
         position, buy_price, buy_date, buy_fees = 0.0, 0.0, None, 0.0
         trades = []
-        settlement_queue = []  # List of (available_date, amount)
+        settlement_queue = []
 
         for i in range(len(df) - 1):
             date = pd.Timestamp(df.index[i])
             current_price = float(df.iloc[i]["Close"])
+            prev_close = float(df.iloc[i - 1]["Close"]) if i > 0 else current_price
 
             # Process Settlement Queue: T+2
             new_settlement_queue = []
@@ -190,10 +183,10 @@ class BacktestEngine:
                     new_settlement_queue.append((avail_date, amount))
             settlement_queue = new_settlement_queue
 
-            # Portfolio validation
             if position == 0:
-                validation = validate_buy_capacity(capital, {ticker: current_price})
-                if not validation["can_trade"]:
+                if not validate_buy_capacity(capital, {ticker: current_price})[
+                    "can_trade"
+                ]:
                     continue
 
             is_bullish = signal_func(
@@ -203,48 +196,55 @@ class BacktestEngine:
                 capital if position == 0 else (position * current_price),
             )
 
-            if position == 0 and is_bullish:
-                fees = self.calculate_fees(capital, is_sell=False)
-                new_position = (capital - fees) / current_price
+            # Execution Logic with ±10% Price Limits
+            limit_up = prev_close * 1.10
+            limit_down = prev_close * 0.90
 
-                positions_before = {}
-                positions_after = {ticker: new_position}
+            if position == 0 and is_bullish:
+                exec_price = min(current_price, limit_up)
+                fees = self.calculate_fees(capital, is_sell=False)
+                new_position = (capital - fees) / exec_price
 
                 self.ledger.add_entry(
                     date=date,
                     ticker=ticker,
                     action="BUY",
                     quantity=new_position,
-                    price=current_price,
+                    price=exec_price,
                     commission=fees,
+                    tax=0.0,
                     cash_before=capital,
                     cash_after=0.0,
-                    positions_before=positions_before,
-                    positions_after=positions_after,
-                    notes="Initial purchase",
+                    positions_before={},
+                    positions_after={ticker: new_position},
+                    notes=f"Initial purchase. {'(Cap @ 10%)' if current_price > limit_up else ''}",
+                )
+                position, buy_price, buy_date, buy_fees, capital = (
+                    new_position,
+                    exec_price,
+                    date,
+                    fees,
+                    0,
                 )
 
-                position = new_position
-                buy_price, buy_date, buy_fees = current_price, date, fees
-                capital = 0
-
             elif position > 0:
-                # Holding Period Logic
                 min_hold_passed = False
                 if buy_date is not None and self.trading_days is not None:
                     if self.config.hold_period_unit.lower() == "day":
                         target_date = calculate_trading_days_ahead(
                             buy_date, self.config.hold_period_value, self.trading_days
                         )
-                        if target_date is not None:
-                            min_hold_passed = date >= target_date
+                        min_hold_passed = date >= target_date if target_date else False
                     else:
-                        unit_map = {"week": "weeks", "month": "months", "year": "years"}
-                        unit = unit_map.get(
-                            self.config.hold_period_unit.lower(), "months"
+                        unit = {
+                            "week": "weeks",
+                            "month": "months",
+                            "year": "years",
+                        }.get(self.config.hold_period_unit.lower(), "months")
+                        min_hold_passed = date >= (
+                            buy_date
+                            + pd.DateOffset(**{unit: self.config.hold_period_value})
                         )
-                        offset = {unit: self.config.hold_period_value}
-                        min_hold_passed = date >= (buy_date + pd.DateOffset(**offset))
 
                 low_p, high_p = float(df.iloc[i]["Low"]), float(df.iloc[i]["High"])
                 sl_p, tp_p = (
@@ -256,39 +256,33 @@ class BacktestEngine:
                 if low_p <= sl_p:
                     reason, sell_price = (
                         "stop-loss",
-                        min(sl_p, float(df.iloc[i]["Open"])),
+                        max(limit_down, min(sl_p, float(df.iloc[i]["Open"]))),
                     )
                 elif min_hold_passed:
                     if high_p >= tp_p:
                         reason, sell_price = (
                             "take-profit",
-                            max(tp_p, float(df.iloc[i]["Open"])),
+                            min(limit_up, max(tp_p, float(df.iloc[i]["Open"]))),
                         )
                     elif not is_bullish:
-                        reason, sell_price = "model-exit", current_price
+                        reason, sell_price = (
+                            "model-exit",
+                            max(limit_down, min(current_price, limit_up)),
+                        )
 
                 if reason and buy_date is not None:
                     val = position * sell_price
-                    s_fees = self.calculate_fees(val, is_sell=True)
-                    tax = 0.0
-                    new_capital = val - s_fees - tax
+                    total_friction = self.calculate_fees(val, is_sell=True)
+                    new_capital = val - total_friction
 
-                    # T+2 Settlement Delay
-                    settlement_date = None
-                    if self.trading_days is not None:
-                        settlement_date = calculate_trading_days_ahead(
-                            date, 2, self.trading_days
-                        )
-                        if settlement_date is None:
-                            settlement_date = date + pd.DateOffset(days=1)
-                        settlement_queue.append((settlement_date, new_capital))
-                    else:
-                        settlement_queue.append(
-                            (date + pd.DateOffset(days=2), new_capital)
-                        )
-
-                    positions_before = {ticker: position}
-                    positions_after = {}
+                    settlement_date = (
+                        calculate_trading_days_ahead(date, 2, self.trading_days)
+                        if self.trading_days is not None
+                        else (date + pd.DateOffset(days=2))
+                    )
+                    if settlement_date is None:
+                        settlement_date = date + pd.DateOffset(days=1)
+                    settlement_queue.append((settlement_date, new_capital))
 
                     self.ledger.add_entry(
                         date=date,
@@ -296,12 +290,13 @@ class BacktestEngine:
                         action="SELL",
                         quantity=position,
                         price=sell_price,
-                        commission=s_fees,
+                        commission=total_friction,
+                        tax=0.0,
                         cash_before=0.0,
                         cash_after=new_capital,
-                        positions_before=positions_before,
-                        positions_after=positions_after,
-                        notes=f"{reason} triggered. Funds available {settlement_date.strftime('%Y-%m-%d') if hasattr(settlement_date, 'strftime') else settlement_date}",
+                        positions_before={ticker: position},
+                        positions_after={},
+                        notes=f"{reason} triggered. Funds available {settlement_date.strftime('%Y-%m-%d')}. {'(Floor @ -10%)' if sell_price == limit_down else ''}",
                     )
 
                     trades.append(
@@ -316,8 +311,8 @@ class BacktestEngine:
                             "reason": reason,
                             "buy_price": buy_price,
                             "sell_price": sell_price,
-                            "fees": buy_fees + s_fees,
-                            "tax": tax,
+                            "fees": buy_fees + total_friction,
+                            "tax": 0.0,
                         }
                     )
                     position = 0
@@ -327,17 +322,12 @@ class BacktestEngine:
         )
         for _, amount in settlement_queue:
             final_cap += amount
-
-        win_rate = (
-            sum(1 for t in trades if t["profit_pct"] > 0) / len(trades)
-            if trades
-            else 0.0
-        )
-
         return {
             "roi": (final_cap - self.config.init_capital) / self.config.init_capital,
             "final_capital": final_cap,
-            "win_rate": win_rate,
+            "win_rate": sum(1 for t in trades if t["profit_pct"] > 0) / len(trades)
+            if trades
+            else 0.0,
             "total_trades": len(trades),
             "trades": trades,
         }
@@ -349,21 +339,20 @@ class BacktestEngine:
         df_tuple = self._prepare_data(ticker)
         df, features, error = df_tuple
         if error or df is None or features is None:
-            return error if error else {"error": "Failed to prepare data"}
+            return error or {"error": "Failed to prepare data"}
         all_preds = self._get_bulk_predictions(df, features, model_type)
 
         def signal(i, df_inner, features_inner, current_cap):
-            current_price = float(df_inner.iloc[i]["Close"])
             hurdle = self.get_hurdle_rate(current_cap)
-            pred = all_preds[i]
-            pred_return = (pred - current_price) / current_price
-            return pred_return > hurdle
+            return (all_preds[i] - float(df_inner.iloc[i]["Close"])) / float(
+                df_inner.iloc[i]["Close"]
+            ) > hurdle
 
         result = self._core_run(ticker, signal, df, features)
         if "error" not in result:
-            ledger_filename = f"{ticker}_{model_type}_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
-            ledger_path = self.ledger.save_to_file(filename=ledger_filename)
-            result["ledger_path"] = ledger_path
+            result["ledger_path"] = self.ledger.save_to_file(
+                filename=f"{ticker}_{model_type}_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
+            )
         return result
 
     def run_strategy_mode(
@@ -373,37 +362,33 @@ class BacktestEngine:
         df_tuple = self._prepare_data(ticker)
         df, features, error = df_tuple
         if error or df is None or features is None:
-            return error if error else {"error": "Failed to prepare data"}
-        committee_preds = {}
-        for m_type in models:
-            self.config.model_type = m_type
-            self.model_builder.load_or_build(ticker)
-            committee_preds[m_type] = self._get_bulk_predictions(df, features, m_type)
+            return error or {"error": "Failed to prepare data"}
+        committee_preds = {
+            m: self._get_bulk_predictions(df, features, m) for m in models
+        }
 
         def signal(i, df_inner, features_inner, current_cap):
-            votes = 0
+            votes, hurdle = 0, self.get_hurdle_rate(current_cap)
             current_price = float(df_inner.iloc[i]["Close"])
-            hurdle = self.get_hurdle_rate(current_cap)
-            tb_model = tie_breaker if tie_breaker else models[0]
-            tie_breaker_bullish = False
-            for m_type in models:
-                pred = committee_preds[m_type][i]
-                is_m_bullish = (pred - current_price) / current_price > hurdle
-                if is_m_bullish:
+            tb_model = tie_breaker or models[0]
+            tb_bullish = False
+            for m in models:
+                bullish = (
+                    committee_preds[m][i] - current_price
+                ) / current_price > hurdle
+                if bullish:
                     votes += 1
-                if m_type == tb_model:
-                    tie_breaker_bullish = is_m_bullish
-            if votes > (len(models) / 2):
-                return True
-            if votes == (len(models) / 2):
-                return tie_breaker_bullish
-            return False
+                if m == tb_model:
+                    tb_bullish = bullish
+            return votes > (len(models) / 2) or (
+                votes == len(models) / 2 and tb_bullish
+            )
 
         result = self._core_run(ticker, signal, df, features)
         if "error" not in result:
-            ledger_filename = f"{ticker}_consensus_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
-            ledger_path = self.ledger.save_to_file(filename=ledger_filename)
-            result["ledger_path"] = ledger_path
+            result["ledger_path"] = self.ledger.save_to_file(
+                filename=f"{ticker}_consensus_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
+            )
         return result
 
     def _get_bulk_predictions(
@@ -412,8 +397,8 @@ class BacktestEngine:
         X_all = df[features].values.astype(np.float32)
         if (
             model_type == "lstm"
-            and self.model_builder.model is not None
-            and self.model_builder.scaler is not None
+            and self.model_builder.model
+            and self.model_builder.scaler
         ):
             seq_len = 30
             X_scaled = self.model_builder.scaler.transform(X_all).astype(np.float32)
@@ -422,20 +407,17 @@ class BacktestEngine:
             raw_preds = self.model_builder.model.predict(
                 X_seq, batch_size=64, verbose=0
             ).flatten()
-            all_preds = np.zeros(len(df), dtype=np.float32)
+            all_preds = np.full(len(df), raw_preds[0], dtype=np.float32)
             all_preds[seq_len:] = raw_preds
             return all_preds
-        elif model_type == "prophet" and self.model_builder.model is not None:
-            prophet_df = pd.DataFrame({"ds": df.index}).copy()
-            prophet_df["ds"] = prophet_df["ds"].dt.tz_localize(None) + pd.DateOffset(
-                days=1
+        elif model_type == "prophet" and self.model_builder.model:
+            p_df = pd.DataFrame({"ds": df.index}).copy()
+            p_df["ds"] = p_df["ds"].dt.tz_localize(None) + pd.DateOffset(days=1)
+            return self.model_builder.model.predict(p_df)["yhat"].values.astype(
+                np.float32
             )
-            forecast = self.model_builder.model.predict(prophet_df)
-            return forecast["yhat"].values.astype(np.float32)
-        elif (
-            self.model_builder.model is not None
-            and self.model_builder.scaler is not None
-        ):
-            X_scaled = self.model_builder.scaler.transform(X_all).astype(np.float32)
-            return self.model_builder.model.predict(X_scaled).astype(np.float32)
+        elif self.model_builder.model and self.model_builder.scaler:
+            return self.model_builder.model.predict(
+                self.model_builder.scaler.transform(X_all)
+            ).astype(np.float32)
         return np.zeros(len(df), dtype=np.float32)
