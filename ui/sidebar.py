@@ -177,10 +177,13 @@ def render_sidebar(config: Config):
     )
 
     with st.sidebar.expander("Costs & Taxes"):
+        profile_options = ["default", "cmc_markets", "tiger_au"]
         config.cost_profile = st.selectbox(
             "Broker Profile",
-            ["default", "cmc_markets"],
-            index=0 if config.cost_profile == "default" else 1,
+            profile_options,
+            index=profile_options.index(config.cost_profile)
+            if config.cost_profile in profile_options
+            else 0,
         )
         config.annual_income = st.number_input(
             "Annual Income (for Tax)",

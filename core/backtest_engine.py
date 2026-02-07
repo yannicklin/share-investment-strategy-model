@@ -2,7 +2,7 @@
 ASX AI Trading System - Backtesting Engine
 
 Purpose: Simulates trading strategies on historical data with realistic
-constraints (fees, taxes, price gaps, T+1 settlement).
+constraints (fees, taxes, price gaps, T+2 settlement).
 
 Author: Yannick
 Copyright (c) 2026 Yannick
@@ -36,6 +36,9 @@ class BacktestEngine:
     def calculate_fees(self, trade_value: float) -> float:
         if self.config.cost_profile == "cmc_markets":
             return max(11.0, trade_value * 0.0010)
+        if self.config.cost_profile == "tiger_au":
+            # Tiger AU: 0.025% commission (min $2.50) + 0.015% platform fee (min $1.50)
+            return max(4.0, trade_value * 0.0004)
         return (
             (trade_value * self.config.brokerage_rate)
             + (trade_value * self.config.clearing_rate)
@@ -138,7 +141,7 @@ class BacktestEngine:
 
     def _prepare_data(self, ticker: str) -> tuple:
         """Prepare and filter dataframe for backtesting.
-        
+
         Returns:
             (df, features, error_dict) - If error, df will be None
         """
@@ -177,7 +180,7 @@ class BacktestEngine:
             "Signal_Line",
             "Daily_Return",
         ]
-        
+
         return df, features, None
 
     def _core_run(
@@ -188,7 +191,7 @@ class BacktestEngine:
         features: List[str],
     ) -> Dict[str, Any]:
         """The shared engine logic for both modes.
-        
+
         Args:
             ticker: Stock symbol
             signal_func: Function(i, df, features, capital) -> bool
@@ -200,12 +203,23 @@ class BacktestEngine:
         position, buy_price, buy_date, buy_fees = 0.0, 0.0, None, 0.0
         trades = []
         positions_dict = {}  # Track positions for ledger
+        settlement_queue = []  # List of (available_date, amount)
 
         for i in range(len(df) - 1):
             date, current_price = df.index[i], float(df.iloc[i]["Close"])
 
+            # Process Settlement Queue: Check if any cash has cleared today
+            new_settlement_queue = []
+            for avail_date, amount in settlement_queue:
+                if date >= avail_date:
+                    capital += amount
+                else:
+                    new_settlement_queue.append((avail_date, amount))
+            settlement_queue = new_settlement_queue
+
             # Portfolio validation before signal generation (for BUY signals only)
             if position == 0:
+                # Signal engine needs to know current available capital
                 validation = validate_buy_capacity(capital, {ticker: current_price})
                 if not validation["can_trade"]:
                     # Skip signal generation if insufficient cash
@@ -305,6 +319,22 @@ class BacktestEngine:
                         ) - self.calculate_ato_tax(self.config.annual_income)
                     new_capital = val - s_fees - tax
 
+                    # STRICT REALISM: T+2 Settlement Delay
+                    # Cash from sale is not available until 2 trading days later
+                    settlement_date = None
+                    if self.trading_days is not None:
+                        settlement_date = calculate_trading_days_ahead(
+                            date, 2, self.trading_days
+                        )
+                        if settlement_date is None:
+                            # Fallback if at the end of data: available tomorrow
+                            settlement_date = date + pd.DateOffset(days=1)
+                        settlement_queue.append((settlement_date, new_capital))
+                    else:
+                        # Fallback if calendar is missing
+                        settlement_date = date + pd.DateOffset(days=2)
+                        settlement_queue.append((settlement_date, new_capital))
+
                     positions_before = {ticker: position}
                     positions_after = {}
 
@@ -320,14 +350,16 @@ class BacktestEngine:
                         cash_after=new_capital,
                         positions_before=positions_before,
                         positions_after=positions_after,
-                        notes=f"{reason} triggered",
+                        notes=f"{reason} triggered. Funds available {settlement_date.strftime('%Y-%m-%d') if hasattr(settlement_date, 'strftime') else settlement_date}",
                     )
 
                     trades.append(
                         {
                             "buy_date": buy_date,
                             "sell_date": date,
-                            "profit_pct": (new_capital - (position * buy_price + buy_fees))
+                            "profit_pct": (
+                                new_capital - (position * buy_price + buy_fees)
+                            )
                             / (position * buy_price + buy_fees),
                             "cumulative_capital": new_capital,
                             "reason": reason,
@@ -337,7 +369,7 @@ class BacktestEngine:
                             "tax": tax,
                         }
                     )
-                    capital = new_capital
+                    # capital = new_capital (REMOVED - now handled by settlement queue)
                     position = 0
                     positions_dict = {}
 
@@ -361,7 +393,7 @@ class BacktestEngine:
         """Mode 1: Evaluate a single specific model."""
         # Clear ledger from previous run (no archiving)
         self.ledger.clear()
-        
+
         self.config.model_type = model_type
         self.model_builder.load_or_build(ticker)  # Load once
 
@@ -381,13 +413,13 @@ class BacktestEngine:
             return pred_return > hurdle
 
         result = self._core_run(ticker, signal, df, features)
-        
+
         # Save ledger to file and clear from memory
         if "error" not in result:
             ledger_filename = f"{ticker}_{model_type}_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
             ledger_path = self.ledger.save_to_file(filename=ledger_filename)
             result["ledger_path"] = ledger_path
-        
+
         return result
 
     def run_strategy_mode(
@@ -396,7 +428,7 @@ class BacktestEngine:
         """Mode 2: Evaluate strategy sensitivity using multi-model consensus."""
         # Clear ledger from previous run (no archiving)
         self.ledger.clear()
-        
+
         # Prepare filtered data (trading days only)
         df, features, error = self._prepare_data(ticker)
         if error:
@@ -433,13 +465,13 @@ class BacktestEngine:
             return False
 
         result = self._core_run(ticker, signal, df, features)
-        
+
         # Save ledger to file and clear from memory
         if "error" not in result:
             ledger_filename = f"{ticker}_consensus_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
             ledger_path = self.ledger.save_to_file(filename=ledger_filename)
             result["ledger_path"] = ledger_path
-        
+
         return result
 
     def _get_bulk_predictions(

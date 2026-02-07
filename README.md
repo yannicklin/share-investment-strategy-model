@@ -10,7 +10,7 @@ A Python-based automated trading strategy system designed specifically for the *
     -   **LSTM (Deep Learning / Sequential Memory)**
 -   **Realistic Backtesting Engine**:
     -   **Tax-Aware Dynamic Hurdle Rate**: AI signals are filtered through a "break-even + buffer" check that accounts for fees, market slippage, and your personal ATO tax bracket.
-    -   **Fee Profiles**: Supports `Default` (Percentage-based + Clearing) and **`CMC Markets`** ($11 min or 0.10%) structures.
+    -   **Fee Profiles**: Supports `Default`, **`CMC Markets`** ($11 min), and **`Tiger AU`** ($4 min) structures.
     -   **ATO Taxation**: Implements 2024-25 Individual Tax Brackets with a 50% CGT discount for holdings $\ge$ 12 months, calculated based on your annual income.
     -   **Market Calendar Compliance**: Automatically excludes ASX holidays and weekends (dynamically fetched for backtest date range). Market half-days treated as off-days.
     -   **Transaction Ledger**: Records every trade in machine-parseable format, saved to `data/ledgers/` folder (not shown in Dashboard).
@@ -19,14 +19,14 @@ A Python-based automated trading strategy system designed specifically for the *
     -   **Price Gaps**: Handles scenarios where stop-loss cannot be executed at the exact threshold due to market gaps.
 -   **Data Integration**: Seamlessly fetches historical and real-time data from Yahoo Finance (`yfinance`).
 -   **Interactive Dashboard**: A built-in Streamlit UI featuring a **Segmented Selection Switch** for:
-    -   **Models Comparison**: Benchmark 5 AI models for a specific fixed strategy.
-    -   **Time-Span Comparison**: Compare ROI across different holding periods using model consensus with a custom **Tie-Breaker** rule.
-    -   **Super Stars Scanner**: Scan entire market indices (**ASX 50**, **ASX 200**) to find the top 10 most profitable stocks using consensus logic.
-    -   **Realized Equity Curves**: Visual tracking of capital growth connecting trade exit points.
-    -   **Daily Recommendations**: AI-generated signals with consensus scoring.
+-   **Models Comparison**: Benchmark 5 AI models for a specific fixed strategy.
+-   **Time-Span Comparison**: Compare ROI across different holding periods using model consensus with a custom **Tie-Breaker** rule.
+-   **Super Stars Scanner**: Scan entire market indices (**ASX 50**, **ASX 200**) to find the top 10 most profitable stocks using consensus logic.
+-   **Realized Equity Curves**: Visual tracking of capital growth connecting trade exit points.
+-   **Daily Recommendations**: AI-generated signals with consensus scoring.
 -   **Input Validation**: Real-time ticker validation against Yahoo Finance — automatically removes invalid tickers before analysis with user warnings.
 -   **Performance Metrics**: Track Net ROI, Win Rate, and Total Trades with standardized **2-decimal precision** (numeral.js format).
--   **T+1 Reinvestment Logic**: Simulates realistic brokerage cash flow where capital from a sale is available for the next trading day.
+-   **T+2 Settlement Logic**: Simulates strict ASX realism where capital from a sale is locked for 2 trading days before becoming available for reinvestment.
 
 ## 🛠️ Installation
 

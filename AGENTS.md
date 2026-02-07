@@ -51,6 +51,7 @@ The goal is to build a Python-based trading strategy system for the Australian S
     - **ASX Calendar Compliance**: Use `get_asx_trading_days()` from `core/utils.py` to exclude weekends and holidays.
     - **Market Half-Days**: Treat as off-days (no trading).
     - **Portfolio Validation**: ALWAYS call `validate_buy_capacity()` BEFORE generating ML signals to prevent unnecessary computation when funds are insufficient.
+    - **T+2 Settlement Enforcement**: Strictly enforce a 2-trading-day delay for cash clearance after a sale. Funds from a Monday sale are available on Wednesday at 10:15 AM.
     - **Holding Period Units**:
       - `"Day"` = **TRADING DAYS** (excludes weekends + holidays via `calculate_trading_days_ahead()`)
       - `"Week"/"Month"/"Quarter"/"Year"` = **CALENDAR DAYS** (uses `pd.DateOffset()`)

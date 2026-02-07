@@ -130,9 +130,14 @@ Exclusively uses **Yahoo Finance (`yfinance`)**.
   
 - **Purpose**: Quick visual verification that trades occurred on valid trading days (not weekends/holidays).
 
+### 4.6 Supported Broker Cost Profiles
+- **Default**: Generic fee structure (0.12% brokerage + 0.00225% clearing + $1.50 settlement).
+- **CMC Markets**: Tiered structure ($11.00 min or 0.10% brokerage).
+- **Tiger AU**: Specialized ASX structure ($4.00 min or 0.04% total fee, comprising 0.025% commission and 0.015% platform fee).
+
 ---
 ## 5. Reinvestment & Settlement
-- **Settlement Logic**: Backtesting assumes a **T+1 reinvestment** cycle (capital available the next business day after a sale), providing a realistic simulation of brokerage cash flow.
+- **Settlement Logic**: Backtesting assumes a **T+2 settlement cycle** (capital available the second business day after a sale), providing a realistic simulation of brokerage cash flow and clearing times.
 - **Signal-Driven Entry**: Reinvestment only occurs when the **AI Consensus** (or single model) triggers a "BUY" signal that exceeds the **Hurdle Rate**.
 - **Exit Strategy**: Supports Stop-Loss, Take-Profit, and Model-Exit (consensus reversal).
 
