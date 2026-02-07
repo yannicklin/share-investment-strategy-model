@@ -368,14 +368,16 @@ class BacktestEngine:
         }
 
         def signal(i, df_inner, features_inner, current_cap):
+            # Ensure index is integer for numpy access
+            idx = int(i)
             votes, hurdle = 0, self.get_hurdle_rate(current_cap)
-            current_price = float(df_inner.iloc[i]["Close"])
+            current_price = float(df_inner.iloc[idx]["Close"])
             tb_model = tie_breaker or models[0]
             tb_bullish = False
             for m in models:
-                bullish = (
-                    committee_preds[m][i] - current_price
-                ) / current_price > hurdle
+                # Direct array access with integer index
+                pred_price = float(committee_preds[m][idx])
+                bullish = (pred_price - current_price) / current_price > hurdle
                 if bullish:
                     votes += 1
                 if m == tb_model:
