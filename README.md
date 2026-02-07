@@ -84,6 +84,9 @@ uv run pytest tests/test_integration.py
 
 # Run with verbose output
 uv run pytest tests/ -v
+
+# Run security scans (Trivy & Semgrep)
+make scan
 ```
 
 **Test Coverage**:

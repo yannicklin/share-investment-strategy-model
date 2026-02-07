@@ -1,4 +1,4 @@
-.PHONY: setup run test lint clean
+.PHONY: setup run test lint clean scan
 
 # Default: setup and run
 all: setup run
@@ -29,6 +29,12 @@ ifeq ($(IS_APPLE_SILICON),true)
 else
 	@.venv/bin/ruff check .
 endif
+
+scan:
+	@echo "Running Trivy filesystem scan..."
+	@trivy fs .
+	@echo "\nRunning Semgrep security scan..."
+	@semgrep scan .
 
 clean:
 	rm -rf .venv
