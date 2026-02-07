@@ -368,22 +368,31 @@ class BacktestEngine:
         df, features, error = df_tuple
         if error or df is None or features is None:
             return error or {"error": "Failed to prepare data"}
-        committee_preds = {
-            m: self._get_bulk_predictions(df, features, m) for m in models
-        }
+        committee_preds = {}
+        for m_type in models:
+            self.config.model_type = m_type
+            self.model_builder.load_or_build(ticker)
+            # Force 1D array to prevent indexing errors on scalar returns
+            preds = self._get_bulk_predictions(df, features, m_type)
+            committee_preds[m_type] = np.atleast_1d(preds)
 
         def signal(i, df_inner, features_inner, current_cap):
-            # Ensure index is integer for numpy access
+            # Ensure index is integer
             idx = int(i)
             votes, hurdle = 0, self.get_hurdle_rate(current_cap)
             current_price = float(df_inner.iloc[idx]["Close"])
             tb_model = tie_breaker or models[0]
             tb_bullish = False
-            for m in models:
-                # Direct array access with integer index
-                pred_price = float(committee_preds[m][idx])
 
-                # Safety check for zero price (data error or extreme adjustment)
+            for m in models:
+                # Safe access with bounds checking
+                preds_arr = committee_preds[m]
+                if idx >= len(preds_arr):
+                    continue
+
+                pred_price = float(preds_arr[idx])
+
+                # Safety check for zero price
                 if current_price <= 1e-9:
                     bullish = False
                 else:
