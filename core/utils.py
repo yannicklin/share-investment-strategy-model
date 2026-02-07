@@ -30,7 +30,13 @@ def get_asx_trading_days(
 ) -> pd.DatetimeIndex:
     """
     Fetch trading days for specified date range and market.
-    Defaults to TWN for this branch.
+
+    Supported Markets:
+    - TWN: Taiwan Stock Exchange (XTAI)
+    - ASX: Australian Securities Exchange (XASX)
+
+    Requires 'exchange_calendars' or 'pandas_market_calendars' (older)
+    that supports 'XTAI'.
     """
     calendar_map = {
         "ASX": "XASX",
@@ -39,15 +45,24 @@ def get_asx_trading_days(
     cal_code = calendar_map.get(market, "XTAI")
 
     try:
-        if use_cache:
+        # Prefer exchange_calendars if available (newer fork of trading_calendars)
+        # XTAI is supported in exchange_calendars
+        try:
+            import exchange_calendars as ecals
+
+            calendar = ecals.get_calendar(cal_code)
+        except ImportError:
+            # Fallback to pandas_market_calendars (might lack XTAI in very old versions)
             calendar = mcal.get_calendar(cal_code)
-            schedule = calendar.schedule(start_date=start_date, end_date=end_date)
-            # schedule.index is a DatetimeIndex
-            return pd.DatetimeIndex(schedule.index)
-        else:
-            all_dates = pd.date_range(start=start_date, end=end_date, freq="D")
-            trading_days = all_dates[all_dates.dayofweek < 5]
-            return pd.DatetimeIndex(trading_days)
+
+        schedule = calendar.schedule(start_date=start_date, end_date=end_date)
+        return pd.DatetimeIndex(schedule.index)
+    except Exception:
+        # Fallback: Business days (Mon-Fri)
+        all_dates = pd.date_range(start=start_date, end=end_date, freq="D")
+        trading_days = all_dates[all_dates.dayofweek < 5]
+        return pd.DatetimeIndex(trading_days)
+
     except Exception:
         all_dates = pd.date_range(start=start_date, end=end_date, freq="D")
         trading_days = all_dates[all_dates.dayofweek < 5]

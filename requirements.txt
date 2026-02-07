@@ -2,6 +2,7 @@
 yfinance
 FinMind
 pandas
+exchange_calendars>=4.5
 pandas_market_calendars
 numpy
 scikit-learn
