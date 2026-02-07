@@ -41,11 +41,13 @@ class BacktestEngine:
         - Minimum Brokerage: NT$20
         """
         # 1. Brokerage Fee
-        broker_rate = self.config.brokerage_rate
+        # Default is standard rate (0.1425%) with no discount
+        broker_rate = 0.001425
+
         if self.config.cost_profile == "fubon_twn":
-            broker_rate = 0.001425 * 0.4  # Conservative 0.057%
+            broker_rate = 0.001425 * 0.4  # ~1.8-2.8折, using conservative 0.057%
         elif self.config.cost_profile == "first_twn":
-            broker_rate = 0.001425 * 0.6  # Conservative 0.0855%
+            broker_rate = 0.001425 * 0.6  # ~2.8-3.8折, using conservative 0.0855%
 
         brokerage = max(20.0, trade_value * broker_rate)
 
