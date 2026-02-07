@@ -11,8 +11,10 @@ IS_APPLE_SILICON := $(shell sysctl -n machdep.cpu.brand_string 2>/dev/null | gre
 
 run:
 ifeq ($(IS_APPLE_SILICON),true)
+	@lsof -ti:8502 | xargs kill -9 2>/dev/null || true
 	@arch -arm64 .venv/bin/python3 -m streamlit run ASX_AImodel.py
 else
+	@lsof -ti:8502 | xargs kill -9 2>/dev/null || true
 	@.venv/bin/python3 -m streamlit run ASX_AImodel.py
 endif
 

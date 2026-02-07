@@ -32,7 +32,7 @@ The model may buy even if projected returns do not meet take-profit thresholds, 
     - **Mode 1 (Models Comparison)**: Benchmarks individual AI performance for a fixed strategy.
     - **Mode 2 (Time-Span Comparison)**: Evaluates holding period efficiency using a **Multi-Model Consensus** (majority vote).
         - **Consensus Logic**: Odd number of models uses a natural majority; even number of models uses a user-selected **Tie-Breaker** (Chairman model).
-        - **Holding Period Units**: "Day" = trading days; "Week/Month/Quarter/Year" = calendar days.
+        - **Holding Period Units**: "Day" = trading days; "Week/Month/Year" = calendar days.
     - **Mode 3 (Find Super Stars)**: Scans entire market indexes to identify the **Top 10** performers for a chosen timeframe (1 day to 1 year).
         - **Company Profiles**: Displays full legal company names and provides direct links to **Yahoo Finance** for each winner.
         - **Error Transparency**: Includes a reviewable section for stocks that failed processing (e.g., insufficient data for new listings).
@@ -76,7 +76,7 @@ Exclusively uses **Yahoo Finance (`yfinance`)**.
   - Example: 30-day hold starting 2026-02-03(MON) → sell on trading day #30 (not calendar day #30).
   - Implementation: Use cumulative count of valid trading days, not `timedelta`.
 
-- **Other Units ("Week", "Month", "Quarterly", "Year")**: Interpreted as **CALENDAR DAYS**.
+- **Other Units ("Week", "Month", "Year")**: Interpreted as **CALENDAR DAYS**.
   - Example: 1-month hold = 30 calendar days (includes weekends/holidays).
   - Example: 1-year hold = 365 calendar days.
   - Rationale: Longer timeframes naturally span multiple weekends/holidays; calendar-based is more intuitive.

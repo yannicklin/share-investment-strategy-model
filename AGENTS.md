@@ -54,7 +54,7 @@ The goal is to build a Python-based trading strategy system for the Australian S
     - **T+2 Settlement Enforcement**: Strictly enforce a 2-trading-day delay for cash clearance after a sale. Funds from a Monday sale are available on Wednesday at 10:15 AM.
     - **Holding Period Units**:
       - `"Day"` = **TRADING DAYS** (excludes weekends + holidays via `calculate_trading_days_ahead()`)
-      - `"Week"/"Month"/"Quarter"/"Year"` = **CALENDAR DAYS** (uses `pd.DateOffset()`)
+      - `"Week"/"Month"/"Year"` = **CALENDAR DAYS** (uses `pd.DateOffset()`)
 15. **Transaction Ledger**:
     - **Memory-Optimized Design**: Keep only ~2 KB active state (portfolio + metrics + buffer), not full ledger.
     - **Batch Writes**: Save to `data/ledgers/` on backtest completion, then clear from memory. NO streaming I/O.

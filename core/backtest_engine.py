@@ -12,7 +12,7 @@ import pandas as pd
 import numpy as np
 import os
 import joblib
-from typing import List, Dict, Any, Callable, Optional
+from typing import List, Dict, Any, Callable, Optional, Tuple, Union
 from core.config import Config
 from core.model_builder import ModelBuilder
 from core.utils import (
@@ -139,7 +139,9 @@ class BacktestEngine:
         df["Daily_Return"] = df["Close"].pct_change(fill_method=None)
         return df.dropna()
 
-    def _prepare_data(self, ticker: str) -> tuple:
+    def _prepare_data(
+        self, ticker: str
+    ) -> Tuple[Optional[pd.DataFrame], Optional[List[str]], Optional[Dict[str, str]]]:
         """Prepare and filter dataframe for backtesting.
 
         Returns:
@@ -157,7 +159,7 @@ class BacktestEngine:
         official_start = pd.Timestamp.now() - pd.DateOffset(
             years=self.config.backtest_years
         )
-        official_end = df.index[-1]
+        official_end = pd.Timestamp(df.index[-1])
 
         # Initialize trading days calendar (excludes weekends + ASX holidays)
         self.trading_days = get_asx_trading_days(official_start, official_end)
@@ -202,11 +204,11 @@ class BacktestEngine:
         capital = self.config.init_capital
         position, buy_price, buy_date, buy_fees = 0.0, 0.0, None, 0.0
         trades = []
-        positions_dict = {}  # Track positions for ledger
         settlement_queue = []  # List of (available_date, amount)
 
         for i in range(len(df) - 1):
-            date, current_price = df.index[i], float(df.iloc[i]["Close"])
+            date = pd.Timestamp(df.index[i])
+            current_price = float(df.iloc[i]["Close"])
 
             # Process Settlement Queue: Check if any cash has cleared today
             new_settlement_queue = []
@@ -256,7 +258,6 @@ class BacktestEngine:
                 position = new_position
                 buy_price, buy_date, buy_fees = current_price, date, fees
                 capital = 0
-                positions_dict = {ticker: position}
 
             elif position > 0:
                 # Calculate sell date based on holding period unit
@@ -270,20 +271,16 @@ class BacktestEngine:
                         if target_date is not None:
                             min_hold_passed = date >= target_date
                     else:
-                        # Other units (Week/Month/Quarter/Year) = CALENDAR DAYS
+                        # Other units (Week/Month/Year) = CALENDAR DAYS
                         unit_map = {
                             "week": "weeks",
                             "month": "months",
-                            "quarter": "weeks",  # Will be handled specially below
                             "year": "years",
                         }
-                        if self.config.hold_period_unit.lower() == "quarter":
-                            offset = {"weeks": 13 * self.config.hold_period_value}
-                        else:
-                            unit = unit_map.get(
-                                self.config.hold_period_unit.lower(), "months"
-                            )
-                            offset = {unit: self.config.hold_period_value}
+                        unit = unit_map.get(
+                            self.config.hold_period_unit.lower(), "months"
+                        )
+                        offset = {unit: self.config.hold_period_value}
                         min_hold_passed = date >= (buy_date + pd.DateOffset(**offset))
 
                 low_p, high_p = float(df.iloc[i]["Low"]), float(df.iloc[i]["High"])
@@ -313,6 +310,7 @@ class BacktestEngine:
                     g_profit = val - (position * buy_price) - (buy_fees + s_fees)
                     tax = 0.0
                     if g_profit > 0:
+                        # 50% discount for 12+ months holding
                         disc = 0.5 if (date - buy_date).days >= 365 else 1.0
                         tax = self.calculate_ato_tax(
                             self.config.annual_income + g_profit * disc
@@ -371,9 +369,15 @@ class BacktestEngine:
                     )
                     # capital = new_capital (REMOVED - now handled by settlement queue)
                     position = 0
-                    positions_dict = {}
 
-        final_cap = position * float(df.iloc[-1]["Close"]) if position > 0 else capital
+        # Final Portfolio Value: Position + Cash + Pending Settlement
+        final_cap = capital
+        if position > 0:
+            final_cap += position * float(df.iloc[-1]["Close"])
+
+        # Add any pending cash in the settlement queue
+        for _, amount in settlement_queue:
+            final_cap += amount
 
         # Calculate Win Rate
         win_rate = 0.0
@@ -398,9 +402,10 @@ class BacktestEngine:
         self.model_builder.load_or_build(ticker)  # Load once
 
         # Prepare filtered data (trading days only)
-        df, features, error = self._prepare_data(ticker)
-        if error:
-            return error
+        df_tuple = self._prepare_data(ticker)
+        df, features, error = df_tuple
+        if error or df is None or features is None:
+            return error if error else {"error": "Failed to prepare data"}
 
         # Bulk pre-calculate predictions on FILTERED data
         all_preds = self._get_bulk_predictions(df, features, model_type)
@@ -430,9 +435,10 @@ class BacktestEngine:
         self.ledger.clear()
 
         # Prepare filtered data (trading days only)
-        df, features, error = self._prepare_data(ticker)
-        if error:
-            return error
+        df_tuple = self._prepare_data(ticker)
+        df, features, error = df_tuple
+        if error or df is None or features is None:
+            return error if error else {"error": "Failed to prepare data"}
 
         # Bulk pre-calculate predictions for all models in the committee on FILTERED data
         committee_preds = {}

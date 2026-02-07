@@ -18,6 +18,50 @@ from core.model_builder import ModelBuilder
 def render_sidebar(config: Config):
     """Renders all sidebar inputs and returns the selected analysis mode."""
 
+    # Inject custom CSS for a friendlier Dark Mode sidebar
+    st.markdown(
+        """
+        <style>
+            /* Sidebar background and borders */
+            [data-testid="stSidebar"] {
+                border-right: 1px solid rgba(255, 255, 255, 0.1);
+            }
+            
+            /* Sidebar Headers */
+            [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
+                color: #3d85c6 !important;
+                font-weight: 700 !important;
+                letter-spacing: -0.5px !important;
+            }
+
+            /* Buttons in Sidebar */
+            [data-testid="stSidebar"] button {
+                border-radius: 8px !important;
+                font-weight: 600 !important;
+                transition: all 0.3s ease !important;
+            }
+            
+            [data-testid="stSidebar"] button:hover {
+                border-color: #3d85c6 !important;
+                color: #3d85c6 !important;
+                box-shadow: 0 0 10px rgba(61, 133, 198, 0.2) !important;
+            }
+
+            /* Horizontal dividers */
+            [data-testid="stSidebar"] hr {
+                margin: 1rem 0 !important;
+                border-color: rgba(255, 255, 255, 0.1) !important;
+            }
+
+            /* Better padding for sidebar content */
+            [data-testid="stSidebarContent"] {
+                padding-top: 1.5rem !important;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     st.sidebar.header("Analysis Mode")
 
     # Selection mode
@@ -111,11 +155,11 @@ def render_sidebar(config: Config):
     test_periods = []
     period_map = {
         "1 day": ("day", 1),
+        "2 days": ("day", 2),
         "1 week": ("day", 7),
         "2 weeks": ("day", 14),
         "1 month": ("month", 1),
         "3 months": ("month", 3),
-        "1 quarter": ("month", 3),
         "6 months": ("month", 6),
         "1 year": ("year", 1),
     }
@@ -123,9 +167,9 @@ def render_sidebar(config: Config):
 
     if analysis_mode == "Models Comparison":
         col_unit, col_val = st.sidebar.columns([2, 1])
-        unit_options = ["day", "month", "quarter", "year"]
+        unit_options = ["day", "week", "month", "year"]
         config.hold_period_unit = col_unit.selectbox(
-            "Strategy Hold Unit", unit_options, index=1
+            "Holding Period", unit_options, index=2
         )
         config.hold_period_value = col_val.number_input("Val", value=1, min_value=1)
         config.model_types = st.sidebar.multiselect(
@@ -146,7 +190,16 @@ def render_sidebar(config: Config):
             )
         test_periods = st.sidebar.multiselect(
             "Time-Spans to Evaluate",
-            ["1 day", "1 week", "1 month", "3 months", "1 year"],
+            [
+                "1 day",
+                "2 days",
+                "1 week",
+                "2 weeks",
+                "1 month",
+                "3 months",
+                "6 months",
+                "1 year",
+            ],
             default=["1 day", "1 month", "1 year"],
         )
 
@@ -163,8 +216,17 @@ def render_sidebar(config: Config):
             )
         star_period = st.sidebar.selectbox(
             "Strategy Time-Span",
-            ["1 day", "1 week", "1 month", "1 quarter", "1 year"],
-            index=2,
+            [
+                "1 day",
+                "2 days",
+                "1 week",
+                "2 weeks",
+                "1 month",
+                "3 months",
+                "6 months",
+                "1 year",
+            ],
+            index=4,  # Default to "1 month"
         )
         test_periods = [star_period]
 
