@@ -34,7 +34,7 @@ def main():
 
 
 def render_app():
-    st.title("🇦🇺 Australian Stock AI Strategy Lab")
+    st.title("📈 ASX AI Trading Strategy Dashboard")
 
     # Load shared configuration
     config = load_config()
