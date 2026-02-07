@@ -377,11 +377,18 @@ class BacktestEngine:
             for m in models:
                 # Direct array access with integer index
                 pred_price = float(committee_preds[m][idx])
-                bullish = (pred_price - current_price) / current_price > hurdle
+
+                # Safety check for zero price (data error or extreme adjustment)
+                if current_price <= 1e-9:
+                    bullish = False
+                else:
+                    bullish = (pred_price - current_price) / current_price > hurdle
+
                 if bullish:
                     votes += 1
                 if m == tb_model:
                     tb_bullish = bullish
+
             return votes > (len(models) / 2) or (
                 votes == len(models) / 2 and tb_bullish
             )
