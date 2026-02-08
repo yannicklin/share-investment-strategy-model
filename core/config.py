@@ -115,10 +115,11 @@ class Config:
             "catboost",
         ]
     )
-    scaler_type: str = "standard"
+    scaler_type: str = "robust"
 
     # Market & Cost Settings
-    cost_profile: str = "Stake (Standard)"
+    cost_profile: str = "Saxo / Global Prime (Classic)"
+
     w8ben: bool = True
     market_country: str = "USA"
     currency_symbol: str = "$"

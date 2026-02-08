@@ -106,7 +106,7 @@ class ModelBuilder:
             from prophet import Prophet
 
             logging.info("Initialized Prophet model.")
-            return Prophet(daily_seasonality=True, yearly_seasonality=True)
+            return Prophet(daily_seasonality="auto", yearly_seasonality="auto")
 
         elif m_type == "lstm":
             import tensorflow as tf
@@ -254,6 +254,8 @@ class ModelBuilder:
         tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
         df["ATR"] = tr.rolling(window=14).mean()
 
+        df["Daily_Return"] = df["Close"].pct_change(fill_method=None)
+
         # Market Context
         self._ensure_market_data()
         m_data = self._market_data
@@ -288,6 +290,7 @@ class ModelBuilder:
             "BB_Lower",
             "BB_Width",
             "ATR",
+            "Daily_Return",
         ]
 
         # Add dynamic market features
