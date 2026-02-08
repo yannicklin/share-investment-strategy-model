@@ -47,27 +47,25 @@ To ensure realism and profitability, the system employs a **Tax-Aware Dynamic Hu
 ## 3. Financial Accounting & Reinvestment
 
 ### 3.1 Fee Structures
-The system supports broker profiles for both domestic (US) and international (Australian) investors:
+The system supports broker profiles tailored for Australian investors trading the US market, ranging from "Classic" bank tiers to "Neobroker" and "Pro" levels.
 
-- **US Domestic - Commission-Free (e.g., Robinhood/Schwab)**:
-    - Brokerage: $0.00
-    - Regulatory Fees (Sell-side only): 
-        - SEC Fee: $0.0000278 x Sell Value
-        - FINRA TAF: $0.000166 x Quantity (Max $8.30 per trade)
+- **Classic Standard (e.g., Saxo / Global Prime)**:
+    - **Brokerage**: ~$5.00 USD per trade (Conservative Baseline).
+    - **Purpose**: A realistic stress test. Strategies must be robust enough to survive this fee.
 
-- **US Domestic - Pro-Tier (e.g., Interactive Brokers)**:
-    - Brokerage: $0.005 per share (Min $1.00, Max 1% of Trade Value)
-    - Regulatory Fees: Standard SEC/FINRA pass-through.
+- **Stake (Retail Profile)**:
+    - **Brokerage**: $3.00 USD per trade (for trades ≤ $30,000 USD).
+    - **FX Friction**: ~70 basis points (0.70%) on AUD/USD transfers (Note: FX implied in model friction).
+    - **Regulatory Fees**: Pass-through of SEC and FINRA fees.
 
-- **Foreign Investor (Australia) - Stake (Retail Profile)**:
-    - Brokerage: $3.00 USD per trade (for trades ≤ $30,000 USD).
-    - FX Fee: ~70 basis points (0.70%) on AUD/USD transfers. This "hidden" fee is a critical part of the friction model.
-    - Regulatory Fees: Pass-through of SEC and FINRA fees.
+- **Interactive Brokers (Pro Profile)**:
+    - **Brokerage**: ~$1.00 USD (Min) or $0.005 per share.
+    - **FX Friction**: Ultra-low (~0.20 bps + $2).
+    - **Purpose**: The "Gold Standard" for algorithmic execution.
 
-- **Foreign Investor (Australia) - Interactive Brokers (Pro Profile)**:
-    - Brokerage: Tiered (~$0.0035/share) or Fixed ($0.005/share, Min $1.00).
-    - FX Fee: Spot Rate + 0.20 basis points (0.002%) + $2.00 USD min fee. Significantly lower friction for large capital.
-    - Regulatory Fees: Pass-through of SEC and FINRA fees.
+- **Big 4 Bank (Hard Mode)**:
+    - **Brokerage**: ~$19.95 USD.
+    - **Purpose**: Demonstrates why traditional AU banks are unsuitable for active algo trading.
 
 ### 3.2 Taxation (Foreign Investor - US Side Obligations)
 The model simulates a Foreign Investor (e.g., Australian) trading in the US, focusing **exclusively on US tax obligations** collected at the source.
@@ -98,10 +96,14 @@ Unlike the Australian **CHESS** system (HIN), where investors have direct legal 
 
 ---
 
-## 5. Historical Data Source (USA)
-Exclusively uses **Yahoo Finance (`yfinance`)**. 
-- **Ticker format**: Standard US symbols (e.g., `AAPL`, `TSLA`, `NVDA`). No suffix required.
-- **Adjustment**: Always use `auto_adjust=True` and target the `Close` price for calculations.
+## 5. Historical Data Source (USA) & Market Regime
+Exclusively uses **Yahoo Finance (`yfinance`)** but with an enhanced "Regime Awareness" architecture.
+
+- **Primary Asset Data**: Standard US symbols (e.g., `AAPL`, `TSLA`, `NVDA`).
+    - **Adjustment**: `auto_adjust=True`, Target `Close`.
+- **Market Regime Data (New)**: The AI model automatically fetches macro indicators to understand the "weather" of the market:
+    - **Volatility Index (`^VIX`)**: The "Fear Gauge." High VIX signals defensive posturing.
+    - **10-Year Treasury Yield (`^TNX`)**: The "Cost of Money." High yields signal headwinds for Growth/Tech stocks.
 - **Market Hours**: Operates on US Eastern Time (ET).
 
 ---

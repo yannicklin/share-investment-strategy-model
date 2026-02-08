@@ -41,9 +41,14 @@ def main():
     config = render_sidebar()
 
     st.title(f"🇺🇸 AI Trading Strategy: {config['mode']}")
-    st.caption(
-        f"Broker: {config['broker']} | Capital: ${config['capital']:,.2f} | W-8BEN: {'✅ Filed' if config['w8ben'] else '❌ Not Filed'}"
-    )
+
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        st.caption(
+            f"Broker: {config['broker']} | Capital: ${config['capital']:,.2f} | W-8BEN: {'✅ Filed' if config['w8ben'] else '❌ Not Filed'}"
+        )
+    with col2:
+        st.caption("🧠 Market Regime: **Active** (^VIX + ^TNX)")
 
     # 2. Main Content Area
     if config["mode"] == "Models Comparison":
