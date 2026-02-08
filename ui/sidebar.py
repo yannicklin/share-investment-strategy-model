@@ -1,83 +1,97 @@
 """
-Trading AI System - Sidebar (USA Edition)
+USA AI Trading System - Sidebar Configuration
 
-Purpose: Configuration panel for selecting analysis mode, broker profile,
-and tax settings (W-8BEN).
+Purpose: Renders the Streamlit sidebar for user input parameters.
 
 Author: Yannick
 Copyright (c) 2026 Yannick
 """
 
 import streamlit as st
-from core.config import BROKERS, DEFAULT_BROKER, DEFAULT_TICKERS, START_DATE, END_DATE
+import os
+from core.config import BROKERS, load_config
+from core.model_builder import ModelBuilder
+from core.index_manager import load_index_constituents, update_index_data
 
 
-def render_sidebar():
-    """Renders the sidebar and returns the configuration dictionary."""
-    st.sidebar.header("🇺🇸 USA Market Strategy")
+def render_sidebar(config):
+    """Renders all sidebar controls and returns user parameters."""
+    st.sidebar.title("⚙️ USA Strategy Lab")
 
-    # Mode Selection
+    # 1. Mode Selection
     mode = st.sidebar.radio(
         "Analysis Mode",
         ["Models Comparison", "Time-Span Comparison", "Find Super Stars"],
-        index=0,
     )
 
-    st.sidebar.markdown("---")
-
-    # Financial Configuration
-    st.sidebar.subheader("Financial Profile")
-
-    # Broker Selection
-    broker_name = st.sidebar.selectbox(
-        "Broker Profile",
-        options=list(BROKERS.keys()),
-        index=list(BROKERS.keys()).index(DEFAULT_BROKER),
-    )
-
-    # W-8BEN Status (Foreign Investor)
-    st.sidebar.caption("Tax Residency Settings")
-    w8ben_filed = st.sidebar.checkbox(
-        "W-8BEN Filed?",
-        value=True,
-        help="If checked: 15% Dividend Tax, $0 Capital Gains Tax (Treaty). If unchecked: 30% Tax.",
-    )
-
-    initial_capital = st.sidebar.number_input(
-        "Initial Capital (USD)", value=10000.0, step=1000.0, format="%.2f"
-    )
-
-    st.sidebar.markdown("---")
-
-    # Ticker Selection
-    st.sidebar.subheader("Asset Selection")
-
-    index_choice = None
+    # 2. Market Data Selection
+    st.sidebar.subheader("Market Universe")
     if mode == "Find Super Stars":
-        # Index Selection
+        indices = load_index_constituents()
         index_choice = st.sidebar.selectbox(
-            "Market Index", ["S&P 500", "Nasdaq 100", "Dow Jones 30"]
+            "Select Index to Scan", list(indices.keys())
         )
-        selected_ticker = None  # Logic handled in view
+        config.target_stock_codes = indices[index_choice]
+        if st.sidebar.button("Update Constituents"):
+            update_index_data()
+            st.sidebar.success("Cache refreshed.")
     else:
-        # Single Ticker Selection
-        selected_ticker = st.sidebar.selectbox(
-            "Select Ticker", options=DEFAULT_TICKERS, index=0
+        index_choice = "Custom List"
+        ticker_input = (
+            st.sidebar.text_input("Stock Ticker (e.g., AAPL, NVDA)", "NVDA")
+            .upper()
+            .strip()
         )
-        # Custom Ticker
-        custom_ticker = st.sidebar.text_input("Or Enter Custom Symbol (e.g., PLTR)")
-        if custom_ticker:
-            selected_ticker = custom_ticker.upper()
+        config.target_stock_codes = [ticker_input]
 
-    st.sidebar.markdown("---")
-    st.sidebar.caption(f"Data Range: {START_DATE} to {END_DATE}")
-    st.sidebar.caption("© 2026 Yannick | USA Market Model")
+    # 3. Strategy Parameters
+    st.sidebar.subheader("Backtest Settings")
+    config.init_capital = st.sidebar.number_input(
+        "Initial Capital ($)", min_value=1000, value=10000, step=1000
+    )
+    config.backtest_years = st.sidebar.slider("Historical Lookback (Years)", 1, 10, 5)
 
-    return {
-        "mode": mode,
-        "broker": broker_name,
-        "w8ben": w8ben_filed,
-        "capital": initial_capital,
-        "ticker": selected_ticker,
-        "index": index_choice if mode == "Find Super Stars" else None,
+    test_periods = ["Short (14d)", "Medium (30d)", "Long (90d)"]
+    period_map = {
+        "Short (14d)": ("day", 14),
+        "Medium (30d)": ("day", 30),
+        "Long (90d)": ("day", 90),
     }
+
+    if mode == "Time-Span Comparison":
+        test_periods = st.sidebar.multiselect(
+            "Holding Periods to Compare", test_periods, default=test_periods
+        )
+    else:
+        selected_p = st.sidebar.selectbox(
+            "Standard Holding Period", test_periods, index=1
+        )
+        test_periods = [selected_p]
+        config.hold_period_unit, config.hold_period_value = period_map[selected_p]
+
+    # 4. Friction & Risk
+    with st.sidebar.expander("Friction & Tax Settings"):
+        config.cost_profile = st.selectbox("Broker Profile", list(BROKERS.keys()))
+        config.w8ben = st.checkbox("W-8BEN Filed (0% CGT)", value=True)
+        config.stop_loss_threshold = st.slider("Stop Loss (%)", 1, 20, 5) / 100
+        config.stop_profit_threshold = st.slider("Take Profit (%)", 5, 50, 15) / 100
+        config.hurdle_risk_buffer = st.slider("Risk Buffer (%)", 0.0, 5.0, 2.0) / 100
+
+    # 5. AI Model Selection
+    st.sidebar.subheader("AI Models")
+    available_models = ModelBuilder.get_available_models()
+    config.model_types = st.sidebar.multiselect(
+        "Models to Include",
+        available_models,
+        default=["random_forest", "gradient_boosting", "lstm"],
+    )
+
+    tie_breaker = None
+    if mode != "Models Comparison":
+        tie_breaker = st.sidebar.selectbox("Consensus Tie-Breaker", config.model_types)
+
+    config.rebuild_model = st.sidebar.checkbox("Force Rebuild AI Models", value=False)
+
+    run_analysis = st.sidebar.button("🚀 Run Analysis", type="primary")
+
+    return mode, test_periods, period_map, run_analysis, tie_breaker, index_choice

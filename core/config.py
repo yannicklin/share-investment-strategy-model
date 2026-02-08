@@ -1,5 +1,5 @@
 """
-Trading AI System - Central Configuration
+USA AI Trading System - Central Configuration
 
 Purpose: Defines global constants, broker profiles, and tax logic for the USA market.
 Supports "Foreign Investor" profile with W-8BEN settings.
@@ -10,56 +10,28 @@ Copyright (c) 2026 Yannick
 
 import os
 from dataclasses import dataclass
-from typing import Dict
-
-# ==============================================================================
-# 1. MARKET & DATA SETTINGS
-# ==============================================================================
-MARKET_COUNTRY = "USA"
-CURRENCY_SYMBOL = "$"
-TIMEZONE = "US/Eastern"
-
-# Default Ticker Universe (S&P 500 & Nasdaq 100 Leaders)
-DEFAULT_TICKERS = [
-    "SPY",
-    "QQQ",
-    "IWM",  # Indexes
-    "AAPL",
-    "MSFT",
-    "NVDA",
-    "GOOGL",
-    "AMZN",
-    "META",
-    "TSLA",  # Mag 7
-    "AMD",
-    "AVGO",
-    "COST",
-    "PEP",
-    "JPM",
-    "V",
-    "LLY",  # Other Blue Chips
-]
-
-# Date Range for Training
-START_DATE = "2015-01-01"
-END_DATE = "2025-01-01"
-
-# ==============================================================================
-# 2. FINANCIAL SETTINGS
-# ==============================================================================
-INITIAL_CAPITAL = 10000.00  # USD
+from typing import Dict, List
 
 
 @dataclass
 class BrokerProfile:
     name: str
     brokerage_fixed: float  # Flat fee per trade
-    brokerage_rate: float  # Percentage of trade value (0.01 = 1%)
+    brokerage_rate: float  # Percentage of trade value
     min_commission: float  # Minimum fee
-    fx_rate: float  # FX Spread (0.0070 = 70bps). Not used in USD simulation loop but stored for reference.
+    fx_rate: float  # FX Spread (reference)
 
 
-# Broker Definitions
+@dataclass
+class TaxProfile:
+    w8ben_filed: bool
+    dividend_tax_rate: float
+    short_term_cgt_rate: float
+    long_term_cgt_rate: float
+    description: str
+
+
+# Global Constants
 BROKERS: Dict[str, BrokerProfile] = {
     "Saxo / Global Prime (Classic)": BrokerProfile(
         name="Classic Standard",
@@ -84,63 +56,78 @@ BROKERS: Dict[str, BrokerProfile] = {
     ),
 }
 
-DEFAULT_BROKER = "Saxo / Global Prime (Classic)"
-
-
-# ==============================================================================
-# 3. TAXATION (FOREIGN INVESTOR / W-8BEN)
-# ==============================================================================
-@dataclass
-class TaxProfile:
-    w8ben_filed: bool
-    dividend_tax_rate: float
-    short_term_cgt_rate: float
-    long_term_cgt_rate: float
-    description: str
-
 
 def get_tax_profile(w8ben_filed: bool = True) -> TaxProfile:
-    """
-    Returns the tax friction profile based on W-8BEN status.
-    Note: For AU residents, US CGT is $0 (Treaty).
-    """
+    """Returns the tax friction profile based on W-8BEN status."""
     if w8ben_filed:
         return TaxProfile(
             w8ben_filed=True,
-            dividend_tax_rate=0.15,  # 15% Withholding
-            short_term_cgt_rate=0.00,  # 0% US CGT (Treaty)
-            long_term_cgt_rate=0.00,  # 0% US CGT (Treaty)
+            dividend_tax_rate=0.15,
+            short_term_cgt_rate=0.00,
+            long_term_cgt_rate=0.00,
             description="Foreign Investor (W-8BEN Filed)",
         )
     else:
         return TaxProfile(
             w8ben_filed=False,
-            dividend_tax_rate=0.30,  # 30% Withholding
-            short_term_cgt_rate=0.30,  # Potential Backup Withholding
+            dividend_tax_rate=0.30,
+            short_term_cgt_rate=0.30,
             long_term_cgt_rate=0.30,
             description="Foreign Investor (No W-8BEN)",
         )
 
 
-# ==============================================================================
-# 4. RISK MANAGEMENT
-# ==============================================================================
-# Default Stop Loss / Take Profit (Can be overridden by AI)
-DEFAULT_STOP_LOSS = 0.05  # 5%
-DEFAULT_TAKE_PROFIT = 0.15  # 15%
+class Config:
+    """Central configuration class aligned with ASX/TWN API."""
 
-# Hurdle Rate Components
-RISK_FREE_RATE = 0.04  # 4% (Approx 10Y Treasury)
-RISK_BUFFER = 0.02  # 2% Extra margin required
+    def __init__(self):
+        self.market_country = "USA"
+        self.currency_symbol = "$"
+        self.timezone = "US/Eastern"
 
-# ==============================================================================
-# 5. PATHS
-# ==============================================================================
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_DIR = os.path.join(BASE_DIR, "data")
-MODELS_DIR = os.path.join(DATA_DIR, "models")
-LEDGERS_DIR = os.path.join(DATA_DIR, "ledgers")
+        # Paths
+        self.base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.data_path = os.path.join(self.base_dir, "data")
+        self.model_path = os.path.join(self.data_path, "models")
+        self.ledger_path = os.path.join(self.data_path, "ledgers")
 
-# Ensure directories exist
-os.makedirs(MODELS_DIR, exist_ok=True)
-os.makedirs(LEDGERS_DIR, exist_ok=True)
+        # Ensure directories
+        os.makedirs(self.model_path, exist_ok=True)
+        os.makedirs(self.ledger_path, exist_ok=True)
+
+        # Backtest Settings
+        self.init_capital = 10000.00
+        self.backtest_years = 5  # Default to 5 years
+        self.hold_period_unit = "month"
+        self.hold_period_value = 1
+        self.stop_loss_threshold = 0.05
+        self.stop_profit_threshold = 0.15
+        self.hurdle_risk_buffer = 0.02
+        self.risk_free_rate = 0.04
+        self.annual_income = 0  # Not used in USA CGT logic (0% for W-8BEN)
+
+        # Model Settings
+        self.model_type = "random_forest"
+        self.model_types = ["random_forest", "gradient_boosting", "lstm", "prophet"]
+        self.scaler_type = "standard"
+        self.rebuild_model = False
+
+        # Market Universe
+        self.target_stock_codes = [
+            "SPY",
+            "QQQ",
+            "AAPL",
+            "MSFT",
+            "NVDA",
+            "GOOGL",
+            "AMZN",
+            "META",
+            "TSLA",
+        ]
+        self.cost_profile = "Saxo / Global Prime (Classic)"
+        self.w8ben = True
+
+
+def load_config() -> Config:
+    """Helper to return a fresh config instance."""
+    return Config()
