@@ -1,31 +1,48 @@
-.PHONY: setup run clean test update
+.PHONY: setup run test lint clean scan
 
-# Default target
+# Default: setup and run
 all: setup run
 
-# Setup environment (calls the robust shell script)
 setup:
 	@bash setup.sh
 
-# Run the application
-run:
-	@echo "🚀 Starting US Market AI Dashboard..."
-	@.venv/bin/streamlit run main.py
+# Architecture Detection for macOS
+IS_APPLE_SILICON := $(shell sysctl -n machdep.cpu.brand_string 2>/dev/null | grep -q "Apple" && echo "true" || echo "false")
 
-# Clean up temporary files
+run:
+ifeq ($(IS_APPLE_SILICON),true)
+	@lsof -ti:8502 | xargs kill -9 2>/dev/null || true
+	@arch -arm64 .venv/bin/python3 -m streamlit run USA_AImodel.py
+else
+	@lsof -ti:8502 | xargs kill -9 2>/dev/null || true
+	@.venv/bin/python3 -m streamlit run USA_AImodel.py
+endif
+
+test:
+ifeq ($(IS_APPLE_SILICON),true)
+	@arch -arm64 .venv/bin/python3 -m pytest tests/
+else
+	@.venv/bin/python3 -m pytest tests/
+endif
+
+lint:
+ifeq ($(IS_APPLE_SILICON),true)
+	@arch -arm64 .venv/bin/ruff check .
+else
+	@.venv/bin/ruff check .
+endif
+
+scan:
+	@echo "Running Trivy filesystem scan..."
+	@trivy fs .
+	@echo "\nRunning Semgrep security scan..."
+	@semgrep scan .
+
 clean:
 	@echo "🧹 Cleaning up..."
-	@rm -rf __pycache__
 	@rm -rf .venv
+	@rm -rf catboost_info
+	@rm -rf data/models/*.joblib
+	@rm -rf data/models/*.h5
 	@find . -type d -name "__pycache__" -exec rm -rf {} +
 	@echo "✅ Clean complete."
-
-# Run tests (Placeholder for now)
-test:
-	@echo "🧪 Running tests..."
-	@.venv/bin/python3 -m pytest tests/ || echo "No tests found or test failure."
-
-# Update dependencies
-update:
-	@echo "📦 Updating requirements..."
-	@.venv/bin/pip freeze > requirements.txt
