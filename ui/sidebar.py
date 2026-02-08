@@ -8,14 +8,13 @@ Copyright (c) 2026 Yannick
 """
 
 import streamlit as st
-import os
-from core.config import BROKERS, load_config
+from core.config import BROKERS
 from core.model_builder import ModelBuilder
 from core.index_manager import load_index_constituents, update_index_data
 
 
 def render_sidebar(config):
-    """Renders all sidebar controls and returns user parameters."""
+    """Renders all sidebar controls and returns essential parameters."""
     st.sidebar.title("⚙️ USA Strategy Lab")
 
     # 1. Mode Selection
@@ -26,6 +25,7 @@ def render_sidebar(config):
 
     # 2. Market Data Selection
     st.sidebar.subheader("Market Universe")
+    index_choice = "Custom List"
     if mode == "Find Super Stars":
         indices = load_index_constituents()
         index_choice = st.sidebar.selectbox(
@@ -36,7 +36,6 @@ def render_sidebar(config):
             update_index_data()
             st.sidebar.success("Cache refreshed.")
     else:
-        index_choice = "Custom List"
         ticker_input = (
             st.sidebar.text_input("Stock Ticker (e.g., AAPL, NVDA)", "NVDA")
             .upper()
@@ -51,23 +50,13 @@ def render_sidebar(config):
     )
     config.backtest_years = st.sidebar.slider("Historical Lookback (Years)", 1, 10, 5)
 
-    test_periods = ["Short (14d)", "Medium (30d)", "Long (90d)"]
-    period_map = {
-        "Short (14d)": ("day", 14),
-        "Medium (30d)": ("day", 30),
-        "Long (90d)": ("day", 90),
-    }
-
-    if mode == "Time-Span Comparison":
-        test_periods = st.sidebar.multiselect(
-            "Holding Periods to Compare", test_periods, default=test_periods
-        )
-    else:
-        selected_p = st.sidebar.selectbox(
-            "Standard Holding Period", test_periods, index=1
-        )
-        test_periods = [selected_p]
-        config.hold_period_unit, config.hold_period_value = period_map[selected_p]
+    # Simple selection for holding period
+    period_options = {"Short (14d)": 14, "Medium (30d)": 30, "Long (90d)": 90}
+    selected_p = st.sidebar.selectbox(
+        "Holding Period", list(period_options.keys()), index=1
+    )
+    config.hold_period_unit = "day"
+    config.hold_period_value = period_options[selected_p]
 
     # 4. Friction & Risk
     with st.sidebar.expander("Friction & Tax Settings"):
@@ -94,4 +83,9 @@ def render_sidebar(config):
 
     run_analysis = st.sidebar.button("🚀 Run Analysis", type="primary")
 
-    return mode, test_periods, period_map, run_analysis, tie_breaker, index_choice
+    return {
+        "mode": mode,
+        "run_analysis": run_analysis,
+        "tie_breaker": tie_breaker,
+        "index_choice": index_choice,
+    }
