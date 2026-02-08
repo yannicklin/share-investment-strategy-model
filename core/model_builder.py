@@ -14,11 +14,23 @@ import yfinance as yf
 import joblib
 import os
 import logging
+import gc
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_score
 from sklearn.preprocessing import StandardScaler
-from typing import Tuple, Any, Dict
+from typing import Tuple, Any, Dict, Optional
+
+# Suppress heavy logging and warnings from backends
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+try:
+    import tensorflow as tf
+
+    tf.get_logger().setLevel("ERROR")
+    # Suppress retracing warnings
+    tf.autograph.set_verbosity(0)
+except ImportError:
+    pass
 
 # Setup
 logging.basicConfig(level=logging.INFO)
@@ -137,22 +149,7 @@ class ModelBuilder:
                 if "Yield_10Y" not in df.columns:
                     df["Yield_10Y"] = 4.0
             else:
-                # Fallback if regime fetch fails: Fill with 0 or neutral values
-                df["VIX"] = 20.0  # Neutral VIX
-                df["Yield_10Y"] = 4.0  # Neutral Yield
-
-            self.data = df
-            return self.data
-
-            # 2. Fetch & Merge Market Regime Data
-            regime_df = self.fetch_market_regime()
-
-            if not regime_df.empty:
-                # Join on Index (Date)
-                # Forward fill missing weekend/holiday data in regime if necessary
-                df = df.join(regime_df).ffill()
-            else:
-                # Fallback if regime fetch fails: Fill with 0 or neutral values
+                # Fallback if regime fetch fails: Fill with neutral values
                 df["VIX"] = 20.0  # Neutral VIX
                 df["Yield_10Y"] = 4.0  # Neutral Yield
 
@@ -184,7 +181,7 @@ class ModelBuilder:
         delta = df["Close"].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        rs = gain / loss
+        rs = gain / (loss + 1e-9)
         df["RSI"] = 100 - (100 / (1 + rs))
 
         # Target Variable: 1 if Price goes UP tomorrow, 0 if DOWN
@@ -275,8 +272,25 @@ class ModelBuilder:
             joblib.dump({"model": self.model, "scaler": self.scaler}, filepath)
 
     def load_model(self, filepath: str):
-        """Loads a trained model and scaler."""
+        """Loads a trained model and scaler with dimension safety."""
         if os.path.exists(filepath):
-            data = joblib.load(filepath)
-            self.model = data["model"]
-            self.scaler = data["scaler"]
+            try:
+                data_bundle = joblib.load(filepath)
+                loaded_scaler = data_bundle["scaler"]
+
+                # Check for feature mismatch
+                current_dim = len(self.features)
+                if (
+                    hasattr(loaded_scaler, "n_features_in_")
+                    and loaded_scaler.n_features_in_ != current_dim
+                ):
+                    logger.warning(
+                        f"Feature mismatch in {filepath}: expected {current_dim}, found {loaded_scaler.n_features_in_}. Model ignored."
+                    )
+                    return
+
+                self.model = data_bundle["model"]
+                self.scaler = loaded_scaler
+                logger.info(f"Successfully loaded model from {filepath}")
+            except Exception as e:
+                logger.error(f"Failed to load model from {filepath}: {e}")

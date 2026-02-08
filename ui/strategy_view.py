@@ -90,6 +90,17 @@ def render_strategy_view(config):
 
                 progress_bar.progress((i + 1) / len(algorithms))
 
+                # Memory cleanup
+                import gc
+
+                gc.collect()
+                try:
+                    import tensorflow as tf
+
+                    tf.keras.backend.clear_session()
+                except ImportError:
+                    pass
+
             # 3. Calculate Consensus Signal
             st.text("Calculating Consensus...")
 

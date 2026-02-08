@@ -119,6 +119,17 @@ def render_stars_view(config):
                     }
                 )
 
+                # Memory cleanup
+                import gc
+
+                gc.collect()
+                try:
+                    import tensorflow as tf
+
+                    tf.keras.backend.clear_session()
+                except ImportError:
+                    pass
+
             progress_bar.progress((i + 1) / len(tickers_to_scan))
 
         status_text.text("Scan Complete!")

@@ -11,6 +11,18 @@ Copyright (c) 2026 Yannick
 import streamlit as st
 import pandas as pd
 import logging
+import os
+import gc
+
+# Suppress TensorFlow noise early
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+try:
+    import tensorflow as tf
+
+    tf.get_logger().setLevel("ERROR")
+    tf.autograph.set_verbosity(0)
+except ImportError:
+    pass
 
 # Set page config FIRST
 st.set_page_config(
@@ -173,6 +185,15 @@ def render_models_comparison(config):
                 )
 
                 progress_bar.progress((i + 1) / len(algorithms))
+
+                # Memory cleanup
+                gc.collect()
+                try:
+                    import tensorflow as tf
+
+                    tf.keras.backend.clear_session()
+                except ImportError:
+                    pass
 
             # 3. Display Results
             st.success("Analysis Complete!")
