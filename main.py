@@ -25,6 +25,10 @@ from core.model_builder import ModelBuilder
 from core.backtest_engine import BacktestEngine
 from core.config import BROKERS, get_tax_profile
 
+# View Modules
+from ui.strategy_view import render_strategy_view
+from ui.stars_view import render_stars_view
+
 # Setup Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -45,9 +49,9 @@ def main():
     if config["mode"] == "Models Comparison":
         render_models_comparison(config)
     elif config["mode"] == "Time-Span Comparison":
-        render_timespan_comparison(config)
+        render_strategy_view(config)
     elif config["mode"] == "Find Super Stars":
-        render_super_stars(config)
+        render_stars_view(config)
 
 
 def render_models_comparison(config):
@@ -148,16 +152,6 @@ def render_models_comparison(config):
                             )
                         else:
                             st.info("No closed trades to plot.")
-
-
-def render_timespan_comparison(config):
-    """View 2: Compare holding periods (Short vs Long Term)."""
-    st.info("Feature Coming Soon: Consensus-based Time-Span Analysis.")
-
-
-def render_super_stars(config):
-    """View 3: Scan the market for top performers."""
-    st.info(f"Feature Coming Soon: Scanning {config['index']} for Super Stars.")
 
 
 if __name__ == "__main__":
