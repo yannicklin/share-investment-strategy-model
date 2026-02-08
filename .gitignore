@@ -6,6 +6,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
+*.pyc
+*-312.pyc
+**/__pycache__/
+**/*.pyc
 
 # Distribution / packaging
 .Python
