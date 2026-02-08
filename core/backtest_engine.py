@@ -110,9 +110,12 @@ class BacktestEngine:
         delta = df["Close"].diff()
         gain = (delta.where(delta > 0, 0)).rolling(14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-        df["RSI"] = 100 - (100 / (1 + (gain / (loss + 1e-9) + 1e-9)))
-        df["MACD"] = df["Close"].ewm(span=12).mean() - df["Close"].ewm(span=26).mean()
-        df["Signal_Line"] = df["MACD"].ewm(span=9).mean()
+        df["RSI"] = 100 - (100 / (1 + (gain / (loss + 1e-9))))
+        df["MACD"] = (
+            df["Close"].ewm(span=12, adjust=False).mean()
+            - df["Close"].ewm(span=26, adjust=False).mean()
+        )
+        df["Signal_Line"] = df["MACD"].ewm(span=9, adjust=False).mean()
         df["Daily_Return"] = df["Close"].pct_change(fill_method=None)
 
         # KD
@@ -139,6 +142,7 @@ class BacktestEngine:
 
         # CLEANUP: Handle Inf values created by division (e.g. RSI gain/loss)
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
+        df.ffill(inplace=True)
         return df.dropna()
 
     def _prepare_data(

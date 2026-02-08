@@ -19,6 +19,16 @@ import logging
 
 # Suppress heavy logging
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+
+try:
+    import tensorflow as tf
+
+    tf.get_logger().setLevel("ERROR")
+    # Suppress retracing warnings
+    tf.autograph.set_verbosity(0)
+except ImportError:
+    pass
+
 logging.getLogger("prophet").setLevel(logging.ERROR)
 
 from typing import Optional, Any, Dict, List, Tuple
@@ -251,7 +261,7 @@ class ModelBuilder:
                         revenue.set_index("date", inplace=True)
 
                         # Reindex to daily (forward fill the last known revenue growth)
-                        rev_aligned = revenue.reindex(df.index, method="ffill")
+                        rev_aligned = revenue.reindex(df.index).ffill()
                         if "revenue_year_growth" in rev_aligned.columns:
                             df["Revenue_YoY"] = rev_aligned["revenue_year_growth"]
                 except Exception as e:
@@ -289,7 +299,7 @@ class ModelBuilder:
 
                     # Reindex to Taiwan trading days (forward fill to propagate last US close)
                     # We shift US data by 1 day because US close (T) affects Taiwan open (T+1)
-                    g_close_shifted = g_close.shift(1).reindex(df.index, method="ffill")
+                    g_close_shifted = g_close.shift(1).reindex(df.index).ffill()
 
                     if "TWD=X" in g_close_shifted.columns:
                         df["USD_TWD"] = g_close_shifted["TWD=X"]
@@ -350,7 +360,7 @@ class ModelBuilder:
         delta = df["Close"].diff()
         gain = (delta.where(delta > 0, 0)).rolling(14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-        df["RSI"] = 100 - (100 / (1 + (gain / loss)))
+        df["RSI"] = 100 - (100 / (1 + (gain / (loss + 1e-9))))
         df["MACD"] = (
             df["Close"].ewm(span=12, adjust=False).mean()
             - df["Close"].ewm(span=26, adjust=False).mean()
@@ -472,7 +482,29 @@ class ModelBuilder:
 
         try:
             bundle = joblib.load(model_filename)
-            self.scaler = bundle["scaler"]
+            loaded_scaler = bundle["scaler"]
+
+            # 3. Check for feature mismatch
+            sample_data = self.fetch_data(ticker, self.config.backtest_years)
+            if sample_data.empty:
+                self.train(ticker)
+                return "trained_fallback"
+
+            X_sample, _ = self.prepare_features(sample_data)
+            current_dim = X_sample.shape[1]
+
+            # Scaler feature count check
+            if (
+                hasattr(loaded_scaler, "n_features_in_")
+                and loaded_scaler.n_features_in_ != current_dim
+            ):
+                logging.warning(
+                    f"Feature mismatch for {ticker}: expected {current_dim}, found {loaded_scaler.n_features_in_}. Retraining..."
+                )
+                self.train(ticker)
+                return "retrained"
+
+            self.scaler = loaded_scaler
             self.model = bundle["model"]
 
             # Validation check to ensure scaler is fitted
@@ -484,7 +516,8 @@ class ModelBuilder:
                 return "retrained_corrupt"
 
             return "loaded"
-        except Exception:
+        except Exception as e:
+            logging.error(f"Failed to load model for {ticker}: {e}. Retraining...")
             # If load fails, retrain immediately
             self.train(ticker)
             return "retrained_error"
@@ -501,12 +534,18 @@ class ModelBuilder:
             )
             return float(self.model.predict(future)["yhat"].iloc[0])
         if m_type == "lstm":
-            X = self.scaler.transform(current_data)
-            return float(
-                self.model.predict(X.reshape(1, self.sequence_length, -1), verbose=0)[
-                    0
-                ][0]
-            )
-        X_input = current_data[-1].reshape(1, -1)
+            if len(current_data.shape) == 2:
+                X = self.scaler.transform(current_data)
+                return float(
+                    self.model.predict(
+                        X.reshape(1, self.sequence_length, -1), verbose=0
+                    )[0][0]
+                )
+            return 0.0
+        X_input = (
+            current_data[-1].reshape(1, -1)
+            if len(current_data.shape) == 2
+            else current_data.reshape(1, -1)
+        )
         X_scaled = self.scaler.transform(X_input)
         return float(self.model.predict(X_scaled)[0])
