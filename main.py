@@ -14,7 +14,7 @@ import logging
 
 # Set page config FIRST
 st.set_page_config(
-    page_title="US Market AI Strategy",
+    page_title="USA Stock AI Strategy Lab",
     page_icon="🇺🇸",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -40,30 +40,33 @@ def main():
     # 1. Render Sidebar & Get Config
     config = render_sidebar()
 
-    # Header with Flag and Title
-    st.title("🇺🇸 US Market AI Strategy")
-    st.markdown(
-        """
-        **Market Context**: The US Stock Market (NYSE/NASDAQ) is the largest and most liquid in the world. 
-        It is characterized by high institutional participation, strong trends in Tech/Growth sectors, 
-        and high sensitivity to **Macro Regimes** (Federal Reserve Policy, VIX).
-        
-        *This model integrates specific US friction layers including SEC fees, W-8BEN tax treaties, and T+1 Settlement.*
-        """
-    )
-    st.markdown("---")
-
-    st.header(f"Analysis Mode: {config['mode']}")
-
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        st.caption(
-            f"Broker: {config['broker']} | Capital: ${config['capital']:,.2f} | W-8BEN: {'✅ Filed' if config['w8ben'] else '❌ Not Filed'}"
-        )
-    with col2:
-        st.caption("🧠 Market Regime: **Active** (^VIX + ^TNX)")
+    # Header with Flag and Title (Unified Style)
+    st.title("📈 USA Stock AI Trading Strategy Dashboard")
 
     # 2. Main Content Area
+    if "results" not in st.session_state:
+        # Initial State (No Analysis Run)
+        render_initial_screen()
+
+    # We need to handle the "Run Analysis" button click inside the render functions
+    # or reorganize main.py to separate the "Run" logic from the "Render" logic like ASX/TWN.
+    # The current USA implementation puts the "Run" button inside the sub-functions.
+    # To keep it consistent with the "Initial Screen" logic of ASX, we check if analysis has been run.
+
+    # However, the USA implementation structure is slightly different (View-based vs Result-based).
+    # I will adapt the "Initial Screen" to appear only if the user hasn't clicked "Run" yet.
+    # But since the buttons are inside the sub-functions, we need to render the sub-functions first?
+    # No, ASX renders the sidebar, then if 'Run' is clicked, it processes.
+
+    # Let's look at the current USA main.py again.
+    # It calls `render_models_comparison` which contains `if st.button("Run Analysis"):`.
+    # This means the "Initial Screen" logic is tricky because the button is deeply nested.
+
+    # FIX: The ASX/TWN pattern separates the "Run" button into the Sidebar or Main loop.
+    # But to minimize refactoring risk, I will inject the "Market Notes" into the top of the page
+    # and keep the current flow, OR I will replicate the ASX pattern of "Check if results exist".
+
+    # In the current USA `main.py`, the views are:
     if config["mode"] == "Models Comparison":
         render_models_comparison(config)
     elif config["mode"] == "Time-Span Comparison":
@@ -72,11 +75,40 @@ def main():
         render_stars_view(config)
 
 
+def render_initial_screen():
+    st.info(
+        "👈 Use the sidebar to configure your USA trading strategy and click 'Run Analysis'."
+    )
+
+    st.subheader("🇺🇸 USA Market Notes")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.write("- **T+1 Settlement**: Capital available next business day (Fast).")
+        st.write(
+            "- **Tax (W-8BEN)**: 15% Dividend Withholding, $0 Capital Gains (Treaty)."
+        )
+        st.write(
+            "- **Market Regime**: AI uses **^VIX** (Fear) & **^TNX** (Yields) as signals."
+        )
+    with col2:
+        st.write(
+            "- **Brokerage**: Low cost ($1-$3) but high FX friction (~70bps) for AU investors."
+        )
+        st.write("- **Market Hours**: 9:30 AM - 4:00 PM ET.")
+        st.write("- **Currency**: All figures in USD.")
+    st.markdown("---")
+
+
 def render_models_comparison(config):
     """View 1: Compare individual models on a single ticker."""
+
+    if "analysis_complete" not in st.session_state:
+        render_initial_screen()
+
     st.header(f"Model Leaderboard: {config['ticker']}")
 
     if st.button("Run Analysis"):
+        st.session_state["analysis_complete"] = True
         with st.spinner(f"Fetching data for {config['ticker']}..."):
             # 1. Build Model Factory
             factory = ModelBuilder(config["ticker"], "2015-01-01", "2025-01-01")
