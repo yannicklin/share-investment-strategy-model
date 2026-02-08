@@ -1,11 +1,26 @@
-streamlit
-pandas
-numpy
+# Core AI and Data
 yfinance
+pandas
+pandas_market_calendars
+numpy
 scikit-learn
-joblib
-plotly
-xgboost
 catboost
 prophet
+# Standard Scikit-Learn algorithms (RandomForest, GradientBoosting) are built-in
+
+# TensorFlow (OS-Specific for hardware portability)
+tensorflow; sys_platform != 'darwin' or platform_machine != 'arm64'
+tensorflow-macos; sys_platform == 'darwin' and platform_machine == 'arm64'
+tensorflow-metal; sys_platform == 'darwin' and platform_machine == 'arm64'
+
+# UI and Visualization
+streamlit
+plotly
 mplfinance
+
+# Development and Testing
+ruff
+black
+mypy
+pytest
+pytest-cov
