@@ -57,28 +57,8 @@ def main():
 
     # 2. Main Content Area
     if "results" not in st.session_state:
-        # Initial State (No Analysis Run)
         render_initial_screen()
 
-    # We need to handle the "Run Analysis" button click inside the render functions
-    # or reorganize main.py to separate the "Run" logic from the "Render" logic like ASX/TWN.
-    # The current USA implementation puts the "Run" button inside the sub-functions.
-    # To keep it consistent with the "Initial Screen" logic of ASX, we check if analysis has been run.
-
-    # However, the USA implementation structure is slightly different (View-based vs Result-based).
-    # I will adapt the "Initial Screen" to appear only if the user hasn't clicked "Run" yet.
-    # But since the buttons are inside the sub-functions, we need to render the sub-functions first?
-    # No, ASX renders the sidebar, then if 'Run' is clicked, it processes.
-
-    # Let's look at the current USA main.py again.
-    # It calls `render_models_comparison` which contains `if st.button("Run Analysis"):`.
-    # This means the "Initial Screen" logic is tricky because the button is deeply nested.
-
-    # FIX: The ASX/TWN pattern separates the "Run" button into the Sidebar or Main loop.
-    # But to minimize refactoring risk, I will inject the "Market Notes" into the top of the page
-    # and keep the current flow, OR I will replicate the ASX pattern of "Check if results exist".
-
-    # In the current USA `main.py`, the views are:
     if config["mode"] == "Models Comparison":
         render_models_comparison(config)
     elif config["mode"] == "Time-Span Comparison":
@@ -146,20 +126,10 @@ def render_models_comparison(config):
                 if train_metrics.get("status") == "error":
                     continue
 
-                # Generate Signals (Use Test Set Predictions for Backtest)
-                # Note: In a real scenario, we'd do a rolling window backtest.
-                # For simplicity here, we use the model's predictions on the test set (last 20% of data).
-                # To do a full backtest, we need predictions for the whole period or a walk-forward.
-                # Here we will simulate a "Paper Trade" on the test set.
-
-                # Get predictions for the entire dataset (Warning: Lookahead bias on training set!)
-                # BETTER: Use Out-of-Sample only for backtest.
-
-                # Split index for test set
+                # Generate Signals using Test Set (Out-of-Sample)
                 split_idx = int(len(data) * 0.8)
                 test_data = data.iloc[split_idx:].copy()
 
-                # Generate predictions for test data
                 X_test = test_data[factory.features]
                 X_test_scaled = factory.scaler.transform(X_test)
                 signals = factory.model.predict(X_test_scaled)
@@ -200,29 +170,23 @@ def render_models_comparison(config):
             df_results = pd.DataFrame(results)
             st.table(df_results)
 
-            # Show Equity Curve for Best Model (Optional)
-            if not df_results.empty:
+            # Performance Visualization
+            if not df_results.empty and "engine" in locals():
                 st.subheader("Performance Visualization")
-                # For now, we only have data for the last run (from the loop).
-                # In a full implementation, we would store all engine histories.
-                # Just showing the equity curve of the last model run as an example.
-                if "engine" in locals():
-                    df_history = pd.DataFrame(engine.history)
-                    if not df_history.empty:
-                        # Reconstruct equity curve from trade history
-                        # Note: This is a simplified reconstruction. Ideally BacktestEngine returns a daily equity series.
-                        # For now, let's just plot the 'Total' column from trade history (Cash after trade)
-                        # Filter for SELL actions to see realized equity
-                        equity_curve = df_history[
-                            df_history["Action"].isin(["SELL"])
-                        ].set_index("Date")["Total"]
-                        if not equity_curve.empty:
-                            st.line_chart(equity_curve)
-                            st.caption(
-                                f"Realized Equity Curve ({results[-1]['Algorithm']})"
-                            )
-                        else:
-                            st.info("No closed trades to plot.")
+                df_history = pd.DataFrame(engine.history)
+                if not df_history.empty:
+                    # Plot realized equity curve from SELL actions
+                    equity_curve = df_history[
+                        df_history["Action"].isin(["SELL"])
+                    ].set_index("Date")["Total"]
+
+                    if not equity_curve.empty:
+                        st.line_chart(equity_curve)
+                        st.caption(
+                            f"Realized Equity Curve ({results[-1]['Algorithm']})"
+                        )
+                    else:
+                        st.info("No closed trades to plot.")
 
 
 if __name__ == "__main__":
