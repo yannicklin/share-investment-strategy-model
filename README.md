@@ -1,6 +1,6 @@
 # AI-Based Trading Strategy Model (USA Edition)
 
-A clinical research framework for the objective analysis of algorithmic trading in the **US Stock Market (NYSE, NASDAQ)**. This project is not a "trading bot"—it is an infrastructure designed to bridge the gap between theoretical AI signals and the harsh reality of market friction.
+A clinical research framework for the objective analysis of algorithmic trading in the **US Stock Market (NYSE, NASDAQ)**. This project is not a "trading bot"—it is an infrastructure designed to bridge the gap between theoretical AI signals and the reality of market costs.
 
 ## 🎯 The Philosophy
 

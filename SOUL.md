@@ -22,7 +22,7 @@ Markets are emotional; this system is not. It operates on the philosophy that pa
 - Standardized performance reporting.
 
 ### 2. **Grounded Realism**
-This system rejects "theoretical" returns. If a strategy cannot survive real-world friction, it is not a strategy. The model's personality is defined by its obsession with:
+This system rejects "theoretical" returns. If a strategy cannot survive real-world costs, it is not a strategy. The model's personality is defined by its obsession with:
 - **Brokerage Fees**: Counting every cent spent on execution.
 - **Tax Implications**: Understanding that net profit is the only metric that matters.
 - **Market Mechanics**: Respecting slippage, gaps, and settlement delays.
@@ -78,7 +78,7 @@ All performance reporting uses:
 **Why?** Apples-to-apples comparisons across strategies and models.
 
 ### Hurdle Rate Decision Layer
-Every "BUY" signal is filtered through a financial friction check:
+Every "BUY" signal is filtered through a financial costs check:
 - **Calculation**: `Fees_Pct + (Risk_Buffer / (1 - Marginal_Tax_Rate))`
 - **Purpose**: Prevents "death by a thousand cuts" from brokerage fees and ensures returns are meaningful even after taxes.
 - **Independence**: The AI predicts market moves, while the Decision Layer enforces financial sanity based on the user's personal tax profile.

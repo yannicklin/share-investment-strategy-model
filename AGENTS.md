@@ -8,7 +8,7 @@ Every modification to this codebase must be a reflection of the core personaliti
 
 ## 1. Framework Identity
 
-This is a Python-based research infrastructure designed for the cold, clinical analysis of trading strategies. It does not chase "hype"; it hunts for statistically significant patterns within the constraints of real-world friction.
+This is a Python-based research infrastructure designed for the cold, clinical analysis of trading strategies. It does not chase "hype"; it hunts for statistically significant patterns within the constraints of real-world costs.
 
 ### Structural Pillars:
 - **Modular Logic**: Separation of data, modeling, and financial accounting.
@@ -19,7 +19,7 @@ This is a Python-based research infrastructure designed for the cold, clinical a
 
 1. **Integrity-First Development**: Documentation and requirements must be updated to reflect architectural changes before any code is written.
 2. **Financial Safety**: Zero tolerance for hardcoded secrets or exposed sensitive data.
-3. **Realistic Accounting**: All calculations must account for the "Big Three" of friction: Fees, Taxes, and Market Slippage.
+3. **Realistic Accounting**: All calculations must account for the "Big Three" of costs: Fees, Taxes, and Market Slippage.
 4. **Algorithmic Pluralism**: Favor ensembles and consensus over single-model dependency to reduce bias.
 5. **Cold Visualization**: UI components must present financial data with standardized, honest precision (2-decimal, clear currency/percentage formatting).
 

@@ -114,6 +114,7 @@ def render_glossary():
         - **Avg Profit/Trade:** Average net percentage gain per closed position.
 
         **Tax & Fees:**
-        - **W-8BEN:** Treaty-aware tax logic (0% CGT for many non-US residents).
-        - **SEC/FINRA:** Regulatory fees applied to sell orders.
+        - **W-8BEN (Ticked):** Treaty-aware logic for non-US residents (0% US Capital Gains Tax, 15% Dividend Withholding).
+        - **W-8BEN (Unticked):** Standard US non-resident rates (30% US Capital Gains/Backup Withholding, 30% Dividend Withholding).
+        - **Regulatory Fees:** SEC and FINRA TAF fees applied automatically to all sell orders.
         """)

@@ -1,91 +1,266 @@
 """
 USA AI Trading System - Sidebar Configuration
 
-Purpose: Renders the Streamlit sidebar for user input parameters.
+Purpose: Renders the Streamlit sidebar for user input parameters for US stocks.
 
 Author: Yannick
 Copyright (c) 2026 Yannick
 """
 
 import streamlit as st
-from core.config import BROKERS
+from core.config import Config, BROKERS
 from core.model_builder import ModelBuilder
 from core.index_manager import load_index_constituents, update_index_data
 
 
-def render_sidebar(config):
-    """Renders all sidebar controls and returns essential parameters."""
-    st.sidebar.title("⚙️ USA Strategy Lab")
+def render_sidebar(config: Config):
+    """Renders all sidebar inputs and returns the selected analysis mode."""
 
-    # 1. Mode Selection
-    mode = st.sidebar.radio(
-        "Analysis Mode",
-        ["Models Comparison", "Time-Span Comparison", "Find Super Stars"],
+    # Inject custom CSS for a friendlier Dark Mode sidebar
+    st.markdown(
+        """
+        <style>
+            /* Sidebar background and borders */
+            [data-testid="stSidebar"] {
+                border-right: 1px solid rgba(255, 255, 255, 0.1);
+            }
+            
+            /* Sidebar Headers */
+            [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
+                color: #3d85c6 !important;
+                font-weight: 700 !important;
+                letter-spacing: -0.5px !important;
+            }
+
+            /* Buttons in Sidebar */
+            [data-testid="stSidebar"] button {
+                border-radius: 8px !important;
+                font-weight: 600 !important;
+                transition: all 0.3s ease !important;
+            }
+            
+            [data-testid="stSidebar"] button:hover {
+                border-color: #3d85c6 !important;
+                color: #3d85c6 !important;
+                box-shadow: 0 0 10px rgba(61, 133, 198, 0.2) !important;
+            }
+
+            /* Horizontal dividers */
+            [data-testid="stSidebar"] hr {
+                margin: 1rem 0 !important;
+                border-color: rgba(255, 255, 255, 0.1) !important;
+            }
+
+            /* Better padding for sidebar content */
+            [data-testid="stSidebarContent"] {
+                padding-top: 1.5rem !important;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
 
-    # 2. Market Data Selection
-    st.sidebar.subheader("Market Universe")
-    index_choice = "Custom List"
-    if mode == "Find Super Stars":
-        indices = load_index_constituents()
-        index_choice = st.sidebar.selectbox(
-            "Select Index to Scan", list(indices.keys())
-        )
-        config.target_stock_codes = indices[index_choice]
-        if st.sidebar.button("Update Constituents"):
-            update_index_data()
-            st.sidebar.success("Cache refreshed.")
-    else:
-        ticker_input = (
-            st.sidebar.text_input("Stock Ticker (e.g., AAPL, NVDA)", "NVDA")
-            .upper()
-            .strip()
-        )
-        config.target_stock_codes = [ticker_input]
+    st.sidebar.header("Analysis Mode")
 
-    # 3. Strategy Parameters
-    st.sidebar.subheader("Backtest Settings")
-    config.init_capital = st.sidebar.number_input(
-        "Initial Capital ($)", min_value=1000, value=10000, step=1000
-    )
-    config.backtest_years = st.sidebar.slider("Historical Lookback (Years)", 1, 10, 5)
-
-    # Simple selection for holding period
-    period_options = {"Short (14d)": 14, "Medium (30d)": 30, "Long (90d)": 90}
-    selected_p = st.sidebar.selectbox(
-        "Holding Period", list(period_options.keys()), index=1
-    )
-    config.hold_period_unit = "day"
-    config.hold_period_value = period_options[selected_p]
-
-    # 4. Friction & Risk
-    with st.sidebar.expander("Friction & Tax Settings"):
-        config.cost_profile = st.selectbox("Broker Profile", list(BROKERS.keys()))
-        config.w8ben = st.checkbox("W-8BEN Filed (0% CGT)", value=True)
-        config.stop_loss_threshold = st.slider("Stop Loss (%)", 1, 20, 5) / 100
-        config.stop_profit_threshold = st.slider("Take Profit (%)", 5, 50, 15) / 100
-        config.hurdle_risk_buffer = st.slider("Risk Buffer (%)", 0.0, 5.0, 2.0) / 100
-
-    # 5. AI Model Selection
-    st.sidebar.subheader("AI Models")
-    available_models = ModelBuilder.get_available_models()
-    config.model_types = st.sidebar.multiselect(
-        "Models to Include",
-        available_models,
-        default=["random_forest", "gradient_boosting", "lstm"],
+    # 1. Mode Selection using segmented control
+    analysis_mode_short = st.sidebar.segmented_control(
+        "Workflow Selection",
+        options=["Models", "Time-Span", "Super Stars"],
+        default="Models",
+        label_visibility="collapsed",
+        help="Models: Compare AI algorithms. Time-Span: Find best period. Super Stars: Find top 10 stocks.",
     )
 
-    tie_breaker = None
-    if mode != "Models Comparison":
-        tie_breaker = st.sidebar.selectbox("Consensus Tie-Breaker", config.model_types)
-
-    config.rebuild_model = st.sidebar.checkbox("Force Rebuild AI Models", value=False)
-
-    run_analysis = st.sidebar.button("🚀 Run Analysis", type="primary")
-
-    return {
-        "mode": mode,
-        "run_analysis": run_analysis,
-        "tie_breaker": tie_breaker,
-        "index_choice": index_choice,
+    # Map back to full names
+    mode_map = {
+        "Models": "Models Comparison",
+        "Time-Span": "Time-Span Comparison",
+        "Super Stars": "Find Super Stars",
     }
+    short_val = str(analysis_mode_short) if analysis_mode_short else "Models"
+    analysis_mode = mode_map.get(short_val, "Models Comparison")
+    index_choice = None
+
+    # Get available models based on installed libraries
+    available_models = ModelBuilder.get_available_models()
+
+    # --- 1. SHARED GLOBAL SETTINGS ---
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("⚙️ Strategy Parameters")
+
+    if analysis_mode != "Find Super Stars":
+        ticker_input = st.sidebar.text_input(
+            "Target Tickers (semicolon separated)", ";".join(config.target_stock_codes)
+        )
+        # Filter out empty tickers and normalize format
+        config.target_stock_codes = [
+            t.strip().upper()
+            for t in ticker_input.split(";")
+            if t.strip() and len(t.strip()) > 0
+        ]
+    else:
+        # Super Star Index Choice
+        st.sidebar.subheader("Index Selection")
+        index_data = load_index_constituents()
+        index_choice = st.sidebar.selectbox(
+            "Select Index to Scan",
+            list(index_data.keys()),
+            help="S&P 500: Blue Chips. Nasdaq 100: Tech benchmark.",
+        )
+
+        if st.sidebar.button("🔄 Update Index Constituents"):
+            with st.spinner("Scraping Wikipedia for latest constituents..."):
+                results = update_index_data()
+                st.sidebar.success("Updated!")
+                for idx, msg in results.items():
+                    st.sidebar.caption(f"{idx}: {msg}")
+                # Reload data immediately after update
+                index_data = load_index_constituents()
+
+        config.target_stock_codes = index_data.get(index_choice, [])
+
+    config.backtest_years = st.sidebar.slider(
+        "Backtest Years", 1, 10, config.backtest_years
+    )
+    config.init_capital = st.sidebar.number_input(
+        "Initial Capital ($)",
+        value=float(config.init_capital),
+        format="%.2f",
+        step=100.0,
+    )
+
+    # Loss and Gain Thresholds
+    sl_val = st.sidebar.slider(
+        "Stop-Loss Threshold",
+        1.0,
+        50.0,
+        float(config.stop_loss_threshold * 100),
+        step=0.5,
+        format="%.1f%%",
+    )
+    config.stop_loss_threshold = sl_val / 100.0
+
+    tp_val = st.sidebar.slider(
+        "Take-Profit Threshold",
+        1.0,
+        100.0,
+        float(config.stop_profit_threshold * 100),
+        step=1.0,
+        format="%.0f%%",
+    )
+    config.stop_profit_threshold = tp_val / 100.0
+
+    # --- 2. MODE-SPECIFIC CONFIGURATION ---
+    st.sidebar.header(f"{analysis_mode} Settings")
+
+    test_periods = []
+    period_map = {
+        "1 day": ("day", 1),
+        "2 days": ("day", 2),
+        "1 week": ("day", 7),
+        "2 weeks": ("day", 14),
+        "1 month": ("month", 1),
+        "3 months": ("month", 3),
+        "6 months": ("month", 6),
+        "1 year": ("year", 1),
+    }
+    tie_breaker = None
+
+    if analysis_mode == "Models Comparison":
+        col_unit, col_val = st.sidebar.columns([2, 1])
+        unit_options = ["day", "week", "month", "year"]
+        config.hold_period_unit = col_unit.selectbox(
+            "Holding Period Unit", unit_options, index=2
+        )
+        config.hold_period_value = col_val.number_input("Value", value=1, min_value=1)
+        config.model_types = st.sidebar.multiselect(
+            "AI Algorithms to Benchmark",
+            available_models,
+            default=[m for m in config.model_types if m in available_models],
+        )
+
+    elif analysis_mode == "Time-Span Comparison":
+        config.model_types = st.sidebar.multiselect(
+            "Select AI Committee",
+            available_models,
+            default=[m for m in config.model_types if m in available_models],
+        )
+        if len(config.model_types) > 0 and len(config.model_types) % 2 == 0:
+            tie_breaker = st.sidebar.selectbox(
+                "⚖️ Consensus Tie-Breaker", config.model_types
+            )
+        test_periods = st.sidebar.multiselect(
+            "Time-Spans to Evaluate",
+            list(period_map.keys()),
+            default=["1 day", "1 month", "1 year"],
+        )
+
+    else:
+        # Find Super Stars (Mode 3)
+        config.model_types = st.sidebar.multiselect(
+            "Select AI Committee",
+            available_models,
+            default=[m for m in config.model_types if m in available_models],
+        )
+        if len(config.model_types) > 0 and len(config.model_types) % 2 == 0:
+            tie_breaker = st.sidebar.selectbox(
+                "⚖️ Consensus Tie-Breaker", config.model_types
+            )
+        star_period = st.sidebar.selectbox(
+            "Strategy Time-Span",
+            list(period_map.keys()),
+            index=4,  # Default to "1 month"
+        )
+        test_periods = [star_period]
+
+    # --- 3. PREPROCESSING & ACCOUNTING ---
+    st.sidebar.markdown("---")
+    config.scaler_type = st.sidebar.radio(
+        "Feature Scaler",
+        ["standard", "robust"],
+        index=0 if config.scaler_type == "standard" else 1,
+    )
+
+    with st.sidebar.expander("Costs & Taxes"):
+        config.cost_profile = st.selectbox(
+            "Broker Profile",
+            list(BROKERS.keys()),
+            index=list(BROKERS.keys()).index(config.cost_profile)
+            if config.cost_profile in BROKERS
+            else 0,
+        )
+        config.w8ben = st.checkbox(
+            "W-8BEN Filed (0% CGT)",
+            value=config.w8ben,
+            help="Ticked: Applies tax treaty benefits (0% Capital Gains, 15% Dividends). Unticked: Applies maximum backup withholding (30% Capital Gains, 30% Dividends).",
+        )
+
+        # Display as percentage (0-5%) but store as decimal (0-0.05)
+        buffer_val = st.slider(
+            "Hurdle Risk Buffer",
+            0.0,
+            5.0,
+            float(config.hurdle_risk_buffer * 100),
+            step=0.1,
+            format="%.1f%%",
+            help="Extra profit margin required after fees and tax to trigger a BUY.",
+        )
+        config.hurdle_risk_buffer = buffer_val / 100.0
+
+    config.rebuild_model = st.sidebar.checkbox(
+        "Force Rebuild AI Models", value=config.rebuild_model
+    )
+
+    st.sidebar.markdown("---")
+    run_analysis = st.sidebar.button(
+        "🚀 Run Analysis", type="primary", use_container_width=True
+    )
+
+    return (
+        analysis_mode,
+        test_periods,
+        period_map,
+        run_analysis,
+        tie_breaker,
+        index_choice,
+    )

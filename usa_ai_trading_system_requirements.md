@@ -55,12 +55,12 @@ The system supports broker profiles tailored for Australian investors trading th
 
 - **Stake (Retail Profile)**:
     - **Brokerage**: $3.00 USD per trade (for trades ≤ $30,000 USD).
-    - **FX Friction**: ~70 basis points (0.70%) on AUD/USD transfers (Note: FX implied in model friction).
+    - **FX Costs**: ~70 basis points (0.70%) on AUD/USD transfers (Note: FX implied in model costs).
     - **Regulatory Fees**: Pass-through of SEC and FINRA fees.
 
 - **Interactive Brokers (Pro Profile)**:
     - **Brokerage**: ~$1.00 USD (Min) or $0.005 per share.
-    - **FX Friction**: Ultra-low (~0.20 bps + $2).
+    - **FX Costs**: Ultra-low (~0.20 bps + $2).
     - **Purpose**: The "Gold Standard" for algorithmic execution.
 
 - **Big 4 Bank (Hard Mode)**:
@@ -92,7 +92,7 @@ Unlike the Australian **CHESS** system (HIN), where investors have direct legal 
 - **Street Name**: Shares are held in the broker's name (or their custodian's) at the central depository (DTC). The investor is the "Beneficial Owner."
 - **SIPC Protection**: To mitigate the lack of direct ownership, US brokers are members of **SIPC (Securities Investor Protection Corporation)**. This protects client assets up to **$500,000 USD** (limit $250,000 for cash) if the broker fails.
     - *Note for Model*: The strategy assumes the broker is SIPC-insured (e.g., Stake, IBKR, Schwab). The lack of HIN does not impact the algorithmic strategy but is a critical "Risk" factor for the user's capital allocation decisions.
-- **Direct Registration (DRS)**: While possible (e.g., via Computershare), it is **not recommended** for active trading due to high friction and slow execution speeds.
+- **Direct Registration (DRS)**: While possible (e.g., via Computershare), it is **not recommended** for active trading due to high costs and slow execution speeds.
 
 ---
 

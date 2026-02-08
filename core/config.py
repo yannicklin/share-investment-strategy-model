@@ -1,16 +1,16 @@
 """
-USA AI Trading System - Central Configuration
+USA AI Trading System - Configuration Management
 
-Purpose: Defines global constants, broker profiles, and tax logic for the USA market.
-Supports "Foreign Investor" profile with W-8BEN settings.
+Purpose: Configuration dataclass for system parameters including tickers,
+capital, thresholds, and backtesting settings for the US market.
 
 Author: Yannick
 Copyright (c) 2026 Yannick
 """
 
 import os
-from dataclasses import dataclass
-from typing import Dict, List
+from dataclasses import dataclass, field
+from typing import List, Dict
 
 
 @dataclass
@@ -31,7 +31,7 @@ class TaxProfile:
     description: str
 
 
-# Global Constants
+# Global Constants for USA - Using conservative (worst-case) rates
 BROKERS: Dict[str, BrokerProfile] = {
     "Saxo / Global Prime (Classic)": BrokerProfile(
         name="Classic Standard",
@@ -40,17 +40,17 @@ BROKERS: Dict[str, BrokerProfile] = {
         min_commission=5.00,
         fx_rate=0.0050,
     ),
-    "Stake (Retail)": BrokerProfile(
+    "Stake (Standard)": BrokerProfile(
         name="Stake",
-        brokerage_fixed=3.00,
-        brokerage_rate=0.00,
-        min_commission=3.00,
-        fx_rate=0.0070,
-    ),
-    "Interactive Brokers (Pro)": BrokerProfile(
-        name="IBKR Pro",
         brokerage_fixed=0.00,
-        brokerage_rate=0.00005,
+        brokerage_rate=0.0001,  # 0.01% for trades > $30k
+        min_commission=3.00,  # Flat $3 for trades <= $30k
+        fx_rate=0.00,
+    ),
+    "Interactive Brokers (Pro Fixed)": BrokerProfile(
+        name="IBKR Pro Fixed",
+        brokerage_fixed=0.00,
+        brokerage_rate=0.005,  # Estimated per-share commission as rate (~50bps)
         min_commission=1.00,
         fx_rate=0.00002,
     ),
@@ -58,62 +58,32 @@ BROKERS: Dict[str, BrokerProfile] = {
 
 
 def get_tax_profile(w8ben_filed: bool = True) -> TaxProfile:
-    """Returns the tax friction profile based on W-8BEN status."""
+    """Returns the tax profile based on W-8BEN status."""
     if w8ben_filed:
         return TaxProfile(
             w8ben_filed=True,
             dividend_tax_rate=0.15,
-            short_term_cgt_rate=0.00,
+            short_term_cgt_rate=0.00,  # Treaty benefit
             long_term_cgt_rate=0.00,
-            description="Foreign Investor (W-8BEN Filed)",
+            description="Foreign Investor (W-8BEN Filed - 0% CGT, 15% Div)",
         )
     else:
         return TaxProfile(
             w8ben_filed=False,
             dividend_tax_rate=0.30,
-            short_term_cgt_rate=0.30,
+            short_term_cgt_rate=0.30,  # Backup withholding
             long_term_cgt_rate=0.30,
-            description="Foreign Investor (No W-8BEN)",
+            description="Foreign Investor (No W-8BEN - 30% CGT, 30% Div)",
         )
 
 
+@dataclass
 class Config:
     """Central configuration class aligned with ASX/TWN API."""
 
-    def __init__(self):
-        self.market_country = "USA"
-        self.currency_symbol = "$"
-        self.timezone = "US/Eastern"
-
-        # Paths
-        self.base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        self.data_path = os.path.join(self.base_dir, "data")
-        self.model_path = os.path.join(self.data_path, "models")
-        self.ledger_path = os.path.join(self.data_path, "ledgers")
-
-        # Ensure directories
-        os.makedirs(self.model_path, exist_ok=True)
-        os.makedirs(self.ledger_path, exist_ok=True)
-
-        # Backtest Settings
-        self.init_capital = 10000.00
-        self.backtest_years = 5  # Default to 5 years
-        self.hold_period_unit = "month"
-        self.hold_period_value = 1
-        self.stop_loss_threshold = 0.05
-        self.stop_profit_threshold = 0.15
-        self.hurdle_risk_buffer = 0.02
-        self.risk_free_rate = 0.04
-        self.annual_income = 0  # Not used in USA CGT logic (0% for W-8BEN)
-
-        # Model Settings
-        self.model_type = "random_forest"
-        self.model_types = ["random_forest", "gradient_boosting", "lstm", "prophet"]
-        self.scaler_type = "standard"
-        self.rebuild_model = False
-
-        # Market Universe
-        self.target_stock_codes = [
+    rebuild_model: bool = False
+    target_stock_codes: List[str] = field(
+        default_factory=lambda: [
             "SPY",
             "QQQ",
             "AAPL",
@@ -124,8 +94,57 @@ class Config:
             "META",
             "TSLA",
         ]
-        self.cost_profile = "Saxo / Global Prime (Classic)"
-        self.w8ben = True
+    )
+    backtest_years: int = 5
+    stop_loss_threshold: float = 0.05
+    stop_profit_threshold: float = 0.15
+    model_path: str = "data/models/"
+    ledger_path: str = "data/ledgers/"
+    init_capital: float = 3000.00
+    hold_period_unit: str = "month"
+    hold_period_value: int = 1
+    hurdle_risk_buffer: float = 0.02
+    risk_free_rate: float = 0.04
+    annual_income: float = 0.0  # Not used in USA CGT logic (0% for W-8BEN)
+
+    # Model Settings
+    model_type: str = "random_forest"
+    model_types: List[str] = field(
+        default_factory=lambda: [
+            "random_forest",
+            "catboost",
+        ]
+    )
+    scaler_type: str = "standard"
+
+    # Market & Cost Settings
+    cost_profile: str = "Stake (Standard)"
+    w8ben: bool = True
+    market_country: str = "USA"
+    currency_symbol: str = "$"
+    timezone: str = "US/Eastern"
+
+    # Market & Macro Data Sources
+    market_indices: dict = field(
+        default_factory=lambda: {
+            "SP500": "^GSPC",
+            "Nasdaq100": "^NDX",
+            "VIX": "^VIX",
+            "Yield10Y": "^TNX",
+        }
+    )
+    macro_indicators: dict = field(
+        default_factory=lambda: {
+            "Gold": "GC=F",
+            "Oil": "CL=F",
+            "USD/JPY": "JPY=X",
+        }
+    )
+
+    def __post_init__(self):
+        # Ensure directories exist
+        os.makedirs(self.model_path, exist_ok=True)
+        os.makedirs(self.ledger_path, exist_ok=True)
 
 
 def load_config() -> Config:
