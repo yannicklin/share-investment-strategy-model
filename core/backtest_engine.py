@@ -122,9 +122,20 @@ class BacktestEngine:
         df["K"] = rsv.ewm(com=2).mean()
         df["D"] = df["K"].ewm(com=2).mean()
 
-        # Institutional Net Buy (FinMind Feature)
-        if "Inst_Net_Buy" not in df.columns:
-            df["Inst_Net_Buy"] = 0.0
+        # Fill missing new features if not present
+        for col in [
+            "Foreign_Net",
+            "Trust_Net",
+            "Dealer_Net",
+            "Margin_Balance",
+            "Short_Balance",
+            "Revenue_YoY",
+            "USD_TWD",
+            "SOX_Index",
+            "NASDAQ_Index",
+        ]:
+            if col not in df.columns:
+                df[col] = 0.0
 
         # CLEANUP: Handle Inf values created by division (e.g. RSI gain/loss)
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
@@ -160,7 +171,15 @@ class BacktestEngine:
             "Signal_Line",
             "K",
             "D",
-            "Inst_Net_Buy",
+            "Foreign_Net",
+            "Trust_Net",
+            "Dealer_Net",
+            "Margin_Balance",
+            "Short_Balance",
+            "Revenue_YoY",
+            "USD_TWD",
+            "SOX_Index",
+            "NASDAQ_Index",
             "Daily_Return",
         ]
         return df, features, None

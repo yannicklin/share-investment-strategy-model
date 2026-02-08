@@ -167,6 +167,10 @@ def main():
         )
 
         st.subheader("🇹🇼 Taiwan Market Notes")
+        st.info(
+            "ℹ️ **FinMind Essential**: Yahoo Finance provides *Price* data, but only FinMind provides **Chips (Foreign/Trust/Margin)** & **Monthly Revenue**.\n"
+            "This unique alpha is why Taiwan models require specialized data sources."
+        )
         col1, col2 = st.columns(2)
         with col1:
             st.write("- **T+2 Settlement**: Strict cash clearing enforcement.")
@@ -174,14 +178,16 @@ def main():
                 "- **0% Capital Gains Tax**: Currently tax-free for domestic stocks (subject to future regulation changes)."
             )
             st.write(
-                "- **DataSource (FinMind)**: Enhanced with Institutional Net Buy features."
+                "- **DataSource (FinMind)**: Enhanced with Foreign/Trust, Margin, & Revenue features."
             )
         with col2:
             st.write("- **High Friction (STT)**: 0.3% tax on every sell order.")
             st.write(
                 "- **Circuit Breakers**: Daily price limit of ±10%. (Execution simulation reflects these gaps)."
             )
-            st.write("- **Currency**: All figures in TWD (New Taiwan Dollar).")
+            st.write(
+                "- **Global Correlation**: Includes NASDAQ/SOX/USD impacts via Yahoo Finance."
+            )
 
 
 if __name__ == "__main__":
