@@ -40,7 +40,20 @@ def main():
     # 1. Render Sidebar & Get Config
     config = render_sidebar()
 
-    st.title(f"🇺🇸 AI Trading Strategy: {config['mode']}")
+    # Header with Flag and Title
+    st.title("🇺🇸 US Market AI Strategy")
+    st.markdown(
+        """
+        **Market Context**: The US Stock Market (NYSE/NASDAQ) is the largest and most liquid in the world. 
+        It is characterized by high institutional participation, strong trends in Tech/Growth sectors, 
+        and high sensitivity to **Macro Regimes** (Federal Reserve Policy, VIX).
+        
+        *This model integrates specific US friction layers including SEC fees, W-8BEN tax treaties, and T+1 Settlement.*
+        """
+    )
+    st.markdown("---")
+
+    st.header(f"Analysis Mode: {config['mode']}")
 
     col1, col2 = st.columns([2, 1])
     with col1:
