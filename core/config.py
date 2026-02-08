@@ -96,14 +96,14 @@ class Config:
         ]
     )
     backtest_years: int = 5
-    stop_loss_threshold: float = 0.05
-    stop_profit_threshold: float = 0.15
+    stop_loss_threshold: float = 0.15
+    stop_profit_threshold: float = 0.30
     model_path: str = "data/models/"
     ledger_path: str = "data/ledgers/"
     init_capital: float = 3000.00
     hold_period_unit: str = "month"
     hold_period_value: int = 1
-    hurdle_risk_buffer: float = 0.02
+    hurdle_risk_buffer: float = 0.01
     risk_free_rate: float = 0.04
     annual_income: float = 0.0  # Not used in USA CGT logic (0% for W-8BEN)
 

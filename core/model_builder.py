@@ -77,7 +77,9 @@ class ModelBuilder:
             import tensorflow as tf
 
             available.append("lstm")
-        except (ImportError, Exception):
+            logging.info("LSTM dependencies (tensorflow) loaded successfully.")
+        except (ImportError, Exception) as e:
+            logging.warning(f"LSTM unavailable: {e}")
             pass
 
         return available
@@ -310,6 +312,12 @@ class ModelBuilder:
         self, data_scaled: np.ndarray, target: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Convert time-series to supervised sequences for LSTM."""
+        if len(data_scaled) <= self.sequence_length:
+            logging.warning(
+                f"Data length ({len(data_scaled)}) <= sequence length ({self.sequence_length}). Cannot create sequences."
+            )
+            return np.array([], dtype=np.float32), np.array([], dtype=np.float32)
+
         X_seq, y_seq = [], []
         for i in range(len(data_scaled) - self.sequence_length):
             X_seq.append(data_scaled[i : i + self.sequence_length])
@@ -332,7 +340,11 @@ class ModelBuilder:
         m_type = self.config.model_type
         model = None
         if m_type == "lstm":
+            logging.info(f"Training LSTM for {ticker}. Input Shape: {X_scaled.shape}")
             X_seq, y_seq = self._create_sequences(X_scaled, y)
+            logging.info(
+                f"LSTM Sequences created. X_seq: {X_seq.shape}, y_seq: {y_seq.shape}"
+            )
             model = self._init_model(input_dim=X.shape[1])
             model.fit(X_seq, y_seq, batch_size=32, epochs=20, verbose=0)
         elif m_type == "prophet":
@@ -390,6 +402,7 @@ class ModelBuilder:
 
             self.scaler = bundle["scaler"]
             self.model = bundle["model"]
+            logging.info(f"Model for {ticker} loaded successfully.")
             return "loaded"
         except Exception as e:
             logging.error(f"Failed to load model for {ticker}: {e}")

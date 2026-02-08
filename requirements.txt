@@ -6,6 +6,7 @@ numpy
 scikit-learn
 catboost
 prophet
+lxml # Required for pandas.read_html
 # Standard Scikit-Learn algorithms (RandomForest, GradientBoosting) are built-in
 
 # TensorFlow (OS-Specific for hardware portability)
