@@ -1,5 +1,11 @@
 __pycache__/
+*.py[cod]
+*$py.class
+*.so
 *.pyc
+*-312.pyc
+**/__pycache__/
+**/*.pyc
 .DS_Store
 .env
 venv/
