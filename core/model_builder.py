@@ -20,6 +20,16 @@ import logging
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 os.environ["STAN_LOG_LEVEL"] = "ERROR"
 os.environ["CMDSTANPY_LOG_LEVEL"] = "ERROR"
+
+try:
+    import tensorflow as tf
+
+    tf.get_logger().setLevel("ERROR")
+    # Suppress retracing warnings
+    tf.autograph.set_verbosity(0)
+except ImportError:
+    pass
+
 logging.getLogger("cmdstanpy").setLevel(logging.ERROR)
 logging.getLogger("prophet").setLevel(logging.ERROR)
 
@@ -335,7 +345,7 @@ class ModelBuilder:
         delta = df["Close"].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        rs = gain / loss
+        rs = gain / (loss + 1e-9)
         df["RSI"] = 100 - (100 / (1 + rs))
 
         # --- 3. MACD ---
@@ -349,7 +359,7 @@ class ModelBuilder:
         df["BB_Std"] = df["Close"].rolling(window=20).std()
         df["BB_Upper"] = df["BB_Middle"] + (2 * df["BB_Std"])
         df["BB_Lower"] = df["BB_Middle"] - (2 * df["BB_Std"])
-        df["BB_Width"] = (df["BB_Upper"] - df["BB_Lower"]) / df["BB_Middle"]
+        df["BB_Width"] = (df["BB_Upper"] - df["BB_Lower"]) / (df["BB_Middle"] + 1e-9)
 
         # --- 5. ATR (New) ---
         high_low = df["High"] - df["Low"]
@@ -365,7 +375,7 @@ class ModelBuilder:
             # CRITICAL: Shift market data by 1 day to prevent look-ahead bias.
             # US Markets (S&P500) close *after* ASX closes on the same date.
             # We must use T-1 market data for T calculations.
-            market_subset = self._market_data.shift(1).reindex(df.index, method="ffill")
+            market_subset = self._market_data.shift(1).reindex(df.index).ffill()
             df = df.join(market_subset)
 
             # Fill any remaining NaNs (e.g. start of history)
@@ -481,23 +491,60 @@ class ModelBuilder:
         model_filename = os.path.join(
             self.config.model_path, f"{ticker}_{self.config.model_type}_model.joblib"
         )
+
+        # 1. Force train if requested or missing
         if self.config.rebuild_model or not os.path.exists(model_filename):
             self.train(ticker)
             return "trained"
-        else:
-            data_bundle = joblib.load(model_filename)
-            self.scaler = data_bundle["scaler"]
-            if "keras_path" in data_bundle or "lstm_h5" in data_bundle:
-                try:
-                    from tensorflow.keras.models import load_model
 
-                    path = data_bundle.get("keras_path") or data_bundle.get("lstm_h5")
+        try:
+            # 2. Try loading bundle
+            data_bundle = joblib.load(model_filename)
+            loaded_scaler = data_bundle["scaler"]
+
+            # 3. Check for feature mismatch
+            # We fetch a tiny slice of data to check current feature dimensions
+            sample_data = self.fetch_data(ticker, self.config.backtest_years)
+            if sample_data.empty:
+                self.train(ticker)
+                return "trained_fallback"
+
+            X_sample, _ = self.prepare_features(sample_data)
+            current_dim = X_sample.shape[1]
+
+            # Scaler feature count check
+            if (
+                hasattr(loaded_scaler, "n_features_in_")
+                and loaded_scaler.n_features_in_ != current_dim
+            ):
+                logging.warning(
+                    f"Feature mismatch for {ticker}: expected {current_dim}, found {loaded_scaler.n_features_in_}. Retraining..."
+                )
+                self.train(ticker)
+                return "retrained"
+
+            self.scaler = loaded_scaler
+
+            # 4. Load Model
+            if "keras_path" in data_bundle or "lstm_h5" in data_bundle:
+                from tensorflow.keras.models import load_model
+
+                path = data_bundle.get("keras_path") or data_bundle.get("lstm_h5")
+                # Final safety check: load_model might fail if architecture changed
+                try:
                     self.model = load_model(path)
                 except Exception:
-                    self.model = data_bundle.get("model")
+                    self.train(ticker)
+                    return "retrained_keras_error"
             else:
                 self.model = data_bundle.get("model")
+
             return "loaded"
+
+        except Exception as e:
+            logging.error(f"Failed to load model for {ticker}: {e}. Retraining...")
+            self.train(ticker)
+            return "retrained_error"
 
     def predict(
         self, current_data: np.ndarray, date: Optional[pd.Timestamp] = None

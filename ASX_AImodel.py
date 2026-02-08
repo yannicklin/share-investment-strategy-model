@@ -10,6 +10,18 @@ Copyright (c) 2026 Yannick
 
 import streamlit as st
 import pandas as pd
+import os
+import logging
+
+# Suppress TensorFlow noise early
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+try:
+    import tensorflow as tf
+
+    tf.get_logger().setLevel("ERROR")
+    tf.autograph.set_verbosity(0)
+except ImportError:
+    pass
 from core.config import load_config
 from core.model_builder import ModelBuilder
 from core.backtest_engine import BacktestEngine
@@ -156,6 +168,12 @@ def render_app():
                 import gc
 
                 gc.collect()
+                try:
+                    import tensorflow as tf
+
+                    tf.keras.backend.clear_session()
+                except ImportError:
+                    pass
 
         st.session_state["results"] = all_results
         st.session_state["active_mode"] = mode

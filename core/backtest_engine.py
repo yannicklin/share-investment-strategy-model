@@ -151,17 +151,62 @@ class BacktestEngine:
         if raw_data.empty:
             return None, None, {"error": f"No data for {ticker}"}
 
-        df = self._get_indicators(raw_data)
-        if df.empty:
-            return None, None, {"error": f"Insufficient data for {ticker}"}
+        # Use the unified feature preparation from model_builder
+        # We need the full dataframe with indicators for the core loop
+        # So we'll recreate the feature list logic here to match exactly
+        df = raw_data.copy()
 
-        # Determine the official start/end dates for trading (excluding warm-up)
+        # 1. Basic Moving Averages
+        df["MA5"] = df["Close"].rolling(window=5).mean()
+        df["MA20"] = df["Close"].rolling(window=20).mean()
+        df["MA50"] = df["Close"].rolling(window=50).mean()
+
+        # 2. RSI
+        delta = df["Close"].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / (loss + 1e-9)
+        df["RSI"] = 100 - (100 / (1 + rs))
+
+        # 3. MACD
+        exp1 = df["Close"].ewm(span=12, adjust=False).mean()
+        exp2 = df["Close"].ewm(span=26, adjust=False).mean()
+        df["MACD"] = exp1 - exp2
+        df["Signal_Line"] = df["MACD"].ewm(span=9, adjust=False).mean()
+
+        # 4. Bollinger Bands
+        df["BB_Middle"] = df["Close"].rolling(window=20).mean()
+        df["BB_Std"] = df["Close"].rolling(window=20).std()
+        df["BB_Upper"] = df["BB_Middle"] + (2 * df["BB_Std"])
+        df["BB_Lower"] = df["BB_Middle"] - (2 * df["BB_Std"])
+        df["BB_Width"] = (df["BB_Upper"] - df["BB_Lower"]) / (df["BB_Middle"] + 1e-9)
+
+        # 5. ATR
+        high_low = df["High"] - df["Low"]
+        high_close = np.abs(df["High"] - df["Close"].shift())
+        low_close = np.abs(df["Low"] - df["Close"].shift())
+        tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+        df["ATR"] = tr.rolling(window=14).mean()
+
+        # 6. Market Context Integration
+        self.model_builder._ensure_market_data()
+        m_data = self.model_builder._market_data
+        if m_data is not None and not m_data.empty:
+            market_subset = m_data.shift(1).reindex(df.index).ffill()
+            df = df.join(market_subset)
+
+        df["Daily_Return"] = df["Close"].pct_change(fill_method=None)
+
+        # Clean up
+        df.replace([np.inf, -np.inf], np.nan, inplace=True)
+        df.ffill(inplace=True)
+        df.fillna(0, inplace=True)
+
+        # Determine the official start/end dates for trading
         official_start = pd.Timestamp.now() - pd.DateOffset(
             years=self.config.backtest_years
         )
         official_end = pd.Timestamp(df.index[-1])
-
-        # Initialize trading days calendar (excludes weekends + ASX holidays)
         self.trading_days = get_asx_trading_days(official_start, official_end)
 
         # Filter dataframe to only include valid trading days
@@ -169,6 +214,7 @@ class BacktestEngine:
         if df.empty:
             return None, None, {"error": f"No valid trading days for {ticker}"}
 
+        # Synchronized Features List (MUST MATCH model_builder.py)
         features = [
             "Open",
             "High",
@@ -177,11 +223,22 @@ class BacktestEngine:
             "Volume",
             "MA5",
             "MA20",
+            "MA50",
             "RSI",
             "MACD",
             "Signal_Line",
+            "BB_Upper",
+            "BB_Lower",
+            "BB_Width",
+            "ATR",
             "Daily_Return",
         ]
+
+        # Add dynamic market features
+        if m_data is not None:
+            for col in m_data.columns:
+                if col in df.columns:
+                    features.append(col)
 
         return df, features, None
 
