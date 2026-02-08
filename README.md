@@ -6,6 +6,30 @@ A clinical research framework for the objective analysis of algorithmic trading 
 
 The identity of this model is defined by **Grounded Realism**. While many AI systems focus solely on price prediction accuracy, this framework prioritizes **Net Profitability**. It treats transaction fees, taxes (including foreign investor implications), and slippage as primary variables, not afterthoughts.
 
+## 🚀 Getting Started
+
+### Prerequisites
+- Python 3.10, 3.11, or 3.12 (Recommended)
+- macOS (Apple Silicon supported natively)
+
+### Quick Start
+This project includes a robust setup script and Makefile for easy management.
+
+```bash
+# 1. Setup Environment & Install Dependencies
+make setup
+
+# 2. Run the Dashboard
+make run
+```
+
+Alternatively, you can run the setup script directly:
+```bash
+./setup.sh
+source .venv/bin/activate
+streamlit run main.py
+```
+
 ## 🏛️ Core Pillars
 
 - **The Clinical Filter**: Removing emotional bias through data-driven multi-model consensus.
