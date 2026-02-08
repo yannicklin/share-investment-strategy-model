@@ -1,10 +1,10 @@
-# AI-Based Trading Strategy Model
+# AI-Based Trading Strategy Model (USA Edition)
 
-A clinical research framework for the objective analysis of algorithmic trading. This project is not a "trading bot"—it is an infrastructure designed to bridge the gap between theoretical AI signals and the harsh reality of market friction.
+A clinical research framework for the objective analysis of algorithmic trading in the **US Stock Market (NYSE, NASDAQ)**. This project is not a "trading bot"—it is an infrastructure designed to bridge the gap between theoretical AI signals and the harsh reality of market friction.
 
 ## 🎯 The Philosophy
 
-The identity of this model is defined by **Grounded Realism**. While many AI systems focus solely on price prediction accuracy, this framework prioritizes **Net Profitability**. It treats transaction fees, slippage, and taxation as primary variables, not afterthoughts.
+The identity of this model is defined by **Grounded Realism**. While many AI systems focus solely on price prediction accuracy, this framework prioritizes **Net Profitability**. It treats transaction fees, taxes (including foreign investor implications), and slippage as primary variables, not afterthoughts.
 
 ## 🏛️ Core Pillars
 

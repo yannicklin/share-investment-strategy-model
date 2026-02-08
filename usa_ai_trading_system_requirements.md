@@ -47,19 +47,40 @@ To ensure realism and profitability, the system employs a **Tax-Aware Dynamic Hu
 ## 3. Financial Accounting & Reinvestment
 
 ### 3.1 Fee Structures
-The system supports US-specific broker profiles:
-- **Commission-Free (e.g., Robinhood/Schwab)**:
+The system supports broker profiles for both domestic (US) and international (Australian) investors:
+
+- **US Domestic - Commission-Free (e.g., Robinhood/Schwab)**:
     - Brokerage: $0.00
     - Regulatory Fees (Sell-side only): 
         - SEC Fee: $0.0000278 x Sell Value
         - FINRA TAF: $0.000166 x Quantity (Max $8.30 per trade)
-- **Pro-Tier (e.g., Interactive Brokers)**:
-    - Brokerage: $0.005 per share (Min $1.00, Max 1% of Trade Value)
 
-### 3.2 Taxation (IRS Rules)
-Federal Capital Gains Tax calculation based on holding period:
-- **Short-Term (Held < 365 days)**: Taxed as ordinary income (Marginal Rate based on user's annual income).
-- **Long-Term (Held ≥ 365 days)**: Tiered rates based on income (typically 0%, 15%, or 20%).
+- **US Domestic - Pro-Tier (e.g., Interactive Brokers)**:
+    - Brokerage: $0.005 per share (Min $1.00, Max 1% of Trade Value)
+    - Regulatory Fees: Standard SEC/FINRA pass-through.
+
+- **Foreign Investor (Australia) - Stake (Retail Profile)**:
+    - Brokerage: $3.00 USD per trade (for trades ≤ $30,000 USD).
+    - FX Fee: ~70 basis points (0.70%) on AUD/USD transfers. This "hidden" fee is a critical part of the friction model.
+    - Regulatory Fees: Pass-through of SEC and FINRA fees.
+
+- **Foreign Investor (Australia) - Interactive Brokers (Pro Profile)**:
+    - Brokerage: Tiered (~$0.0035/share) or Fixed ($0.005/share, Min $1.00).
+    - FX Fee: Spot Rate + 0.20 basis points (0.002%) + $2.00 USD min fee. Significantly lower friction for large capital.
+    - Regulatory Fees: Pass-through of SEC and FINRA fees.
+
+### 3.2 Taxation (Foreign Investor - US Side Obligations)
+The model simulates a Foreign Investor (e.g., Australian) trading in the US, focusing **exclusively on US tax obligations** collected at the source.
+
+- **Base Currency**: **USD**.
+- **W-8BEN Status**: Configurable option (Default: Filed).
+    - **Filed (Treaty Benefit)**: 
+        - **Dividends**: 15% Withholding Tax.
+        - **Capital Gains**: $0.00 US Tax.
+    - **Not Filed**: 
+        - **Dividends**: 30% Withholding Tax.
+        - **Capital Gains**: Potential 30% Backup Withholding (depending on broker enforcement).
+- **Disclaimer**: This model **does not** calculate domestic taxes in the investor's home country (e.g., Australian ATO Capital Gains Tax). Users must calculate their local tax liability separately based on these USD returns.
 
 ### 3.3 Reinvestment & Settlement
 - **Settlement Logic**: Backtesting assumes a **T+1 reinvestment** cycle (capital available the next business day after a sale), providing a realistic simulation of US brokerage cash flow.
@@ -67,7 +88,17 @@ Federal Capital Gains Tax calculation based on holding period:
 
 ---
 
-## 4. Historical Data Source (USA)
+## 4. Custodianship & Risk (Safety Net)
+Unlike the Australian **CHESS** system (HIN), where investors have direct legal ownership of shares on the registry, the US market operates on a **Custodian Model**.
+
+- **Street Name**: Shares are held in the broker's name (or their custodian's) at the central depository (DTC). The investor is the "Beneficial Owner."
+- **SIPC Protection**: To mitigate the lack of direct ownership, US brokers are members of **SIPC (Securities Investor Protection Corporation)**. This protects client assets up to **$500,000 USD** (limit $250,000 for cash) if the broker fails.
+    - *Note for Model*: The strategy assumes the broker is SIPC-insured (e.g., Stake, IBKR, Schwab). The lack of HIN does not impact the algorithmic strategy but is a critical "Risk" factor for the user's capital allocation decisions.
+- **Direct Registration (DRS)**: While possible (e.g., via Computershare), it is **not recommended** for active trading due to high friction and slow execution speeds.
+
+---
+
+## 5. Historical Data Source (USA)
 Exclusively uses **Yahoo Finance (`yfinance`)**. 
 - **Ticker format**: Standard US symbols (e.g., `AAPL`, `TSLA`, `NVDA`). No suffix required.
 - **Adjustment**: Always use `auto_adjust=True` and target the `Close` price for calculations.
@@ -75,8 +106,8 @@ Exclusively uses **Yahoo Finance (`yfinance`)**.
 
 ---
 
-## 5. Summary
-This system provides a rigorous, realistic backtesting environment for US trading, mirroring the ASX version's AI intelligence while strictly adhering to US regulatory fees and federal tax laws.
+## 6. Summary
+This system provides a rigorous, realistic backtesting environment for US trading, mirroring the ASX version's AI intelligence while strictly adhering to US regulatory fees, federal tax laws, and market structure constraints.
 
 ---
 *Last Updated: February 1, 2026*
