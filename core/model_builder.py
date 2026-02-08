@@ -38,6 +38,7 @@ class ModelBuilder:
         self.scaler: Optional[Any] = None
         self.sequence_length = 30
         self._data_cache: Dict[str, pd.DataFrame] = {}
+        self._market_data: Optional[pd.DataFrame] = None
 
     def _init_scaler(self) -> Any:
         if self.config.scaler_type == "robust":
@@ -271,6 +272,53 @@ class ModelBuilder:
             except Exception:
                 pass
 
+    def _ensure_market_data(self):
+        """Fetches and caches market/macro data if not already present."""
+        if self._market_data is not None:
+            return
+
+        logging.info("Fetching market and macro data...")
+        market_tickers = {
+            **self.config.market_indices,
+            **self.config.macro_indicators,
+        }
+
+        # Download 10 years of data to be safe (covers all reasonable backtests)
+        start_date = pd.Timestamp.now() - pd.DateOffset(years=10)
+
+        market_df = pd.DataFrame()
+
+        for name, ticker in market_tickers.items():
+            try:
+                # Use history for cleaner single-ticker fetch
+                # or download. we need daily close.
+                df = yf.download(
+                    ticker,
+                    start=start_date,
+                    progress=False,
+                    auto_adjust=True,
+                    threads=False,
+                )
+
+                if df.empty:
+                    continue
+
+                # Clean and normalize
+                df = self._normalize_df(df, ticker)
+
+                if "Close" in df.columns:
+                    # Rename to prevent collision and identify source
+                    col_name = f"MKT_{name}"
+                    market_df[col_name] = df["Close"]
+
+                    # Also add Returns for indices/macro (optional but useful)
+                    # market_df[f"{col_name}_Ret"] = df["Close"].pct_change()
+            except Exception as e:
+                logging.warning(f"Failed to fetch market data {name} ({ticker}): {e}")
+
+        # Forward fill to handle different trading calendars (e.g. US holidays vs AU)
+        self._market_data = market_df.ffill().fillna(0)
+
     def prepare_features(self, data: pd.DataFrame):
         df = data.copy()
 
@@ -278,24 +326,57 @@ class ModelBuilder:
         if "Close" not in df.columns:
             raise KeyError(f"Column 'Close' missing. Found: {list(df.columns)}")
 
+        # --- 1. Basic Moving Averages ---
         df["MA5"] = df["Close"].rolling(window=5).mean()
         df["MA20"] = df["Close"].rolling(window=20).mean()
+        df["MA50"] = df["Close"].rolling(window=50).mean()
 
+        # --- 2. RSI ---
         delta = df["Close"].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         rs = gain / loss
         df["RSI"] = 100 - (100 / (1 + rs))
 
+        # --- 3. MACD ---
         exp1 = df["Close"].ewm(span=12, adjust=False).mean()
         exp2 = df["Close"].ewm(span=26, adjust=False).mean()
         df["MACD"] = exp1 - exp2
         df["Signal_Line"] = df["MACD"].ewm(span=9, adjust=False).mean()
+
+        # --- 4. Bollinger Bands (New) ---
+        df["BB_Middle"] = df["Close"].rolling(window=20).mean()
+        df["BB_Std"] = df["Close"].rolling(window=20).std()
+        df["BB_Upper"] = df["BB_Middle"] + (2 * df["BB_Std"])
+        df["BB_Lower"] = df["BB_Middle"] - (2 * df["BB_Std"])
+        df["BB_Width"] = (df["BB_Upper"] - df["BB_Lower"]) / df["BB_Middle"]
+
+        # --- 5. ATR (New) ---
+        high_low = df["High"] - df["Low"]
+        high_close = np.abs(df["High"] - df["Close"].shift())
+        low_close = np.abs(df["Low"] - df["Close"].shift())
+        tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+        df["ATR"] = tr.rolling(window=14).mean()
+
+        # --- 6. Market Context Integration (New) ---
+        self._ensure_market_data()
+        if self._market_data is not None and not self._market_data.empty:
+            # Align market data to stock dates
+            # CRITICAL: Shift market data by 1 day to prevent look-ahead bias.
+            # US Markets (S&P500) close *after* ASX closes on the same date.
+            # We must use T-1 market data for T calculations.
+            market_subset = self._market_data.shift(1).reindex(df.index, method="ffill")
+            df = df.join(market_subset)
+
+            # Fill any remaining NaNs (e.g. start of history)
+            df = df.ffill().fillna(0)
+
         df["Daily_Return"] = df["Close"].pct_change(fill_method=None)
 
         df["Target"] = df["Close"].shift(-1)
         df = df.dropna()
 
+        # Update features list
         features = [
             "Open",
             "High",
@@ -304,11 +385,23 @@ class ModelBuilder:
             "Volume",
             "MA5",
             "MA20",
+            "MA50",
             "RSI",
             "MACD",
             "Signal_Line",
+            "BB_Upper",
+            "BB_Lower",
+            "BB_Width",
+            "ATR",
             "Daily_Return",
         ]
+
+        # Add dynamic market features
+        if self._market_data is not None:
+            for col in self._market_data.columns:
+                if col in df.columns:
+                    features.append(col)
+
         X = df[features].values
         y = df["Target"].values
         return X, y

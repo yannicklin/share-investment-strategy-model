@@ -57,6 +57,22 @@ class Config:
         0.005  # 0.5% extra buffer to account for slippage/volatility
     )
 
+    # Market & Macro Data Sources
+    market_indices: dict = field(
+        default_factory=lambda: {
+            "ASX200": "^AXJO",
+            "SP500": "^GSPC",
+            "VIX": "^VIX",
+        }
+    )
+    macro_indicators: dict = field(
+        default_factory=lambda: {
+            "AUDUSD": "AUDUSD=X",
+            "Gold": "GC=F",
+            "Oil": "CL=F",
+        }
+    )
+
 
 def load_config() -> Config:
     """Loads configuration settings."""

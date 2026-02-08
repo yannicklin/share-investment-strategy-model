@@ -56,6 +56,22 @@ Exclusively uses **Yahoo Finance (`yfinance`)**.
 - **Adjustment**: Always use `auto_adjust=True` and target the `Close` price for calculations.
 - **Warm-up**: Fetches an additional 90 days of history prior to the start date for sequence initialization.
 
+### 3.1 Market Context & Macro Data (The "Market Notes")
+- **Global Market Intelligence**:
+  - **S&P 500 (`^GSPC`)**: Captures US market sentiment (T-1 shift applied to prevent look-ahead bias).
+  - **ASX 200 (`^AXJO`)**: Captures local market "Beta" (systemic risk).
+  - **VIX (`^VIX`)**: Global volatility/fear gauge (T-1 shift).
+- **Macroeconomic Drivers**:
+  - **AUD/USD (`AUDUSD=X`)**: Critical for importers vs. exporters.
+  - **Commodities**: Gold (`GC=F`) and Oil (`CL=F`) futures (T-1 shift) to drive resource stock predictions.
+- **Data Robustness**:
+  - **Fault Tolerance**: Pipeline uses `try...except` blocks to skip missing feeds without crashing.
+  - **Gap Filling**: Forward-fill logic ensures continuity if external markets are closed (e.g., US holidays).
+
+### 3.2 Advanced Technical Indicators
+- **Bollinger Bands (20, 2)**: Adds `Upper`, `Lower`, and `Width` (Squeeze) to detect mean reversion and volatility breakouts.
+- **ATR (14)**: Average True Range added to measure pure price volatility for risk sizing.
+
 ---
 ## 4. Trading Constraints & Realism
 

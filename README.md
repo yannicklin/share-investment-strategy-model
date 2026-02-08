@@ -17,6 +17,7 @@ A Python-based automated trading strategy system designed specifically for the *
     -   **Portfolio Validation**: Pre-checks available cash before generating signals (skips ML execution if insufficient capital).
     -   **Market Constraints**: Enforces stop-loss rules and minimum holding periods.
     -   **Price Gaps**: Handles scenarios where stop-loss cannot be executed at the exact threshold due to market gaps.
+-   **Global Market Intelligence**: Incorporates **S&P 500**, **VIX**, **Gold**, **Oil**, and **AUD/USD** data to understand market sentiment and macro drivers (with strict T-1 shifting to prevent look-ahead bias).
 -   **Data Integration**: Seamlessly fetches historical and real-time data from Yahoo Finance (`yfinance`).
 -   **Interactive Dashboard**: A built-in Streamlit UI featuring a **Segmented Selection Switch** for:
 -   **Models Comparison**: Benchmark 5 AI models for a specific fixed strategy.
