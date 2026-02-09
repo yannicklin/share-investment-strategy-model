@@ -1,5 +1,5 @@
 """
-ASX AI Trading System - Transaction Ledger
+Taiwan Stock AI Trading System - Transaction Ledger
 
 Purpose: Memory-optimized transaction logging for backtest audit trail.
 
@@ -177,6 +177,7 @@ class TransactionLedger:
                     "price",
                     "total_value",
                     "commission",
+                    "tax",
                     "cash_before",
                     "cash_after",
                     "positions_before",
