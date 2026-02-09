@@ -452,8 +452,11 @@ class BacktestEngine:
             wins = sum(1 for t in trades if t["profit_pct"] > 0)
             win_rate = wins / len(trades)
 
+        init_cap = float(self.config.init_capital)
+        roi = (final_cap - init_cap) / init_cap if init_cap > 0 else 0.0
+
         return {
-            "roi": (final_cap - self.config.init_capital) / self.config.init_capital,
+            "roi": roi,
             "final_capital": final_cap,
             "win_rate": win_rate,
             "total_trades": len(trades),
