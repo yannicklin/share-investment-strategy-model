@@ -1,5 +1,5 @@
 # Core AI and Data
-yfinance>=0.2.38  # Taiwan stocks (.TW) - threads=False prevents chrome impersonation errors
+yfinance==0.2.48  # Last version without curl-cffi requirement
 FinMind  # Taiwan institutional data, margin trading, revenue
 pandas_datareader  # Global indices (^SOX, ^IXIC) and USD/TWD
 pandas
