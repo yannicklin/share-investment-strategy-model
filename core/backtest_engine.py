@@ -354,6 +354,22 @@ class BacktestEngine:
             return error if error else {"error": "Failed to prepare data"}
 
         all_preds = self._get_bulk_predictions(df, features, model_type)
+        
+        # Debug LSTM predictions
+        if model_type == "lstm":
+            non_zero = all_preds[all_preds != 0]
+            print(f"\n{'='*60}")
+            print(f"LSTM DEBUG for {ticker}:")
+            print(f"Total predictions: {len(all_preds)}")
+            print(f"Non-zero predictions: {len(non_zero)}")
+            if len(non_zero) > 0:
+                print(f"Prediction range: [{non_zero.min():.2f}, {non_zero.max():.2f}]")
+                print(f"Prediction mean: {non_zero.mean():.2f}")
+                print(f"Sample predictions: {non_zero[:5]}")
+            close_prices = df['Close'].values
+            print(f"Close price range: [{close_prices.min():.2f}, {close_prices.max():.2f}]")
+            print(f"Close price mean: {close_prices.mean():.2f}")
+            print(f"{'='*60}\n")
 
         def signal(
             i: int,
@@ -436,6 +452,10 @@ class BacktestEngine:
             and self.model_builder.model is not None
             and self.model_builder.scaler is not None
         ):
+            print(f"\n*** LSTM PREDICTION PATH ENTERED ***")
+            print(f"Model type: {type(self.model_builder.model)}")
+            print(f"Scaler type: {type(self.model_builder.scaler)}")
+            
             # Use sequence_length from model_builder for consistency
             seq_len = self.model_builder.sequence_length
             X_scaled = self.model_builder.scaler.transform(X_all).astype(np.float32)
@@ -445,6 +465,9 @@ class BacktestEngine:
             valid_indices = np.arange(seq_len, len(df))
             X_seq = np.array([X_scaled[i - seq_len : i] for i in valid_indices], dtype=np.float32)
             
+            print(f"Sequence shape: {X_seq.shape}")
+            print(f"Valid indices: {len(valid_indices)}")
+            
             if len(X_seq) == 0:
                 logging.warning(f"Not enough data for LSTM sequences (need >{seq_len} days)")
                 return np.zeros(len(df), dtype=np.float32)
@@ -452,6 +475,11 @@ class BacktestEngine:
             raw_preds = self.model_builder.model.predict(
                 X_seq, batch_size=64, verbose=0
             ).flatten()
+            
+            print(f"Raw predictions shape: {raw_preds.shape}")
+            print(f"Raw predictions sample (first 10): {raw_preds[:10]}")
+            print(f"Raw predictions stats: min={raw_preds.min():.4f}, max={raw_preds.max():.4f}, mean={raw_preds.mean():.4f}")
+            
             all_preds = np.zeros(len(df), dtype=np.float32)
             all_preds[seq_len:] = raw_preds
             
@@ -474,4 +502,7 @@ class BacktestEngine:
             X_scaled = self.model_builder.scaler.transform(X_all).astype(np.float32)
             return self.model_builder.model.predict(X_scaled).astype(np.float32)
 
+        print(f"\n*** WARNING: Returning zeros for model_type={model_type} ***")
+        print(f"Model is None: {self.model_builder.model is None}")
+        print(f"Scaler is None: {self.model_builder.scaler is None}")
         return np.zeros(len(df), dtype=np.float32)

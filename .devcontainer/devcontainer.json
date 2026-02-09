@@ -40,7 +40,7 @@
   },
   
   "postCreateCommand": "make setup",
-  "postStartCommand": "git pull && make run",
+  "postStartCommand": "git pull",
   
   "remoteUser": "vscode"
 }
