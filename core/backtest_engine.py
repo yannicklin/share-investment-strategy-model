@@ -373,13 +373,33 @@ class BacktestEngine:
         if error or df is None or features is None:
             return error or {"error": "Failed to prepare data"}
         all_preds = self._get_bulk_predictions(df, features, model_type)
+        
+        # Debug predictions
+        non_zero_preds = all_preds[all_preds != 0]
+        print(f"\n=== {model_type.upper()} PREDICTIONS DEBUG ===")
+        print(f"Total predictions: {len(all_preds)}")
+        print(f"Non-zero predictions: {len(non_zero_preds)}")
+        if len(non_zero_preds) > 0:
+            print(f"Pred range: [{non_zero_preds.min():.2f}, {non_zero_preds.max():.2f}]")
+            print(f"Pred mean: {non_zero_preds.mean():.2f}")
+            print(f"Sample preds: {non_zero_preds[:5]}")
+        close_prices = df['Close'].values
+        print(f"Close range: [{close_prices.min():.2f}, {close_prices.max():.2f}]")
+        print(f"Close mean: {close_prices.mean():.2f}")
+        print(f"={'='*40}\n")
 
         def signal(i, df_inner, features_inner, current_cap):
             hurdle = self.get_hurdle_rate(current_cap)
             current_price = float(df_inner.iloc[i]["Close"])
             if current_price <= 1e-9:
                 return False
-            return (all_preds[i] - current_price) / current_price > hurdle
+            pred_return = (all_preds[i] - current_price) / current_price
+            
+            # Debug first few signals
+            if i < 10:
+                print(f"Day {i}: price={current_price:.2f}, pred={all_preds[i]:.2f}, pred_return={pred_return:.4f}, hurdle={hurdle:.4f}, buy={pred_return > hurdle}")
+            
+            return pred_return > hurdle
 
         result = self._core_run(ticker, signal, df, features)
         if "error" not in result:
@@ -447,6 +467,7 @@ class BacktestEngine:
     ) -> np.ndarray:
         # Validate Input Shape
         if df.empty or len(features) == 0:
+            print(f"WARNING: Empty df or features for {model_type}")
             return np.zeros(len(df), dtype=np.float32)
 
         X_all = df[features].values.astype(np.float32)
@@ -457,7 +478,10 @@ class BacktestEngine:
 
         # Ensure model is ready
         if self.model_builder.model is None:
+            print(f"WARNING: Model is None for {model_type}")
             return np.zeros(len(df), dtype=np.float32)
+        
+        print(f"_get_bulk_predictions for {model_type}: df_len={len(df)}, features={len(features)}, model={type(self.model_builder.model).__name__}")
 
         if model_type == "lstm" and self.model_builder.scaler:
             # Use sequence_length from model_builder for consistency

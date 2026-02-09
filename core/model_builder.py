@@ -271,16 +271,27 @@ class ModelBuilder:
                 # 4. GLOBAL CONTEXT (Yahoo Finance)
                 # TWD=X (USD/TWD), ^SOX (Semiconductor), ^IXIC (Nasdaq)
                 try:
+                    import warnings
                     global_tickers = ["TWD=X", "^SOX", "^IXIC"]
                     # Fetch slightly earlier to ensure we have data for the start date
                     g_start = start_date - pd.DateOffset(days=5)
-                    g_data = yf.download(
-                        global_tickers,
-                        start=g_start,
-                        end=end_date,
-                        auto_adjust=True,
-                        progress=False,
-                    )
+                    
+                    # Suppress yfinance warnings and errors
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore")
+                        g_data = yf.download(
+                            global_tickers,
+                            start=g_start,
+                            end=end_date,
+                            auto_adjust=True,
+                            progress=False,
+                            show_errors=False,  # Suppress yfinance error messages
+                        )
+
+                    # Skip if no data was downloaded
+                    if g_data.empty:
+                        logging.info("Global market indices unavailable, continuing without them")
+                        raise ValueError("No global data available")
 
                     # Handle MultiIndex columns if present (common in recent yfinance)
                     if isinstance(g_data.columns, pd.MultiIndex):
@@ -322,9 +333,13 @@ class ModelBuilder:
 
         # FALLBACK: Yahoo Finance
         try:
-            data = yf.download(
-                ticker, start=start_date, end=end_date, auto_adjust=True, progress=False
-            )
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                data = yf.download(
+                    ticker, start=start_date, end=end_date, auto_adjust=True, 
+                    progress=False, show_errors=False
+                )
             if not data.empty:
                 # Basic normalization
                 df = data.copy()
