@@ -2,18 +2,14 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Auto-run Dashboard",
+            "label": "Run Dashboard",
             "type": "shell",
             "command": "make run",
-            "runOptions": {
-                "runOn": "folderOpen"
-            },
             "presentation": {
                 "group": "status-servers",
                 "reveal": "always",
                 "panel": "dedicated"
             },
-            "notificationOnFatalError": true,
             "problemMatcher": []
         },
         {
