@@ -308,6 +308,7 @@ class BacktestEngine:
                         quantity=position,
                         price=sell_price,
                         commission=total_costs,
+                        tax=tax,
                         cash_before=0.0,
                         cash_after=new_capital,
                         positions_before={ticker: position},

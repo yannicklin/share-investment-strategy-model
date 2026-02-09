@@ -53,6 +53,7 @@ class TransactionLedger:
         quantity: float,
         price: float,
         commission: float = 0.0,
+        tax: float = 0.0,
         cash_before: float = 0.0,
         cash_after: float = 0.0,
         positions_before: Optional[Dict] = None,
@@ -72,6 +73,7 @@ class TransactionLedger:
             quantity: Number of units transacted
             price: Price per unit
             commission: Transaction fee
+            tax: Government tax or regulatory fees
             cash_before: Portfolio cash before transaction
             cash_after: Portfolio cash after transaction
             positions_before: All positions before trade
@@ -88,7 +90,9 @@ class TransactionLedger:
             "action": action,
             "quantity": round(quantity, 4),
             "price": round(price, 2),
+            "total_value": round(quantity * price, 2),
             "commission": round(commission, 2),
+            "tax": round(tax, 2),
             "cash_before": round(cash_before, 2),
             "cash_after": round(cash_after, 2),
             "positions_before": str(positions_before or {}),
@@ -104,6 +108,7 @@ class TransactionLedger:
         if action == "SELL":
             self.summary["total_trades"] += 1
         self.summary["total_costs"] += commission
+        self.summary["total_tax"] += tax
 
     def clear(self):
         """Clear ledger entries."""
@@ -138,7 +143,9 @@ class TransactionLedger:
                         "action",
                         "quantity",
                         "price",
+                        "total_value",
                         "commission",
+                        "tax",
                         "cash_before",
                         "cash_after",
                         "positions_before",
