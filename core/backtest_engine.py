@@ -210,9 +210,18 @@ class BacktestEngine:
         official_end = pd.Timestamp(df.index[-1])
         self.trading_days = get_asx_trading_days(official_start, official_end)
 
+        # Normalize both to UTC-naive midnight for robust comparison
+        df.index = pd.to_datetime(df.index).tz_localize(None).normalize()
+        trading_days_normalized = (
+            pd.to_datetime(self.trading_days).tz_localize(None).normalize()
+        )
+
         # Filter dataframe to only include valid trading days
-        df = df[df.index.isin(self.trading_days)]
+        df = df[df.index.isin(trading_days_normalized)]
         if df.empty:
+            logging.warning(
+                f"Dataframe empty for {ticker} after applying market calendar filter. Index: {raw_data.index[:1]} to {raw_data.index[-1:]}. Calendar: {self.trading_days[:1]} to {self.trading_days[-1:]}"
+            )
             return None, None, {"error": f"No valid trading days for {ticker}"}
 
         # Synchronized Features List (MUST MATCH model_builder.py)
@@ -556,20 +565,26 @@ class BacktestEngine:
             # Create sequences: at time i, use [i-seq_len:i] to predict i+1
             # This matches training where [i:i+seq_len] predicts target[i+seq_len]=Close[i+seq_len+1]
             valid_indices = np.arange(seq_len, len(df))
-            X_seq = np.array([X_scaled[i - seq_len : i] for i in valid_indices], dtype=np.float32)
-            
+            X_seq = np.array(
+                [X_scaled[i - seq_len : i] for i in valid_indices], dtype=np.float32
+            )
+
             if len(X_seq) == 0:
-                logging.warning(f"Not enough data for LSTM sequences (need >{seq_len} days)")
+                logging.warning(
+                    f"Not enough data for LSTM sequences (need >{seq_len} days)"
+                )
                 return np.zeros(len(df), dtype=np.float32)
 
             # Batch predict with a smaller batch size to avoid GPU memory overflow on M3
             raw_preds = self.model_builder.model.predict(
                 X_seq, batch_size=64, verbose=0
             ).flatten()
-            
+
             # Inverse transform LSTM predictions if target was scaled
             if self.model_builder.target_scaler is not None:
-                raw_preds = self.model_builder.target_scaler.inverse_transform(raw_preds.reshape(-1, 1)).flatten()
+                raw_preds = self.model_builder.target_scaler.inverse_transform(
+                    raw_preds.reshape(-1, 1)
+                ).flatten()
 
             # Pad the beginning with zeros (no predictions for first seq_len days)
             all_preds = np.zeros(len(df), dtype=np.float32)

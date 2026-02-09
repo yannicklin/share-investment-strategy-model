@@ -76,7 +76,7 @@ if command -v uv >/dev/null 2>&1; then
     echo "🚀 Using UV for fast dependency installation..."
     # Ensure UV uses the correct python architecture
     uv venv .venv --python "$PYTHON_EXEC" 2>/dev/null || true
-    uv pip install -r requirements.txt --native-tls
+    uv pip install -e ".[dev]" --native-tls
 else
     # Use pip directly from the venv to avoid architecture mismatches with global tools like uv
     echo "🐍 Using venv pip for reliable installation..."
