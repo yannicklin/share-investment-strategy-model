@@ -1,7 +1,7 @@
 # Core AI and Data
-yfinance>=0.2.40
-curl-cffi>=0.7.0  # Required for yfinance chrome impersonation
-FinMind
+yfinance  # Taiwan stocks (.TW) - version auto-selected by setup.sh
+FinMind  # Taiwan institutional data, margin trading, revenue
+pandas_datareader  # Global indices (^SOX, ^IXIC) and USD/TWD - no chrome impersonation issues
 pandas
 exchange_calendars>=4.5
 pandas_market_calendars

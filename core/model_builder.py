@@ -161,15 +161,17 @@ class ModelBuilder:
         Data Sources Priority:
         1. PRIMARY: Yahoo Finance Taiwan
            - OHLCV (Open, High, Low, Close, Volume)
-           - Most reliable and up-to-date price data
+           - Most reliable and up-to-date price data for .TW stocks
         
         2. SUPPLEMENTARY: FinMind
            - Institutional flows (Foreign/Trust/Dealer Net Buy)
            - Margin trading (RongZi/RongQuan balances)
            - Monthly revenue YoY growth (with 45-day lag)
         
-        3. GLOBAL CONTEXT: Yahoo Finance
-           - TWD=X, ^SOX, ^IXIC indices
+        3. GLOBAL CONTEXT: pandas_datareader
+           - ^SOX (Semiconductor Index) from Stooq
+           - ^IXIC (Nasdaq Composite) from Stooq
+           - USD/TWD exchange rate from FRED/Stooq
         
         4. FALLBACK: FinMind OHLCV
            - Only used if Yahoo Finance completely fails
@@ -194,17 +196,10 @@ class ModelBuilder:
             import warnings
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                try:
-                    df = yf.download(
-                        ticker, start=start_date, end=end_date, auto_adjust=True, 
-                        progress=False
-                    )
-                except TypeError:
-                    # Fallback for older yfinance versions
-                    df = yf.download(
-                        ticker, start=start_date, end=end_date, auto_adjust=True, 
-                        progress=False
-                    )
+                df = yf.download(
+                    ticker, start=start_date, end=end_date, auto_adjust=True, 
+                    progress=False
+                )
             
             if not df.empty:
                 # Normalize column names
@@ -342,69 +337,57 @@ class ModelBuilder:
             except Exception as e:
                 logging.warning(f"FinMind Revenue failed: {e}")
 
-            # 4. GLOBAL CONTEXT (Yahoo Finance)
-            # TWD=X (USD/TWD), ^SOX (Semiconductor), ^IXIC (Nasdaq)
+            # 4. GLOBAL CONTEXT (pandas_datareader)
+            # ^SOX (Semiconductor), ^IXIC (Nasdaq), USD/TWD exchange rate
             try:
-                import warnings
-                global_tickers = ["TWD=X", "^SOX", "^IXIC"]
-                # Fetch slightly earlier to ensure we have data for the start date
+                import pandas_datareader as pdr
                 g_start = start_date - pd.DateOffset(days=5)
                 
-                # Suppress yfinance warnings and errors
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
+                # Fetch SOX (Semiconductor Index)
+                try:
+                    sox_data = pdr.get_data_stooq("^SOX", start=g_start, end=end_date)
+                    if not sox_data.empty:
+                        sox_data.index = pd.to_datetime(sox_data.index).tz_localize(None)
+                        sox_shifted = sox_data["Close"].shift(1).reindex(df.index).ffill()
+                        df["SOX_Index"] = sox_shifted
+                except Exception as e:
+                    logging.warning(f"SOX Index fetch failed: {e}")
+                    df["SOX_Index"] = 0
+                
+                # Fetch NASDAQ Composite
+                try:
+                    nasdaq_data = pdr.get_data_stooq("^IXIC", start=g_start, end=end_date)
+                    if not nasdaq_data.empty:
+                        nasdaq_data.index = pd.to_datetime(nasdaq_data.index).tz_localize(None)
+                        nasdaq_shifted = nasdaq_data["Close"].shift(1).reindex(df.index).ffill()
+                        df["NASDAQ_Index"] = nasdaq_shifted
+                except Exception as e:
+                    logging.warning(f"NASDAQ Index fetch failed: {e}")
+                    df["NASDAQ_Index"] = 0
+                
+                # Fetch USD/TWD exchange rate (try FRED first, fallback to Stooq)
+                try:
                     try:
-                        g_data = yf.download(
-                            global_tickers,
-                            start=g_start,
-                            end=end_date,
-                            auto_adjust=True,
-                            progress=False,
-                        )
-                    except TypeError:
-                        # Fallback for older yfinance versions
-                        g_data = yf.download(
-                            global_tickers,
-                            start=g_start,
-                            end=end_date,
-                            auto_adjust=True,
-                            progress=False,
-                        )
-
-                # Skip if no data was downloaded
-                if g_data.empty:
-                    logging.info("Global market indices unavailable, continuing without them")
-                    raise ValueError("No global data available")
-
-                # Handle MultiIndex columns if present (common in recent yfinance)
-                if isinstance(g_data.columns, pd.MultiIndex):
-                    # Extract Close price for each ticker
-                    # Structure is typically (Price, Ticker) or (Ticker, Price) depending on version
-                    # We'll try to extract 'Close' level
-                    try:
-                        g_close = g_data["Close"]
-                    except KeyError:
-                        # Fallback if structure is different
-                        g_close = g_data
-                else:
-                    g_close = g_data
-
-                # Timezone naive alignment
-                g_close.index = pd.to_datetime(g_close.index).tz_localize(None)
-
-                # Reindex to Taiwan trading days (forward fill to propagate last US close)
-                # We shift US data by 1 day because US close (T) affects Taiwan open (T+1)
-                g_close_shifted = g_close.shift(1).reindex(df.index).ffill()
-
-                if "TWD=X" in g_close_shifted.columns:
-                    df["USD_TWD"] = g_close_shifted["TWD=X"]
-                if "^SOX" in g_close_shifted.columns:
-                    df["SOX_Index"] = g_close_shifted["^SOX"]
-                if "^IXIC" in g_close_shifted.columns:
-                    df["NASDAQ_Index"] = g_close_shifted["^IXIC"]
-
+                        # FRED: DEXCHUS (official Federal Reserve data)
+                        usd_twd_data = pdr.get_data_fred("DEXCHUS", start=g_start, end=end_date)
+                    except:
+                        # Fallback: Stooq
+                        usd_twd_data = pdr.get_data_stooq("USDTWD", start=g_start, end=end_date)
+                    
+                    if not usd_twd_data.empty:
+                        usd_twd_data.index = pd.to_datetime(usd_twd_data.index).tz_localize(None)
+                        # FRED returns Series, Stooq returns DataFrame
+                        if isinstance(usd_twd_data, pd.Series):
+                            usd_twd_shifted = usd_twd_data.shift(1).reindex(df.index).ffill()
+                        else:
+                            usd_twd_shifted = usd_twd_data["Close"].shift(1).reindex(df.index).ffill()
+                        df["USD_TWD"] = usd_twd_shifted
+                except Exception as e:
+                    logging.warning(f"USD/TWD exchange rate fetch failed: {e}")
+                    df["USD_TWD"] = 0
+                    
             except Exception as e:
-                logging.warning(f"Global Context failed: {e}")
+                logging.warning(f"Global Context (pandas_datareader) failed: {e}")
         except Exception as e:
             logging.warning(f"FinMind supplementary data failed: {e}")
 
