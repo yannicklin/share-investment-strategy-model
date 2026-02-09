@@ -23,6 +23,7 @@ The model may buy even if projected returns do not meet take-profit thresholds, 
     - **Hardware Portability**: Uses **NGBoost** (Natural Gradient Boosting) and **CatBoost** to ensure native ARM64 support on Mac without external C-library (libomp) issues found in XGBoost/LightGBM.
 - **`backtest_engine.py`** — Dual-mode simulation engine:
     - **Mode 1 (Models Comparison)**: Benchmarks individual AI performance for a fixed strategy.
+        - **File Naming Convention**: `{ticker}_algorithm_{mode_type}_{timespan}.csv` (e.g., `2330.TW_algorithm_random_forest_14day.csv`).
     - **Mode 2 (Time-Span Comparison)**: Evaluates holding period efficiency using a **Multi-Model Consensus** (majority vote).
         - **Tie-Breaker Rule**: In the event of a 50/50 vote split, a user-selected Tie-Breaker model makes the final decision.
     - **Mode 3 (Find Super Stars)**: Scans Taiwan market indices to identify the **Top 10** performers for a chosen timeframe.
