@@ -17,7 +17,7 @@
 
 **Name**: ASX AI Trading Strategy System  
 **Type**: Python/Streamlit Machine Learning Application  
-**Stack**: Python 3.x, pandas, scikit-learn, yfinance, xgboost, prophet, tensorflow, streamlit
+**Stack**: Python 3.x, pandas, scikit-learn, yfinance, ngboost, catboost, prophet, tensorflow, streamlit
 
 ---
 
@@ -36,10 +36,10 @@
 - **MUST** use 2-decimal precision for ROI/Win Rate
 
 ### 3. Multi-Model Consensus Architecture
-- **MAINTAIN** factory pattern with 5 algorithms (Random Forest, XGBoost, CatBoost, Prophet, LSTM)
+- **MAINTAIN** factory pattern with 5 algorithms (Random Forest, NGBoost, CatBoost, Prophet, LSTM)
 - **PRESERVE** majority vote consensus (≥3/5 models for signal)
 - **KEEP** tie-breaker mechanism (user-selectable model)
-- **ENSURE** model availability checks (XGB/CatBoost/Prophet/LSTM optional)
+- **ENSURE** model availability checks (NGBoost/CatBoost/Prophet/LSTM optional)
 
 ### 4. Data Integrity
 - **USE** `.AX` suffix for all ASX tickers

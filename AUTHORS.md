@@ -31,6 +31,12 @@ To contribute to this framework is to accept its core personality.
 2. **Modular Discipline**: Respect the separation of layers. Never leak financial accounting logic into model training.
 3. **Attribution**: Every contribution must be clinically documented and attributed per **CODE_HEADERS.md**.
 
+### AI/ML Models
+- **NGBoost** - Natural Gradient Boosting with uncertainty estimation
+- **CatBoost** - Gradient boosting with categorical support
+- **Prophet** - Time-series forecasting (Facebook/Meta)
+- **TensorFlow/Keras** - Deep learning (LSTM implementation)
+
 ### The Mandates:
 - ✅ **Protect the Soul**: Reject any change that obscures transparency or ignores realism.
 - ✅ **Preserve Safety**: Zero tolerance for the exposure of secrets or credentials.

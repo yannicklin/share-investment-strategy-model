@@ -18,8 +18,9 @@ The model may buy even if projected returns do not meet take-profit thresholds, 
 ## 2. Program Modules
 
 #### 2.1 Core Modules (`core/`)
-- **`config.py`** — Centralized configuration management (tickers, capital in TWD, Taiwan brokerage profiles).
-- **`model_builder.py`** — AI factory supporting 5 algorithms (Random Forest, Gradient Boosting, CatBoost, Prophet, LSTM) with automated scaling and sequential processing for LSTM.
+- **`config.py`** — Centralized configuration management (tickers, capital in TWD, Taiwan brokerage profiles). Defaults to **Random Forest** and **CatBoost** for benchmarking.
+- **`model_builder.py`** — AI factory supporting 5 algorithms (Random Forest, NGBoost, CatBoost, Prophet, LSTM) with automated scaling and sequential processing for LSTM.
+    - **Hardware Portability**: Uses **NGBoost** (Natural Gradient Boosting) and **CatBoost** to ensure native ARM64 support on Mac without external C-library (libomp) issues found in XGBoost/LightGBM.
 - **`backtest_engine.py`** — Dual-mode simulation engine:
     - **Mode 1 (Models Comparison)**: Benchmarks individual AI performance for a fixed strategy.
     - **Mode 2 (Time-Span Comparison)**: Evaluates holding period efficiency using a **Multi-Model Consensus** (majority vote).

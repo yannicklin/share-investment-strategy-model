@@ -20,7 +20,7 @@ This is a Python-based research infrastructure designed for the cold, clinical a
 1. **Integrity-First Development**: Documentation and requirements must be updated to reflect architectural changes before any code is written.
 2. **Financial Safety**: Zero tolerance for hardcoded secrets or exposed sensitive data.
 3. **Realistic Accounting**: All calculations must account for the "Big Three" of friction: Fees, Taxes, and Market Slippage.
-4. **Algorithmic Pluralism**: Favor ensembles and consensus over single-model dependency to reduce bias.
+4. **Algorithmic Pluralism**: Favor ensembles and consensus over single-model dependency to reduce bias. Support multiple algorithms (Random Forest, NGBoost, CatBoost, Prophet, LSTM) via factory pattern.
 5. **Cold Visualization**: UI components must present financial data with standardized, honest precision (2-decimal, clear currency/percentage formatting).
 
 

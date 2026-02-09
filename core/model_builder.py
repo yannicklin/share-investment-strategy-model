@@ -59,7 +59,13 @@ class ModelBuilder:
 
     @classmethod
     def get_available_models(cls) -> List[str]:
-        available = ["random_forest", "gradient_boosting"]
+        available = ["random_forest"]
+        try:
+            from ngboost import NGBRegressor
+
+            available.append("ngboost")
+        except ImportError:
+            pass
         try:
             from catboost import CatBoostRegressor
 
@@ -82,7 +88,16 @@ class ModelBuilder:
 
     def _init_model(self, input_dim: int = 0) -> Any:
         m_type = self.config.model_type
-        if m_type == "catboost":
+        if m_type == "ngboost":
+            from ngboost import NGBRegressor
+
+            return NGBRegressor(
+                n_estimators=100,
+                learning_rate=0.01,
+                random_state=42,
+                verbose=False,
+            )
+        elif m_type == "catboost":
             from catboost import CatBoostRegressor
 
             return CatBoostRegressor(
@@ -93,8 +108,6 @@ class ModelBuilder:
                 thread_count=-1,
                 allow_writing_files=False,
             )
-        elif m_type == "gradient_boosting":
-            return GradientBoostingRegressor(n_estimators=100, random_state=42)
         elif m_type == "prophet":
             from prophet import Prophet
 
@@ -160,29 +173,29 @@ class ModelBuilder:
     def fetch_data(self, ticker: str, years: int) -> pd.DataFrame:
         """
         Fetch Taiwan stock data with multi-source strategy.
-        
+
         Data Sources Priority:
         1. PRIMARY: Yahoo Finance Taiwan
            - OHLCV (Open, High, Low, Close, Volume)
            - Most reliable and up-to-date price data for .TW stocks
-        
+
         2. SUPPLEMENTARY: FinMind
            - Institutional flows (Foreign/Trust/Dealer Net Buy)
            - Margin trading (RongZi/RongQuan balances)
            - Monthly revenue YoY growth (with 45-day lag)
-        
+
         3. GLOBAL CONTEXT: pandas_datareader
            - ^SOX (Semiconductor Index) from Stooq
            - ^IXIC (Nasdaq Composite) from Stooq
            - USD/TWD exchange rate from FRED/Stooq
-        
+
         4. FALLBACK: FinMind OHLCV
            - Only used if Yahoo Finance completely fails
-        
+
         Args:
             ticker: Taiwan stock symbol (e.g., "2330.TW")
             years: Historical data years to fetch
-        
+
         Returns:
             DataFrame with OHLCV + supplementary features
         """
@@ -197,28 +210,34 @@ class ModelBuilder:
         df = None
         try:
             import warnings
+
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 df = yf.download(
-                    ticker, 
-                    start=start_date, 
-                    end=end_date, 
-                    auto_adjust=True, 
+                    ticker,
+                    start=start_date,
+                    end=end_date,
+                    auto_adjust=True,
                     progress=False,
-                    threads=False  # Prevents chrome impersonation errors
+                    threads=False,  # Prevents chrome impersonation errors
                 )
-            
+
             if not df.empty:
                 # Normalize column names
                 if isinstance(df.columns, pd.MultiIndex):
-                    df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
-                df.rename(columns={
-                    "Open": "Open",
-                    "High": "High",
-                    "Low": "Low",
-                    "Close": "Close",
-                    "Volume": "Volume",
-                }, inplace=True)
+                    df.columns = [
+                        c[0] if isinstance(c, tuple) else c for c in df.columns
+                    ]
+                df.rename(
+                    columns={
+                        "Open": "Open",
+                        "High": "High",
+                        "Low": "Low",
+                        "Close": "Close",
+                        "Volume": "Volume",
+                    },
+                    inplace=True,
+                )
                 df.index = pd.to_datetime(df.index).tz_localize(None)
         except Exception as e:
             logging.warning(f"Yahoo Finance failed for {ticker}: {e}")
@@ -226,9 +245,12 @@ class ModelBuilder:
 
         # FALLBACK: Try FinMind for basic OHLCV if Yahoo failed
         if df is None or df.empty:
-            logging.warning(f"Yahoo Finance failed for {ticker}, using FinMind fallback...")
+            logging.warning(
+                f"Yahoo Finance failed for {ticker}, using FinMind fallback..."
+            )
             try:
                 from FinMind.data import DataLoader
+
                 dl = DataLoader()
                 stock_id = ticker.split(".")[0]
                 df = dl.taiwan_stock_daily(
@@ -248,11 +270,15 @@ class ModelBuilder:
                     )
                     df["date"] = pd.to_datetime(df["date"])
                     df.set_index("date", inplace=True)
-                    logging.info(f"FinMind fallback successful: {len(df)} rows for {ticker}")
+                    logging.info(
+                        f"FinMind fallback successful: {len(df)} rows for {ticker}"
+                    )
                 else:
                     logging.error(f"FinMind returned empty dataframe for {ticker}")
             except Exception as e:
-                logging.error(f"Both Yahoo Finance and FinMind failed for {ticker}: {e}")
+                logging.error(
+                    f"Both Yahoo Finance and FinMind failed for {ticker}: {e}"
+                )
                 return pd.DataFrame()
 
         # If still no data, return empty
@@ -264,6 +290,7 @@ class ModelBuilder:
         stock_id = ticker.split(".")[0]
         try:
             from FinMind.data import DataLoader
+
             dl = DataLoader()
 
             # 1. Institutional Net Buy (Split by Foreign vs Trust)
@@ -352,53 +379,82 @@ class ModelBuilder:
             # ^SOX (Semiconductor), ^IXIC (Nasdaq), USD/TWD exchange rate
             try:
                 import pandas_datareader as pdr
+
                 g_start = start_date - pd.DateOffset(days=5)
-                
+
                 # Fetch SOX (Semiconductor Index)
                 try:
                     sox_data = pdr.get_data_stooq("^SOX", start=g_start, end=end_date)
                     if not sox_data.empty:
-                        sox_data.index = pd.to_datetime(sox_data.index).tz_localize(None)
-                        sox_shifted = sox_data["Close"].shift(1).reindex(df.index).ffill()
+                        sox_data.index = pd.to_datetime(sox_data.index).tz_localize(
+                            None
+                        )
+                        sox_shifted = (
+                            sox_data["Close"].shift(1).reindex(df.index).ffill()
+                        )
                         df["SOX_Index"] = sox_shifted
                 except Exception as e:
                     logging.warning(f"SOX Index fetch failed: {e}")
                     df["SOX_Index"] = 0
-                
+
                 # Fetch NASDAQ Composite
                 try:
-                    nasdaq_data = pdr.get_data_stooq("^IXIC", start=g_start, end=end_date)
+                    nasdaq_data = pdr.get_data_stooq(
+                        "^IXIC", start=g_start, end=end_date
+                    )
                     if not nasdaq_data.empty:
-                        nasdaq_data.index = pd.to_datetime(nasdaq_data.index).tz_localize(None)
-                        nasdaq_shifted = nasdaq_data["Close"].shift(1).reindex(df.index).ffill()
+                        nasdaq_data.index = pd.to_datetime(
+                            nasdaq_data.index
+                        ).tz_localize(None)
+                        nasdaq_shifted = (
+                            nasdaq_data["Close"].shift(1).reindex(df.index).ffill()
+                        )
                         df["NASDAQ_Index"] = nasdaq_shifted
                 except Exception as e:
                     logging.warning(f"NASDAQ Index fetch failed: {e}")
                     df["NASDAQ_Index"] = 0
-                
+
                 # Fetch USD/TWD exchange rate (try FRED first, fallback to Stooq)
                 try:
                     try:
                         # FRED: DEXCHUS (official Federal Reserve data)
-                        usd_twd_data = pdr.get_data_fred("DEXCHUS", start=g_start, end=end_date)
+                        usd_twd_data = pdr.get_data_fred(
+                            "DEXCHUS", start=g_start, end=end_date
+                        )
                         if not usd_twd_data.empty:
-                            usd_twd_data.index = pd.to_datetime(usd_twd_data.index).tz_localize(None)
-                            usd_twd_shifted = usd_twd_data.shift(1).reindex(df.index).ffill()
+                            usd_twd_data.index = pd.to_datetime(
+                                usd_twd_data.index
+                            ).tz_localize(None)
+                            usd_twd_shifted = (
+                                usd_twd_data.shift(1).reindex(df.index).ffill()
+                            )
                             df["USD_TWD"] = usd_twd_shifted
                     except Exception as fred_error:
-                        logging.warning(f"FRED USD/TWD failed: {fred_error}, trying Stooq...")
+                        logging.warning(
+                            f"FRED USD/TWD failed: {fred_error}, trying Stooq..."
+                        )
                         # Fallback: Stooq
-                        usd_twd_data = pdr.get_data_stooq("USDTWD", start=g_start, end=end_date)
+                        usd_twd_data = pdr.get_data_stooq(
+                            "USDTWD", start=g_start, end=end_date
+                        )
                         if not usd_twd_data.empty:
-                            usd_twd_data.index = pd.to_datetime(usd_twd_data.index).tz_localize(None)
+                            usd_twd_data.index = pd.to_datetime(
+                                usd_twd_data.index
+                            ).tz_localize(None)
                             # Stooq returns DataFrame with OHLC columns
-                            close_col = usd_twd_data["Close"] if "Close" in usd_twd_data.columns else usd_twd_data.iloc[:, -1]
-                            usd_twd_shifted = close_col.shift(1).reindex(df.index).ffill()
+                            close_col = (
+                                usd_twd_data["Close"]
+                                if "Close" in usd_twd_data.columns
+                                else usd_twd_data.iloc[:, -1]
+                            )
+                            usd_twd_shifted = (
+                                close_col.shift(1).reindex(df.index).ffill()
+                            )
                             df["USD_TWD"] = usd_twd_shifted
                 except Exception as e:
                     logging.warning(f"USD/TWD exchange rate fetch failed: {e}")
                     df["USD_TWD"] = 0
-                    
+
             except Exception as e:
                 logging.warning(f"Global Context (pandas_datareader) failed: {e}")
         except Exception as e:
@@ -458,9 +514,9 @@ class ModelBuilder:
 
         # CLEANUP: Handle Inf values created by division (e.g. RSI gain/loss)
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
-        
+
         df = df.dropna()
-        
+
         if df.empty:
             logging.error("Empty dataframe after feature engineering and dropna!")
             return np.array([]), np.array([])
@@ -489,10 +545,10 @@ class ModelBuilder:
             "NASDAQ_Index",
             "Daily_Return",
         ]
-        
+
         X = df[features].values
         y = df["Target"].values
-        
+
         return X, y
 
     def _create_sequences(self, data_scaled, target):
@@ -511,15 +567,16 @@ class ModelBuilder:
         X_scaled = self.scaler.fit_transform(X)
 
         m_type = self.config.model_type
-        
+
         # For LSTM, also scale the target
         target_scaler = None
         y_scaled = y
         if m_type == "lstm":
             from sklearn.preprocessing import StandardScaler
+
             target_scaler = StandardScaler()
             y_scaled = target_scaler.fit_transform(y.reshape(-1, 1)).flatten()
-        
+
         if m_type == "lstm":
             try:
                 X_seq, y_seq = self._create_sequences(X_scaled, y_scaled)
@@ -547,7 +604,11 @@ class ModelBuilder:
 
         os.makedirs(self.config.model_path, exist_ok=True)
         joblib.dump(
-            {"model": self.model, "scaler": self.scaler, "target_scaler": getattr(self, 'target_scaler', None)},
+            {
+                "model": self.model,
+                "scaler": self.scaler,
+                "target_scaler": getattr(self, "target_scaler", None),
+            },
             os.path.join(self.config.model_path, f"{ticker}_{m_type}_model.joblib"),
         )
 
@@ -589,7 +650,9 @@ class ModelBuilder:
                 return "retrained"
 
             self.scaler = loaded_scaler
-            self.target_scaler = bundle.get("target_scaler", None)  # Load target scaler for LSTM
+            self.target_scaler = bundle.get(
+                "target_scaler", None
+            )  # Load target scaler for LSTM
             self.model = bundle["model"]
 
             # Validation check to ensure scaler is fitted

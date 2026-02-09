@@ -28,7 +28,7 @@ class Config:
             "2412.TW",  # Chunghwa Telecom (中華電)
             "2382.TW",  # Quanta (廣達)
             "3711.TW",  # ASE Technology (日月光)
-            "006208.TW", # 富邦台50 EFT
+            "006208.TW",  # 富邦台50 EFT
         ]
     )
     backtest_years: int = 5
@@ -45,15 +45,19 @@ class Config:
 
     scaler_type: str = "robust"
     model_type: str = "random_forest"
+    # Available: ["random_forest", "ngboost", "catboost", "prophet", "lstm"]
     model_types: List[str] = field(
         default_factory=lambda: ["random_forest", "catboost"]
     )
+
     data_source: str = "yfinance"
 
     # Cost & Tax Profiles
     cost_profile: str = "default"  # "default", "fubon_twn", or "first_twn"
     annual_income: float = 960000.0  # Annual income in TWD (Default for TW branch)
-    hurdle_risk_buffer: float = 0.005  # 0.5% default, adjustable in 0.1% increments via UI
+    hurdle_risk_buffer: float = (
+        0.005  # 0.5% default, adjustable in 0.1% increments via UI
+    )
 
 
 def load_config() -> Config:
