@@ -1,5 +1,5 @@
 """
-ASX AI Trading System - Core Module
+Taiwan Stock AI Trading System - Core Module
 
 Purpose: Core business logic for model building, backtesting, and
 index management.

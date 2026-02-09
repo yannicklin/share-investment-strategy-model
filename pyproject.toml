@@ -1,7 +1,7 @@
 [project]
 name = "share-investment-strategy-model"
 version = "0.2.0"
-description = "AI-Based Stock Investment System (ASX Version)"
+description = "AI-Based Stock Investment System (Taiwan Version)"
 authors = [{ name = "Yannick" }]
 requires-python = ">=3.10,<3.13"
 dependencies = [
