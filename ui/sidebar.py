@@ -26,8 +26,13 @@ def render_sidebar(config: Config):
             }
             
             /* Sidebar Headers */
-            [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
-                color: #3d85c6 !important;
+            [data-testid="stSidebar"] h1, 
+            [data-testid="stSidebar"] h2, 
+            [data-testid="stSidebar"] h3,
+            [data-testid="stSidebar"] .stMarkdown h1,
+            [data-testid="stSidebar"] .stMarkdown h2,
+            [data-testid="stSidebar"] .stMarkdown h3 {
+                color: #DC143C !important;
                 font-weight: 700 !important;
                 letter-spacing: -0.5px !important;
             }
@@ -40,9 +45,9 @@ def render_sidebar(config: Config):
             }
             
             [data-testid="stSidebar"] button:hover {
-                border-color: #3d85c6 !important;
-                color: #3d85c6 !important;
-                box-shadow: 0 0 10px rgba(61, 133, 198, 0.2) !important;
+                border-color: #DC143C !important;
+                color: #DC143C !important;
+                box-shadow: 0 0 10px rgba(220, 20, 60, 0.2) !important;
             }
 
             /* Horizontal dividers */
