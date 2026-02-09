@@ -167,9 +167,11 @@ class ModelBuilder:
            - Institutional flows (Foreign/Trust/Dealer Net Buy)
            - Margin trading (RongZi/RongQuan balances)
            - Monthly revenue YoY growth (with 45-day lag)
-           - Global context (TWD=X, ^SOX, ^IXIC via Yahoo Finance)
         
-        3. FALLBACK: FinMind OHLCV
+        3. GLOBAL CONTEXT: Yahoo Finance
+           - TWD=X, ^SOX, ^IXIC indices
+        
+        4. FALLBACK: FinMind OHLCV
            - Only used if Yahoo Finance completely fails
         
         Args:

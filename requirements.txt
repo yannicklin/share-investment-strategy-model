@@ -1,5 +1,6 @@
 # Core AI and Data
-yfinance
+yfinance>=0.2.40
+curl-cffi>=0.7.0  # Required for yfinance chrome impersonation
 FinMind
 pandas
 exchange_calendars>=4.5
