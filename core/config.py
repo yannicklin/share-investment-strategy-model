@@ -53,7 +53,7 @@ class Config:
     # Cost & Tax Profiles
     cost_profile: str = "default"  # "default", "fubon_twn", or "first_twn"
     annual_income: float = 960000.0  # Annual income in TWD (Default for TW branch)
-    hurdle_risk_buffer: float = 0.005  # 0.5% extra buffer
+    hurdle_risk_buffer: float = 0.01  # 1.0% default, adjustable in 0.1% increments via UI
 
 
 def load_config() -> Config:
