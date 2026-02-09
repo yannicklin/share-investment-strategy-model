@@ -45,6 +45,7 @@ class ModelBuilder:
         self.config = config
         self.model: Optional[Any] = None
         self.scaler: Optional[Any] = None
+        self.target_scaler: Optional[Any] = None  # For LSTM target scaling
         self.sequence_length = 30
         self._data_cache: Dict[str, pd.DataFrame] = {}
         self._market_data: Optional[pd.DataFrame] = None
@@ -336,12 +337,20 @@ class ModelBuilder:
 
         scaler = self._init_scaler()
         X_scaled = scaler.fit_transform(X)
+        
+        # For LSTM, also scale the target
+        target_scaler = None
+        y_scaled = y
+        if m_type == "lstm":
+            from sklearn.preprocessing import StandardScaler
+            target_scaler = StandardScaler()
+            y_scaled = target_scaler.fit_transform(y.reshape(-1, 1)).flatten()
 
         m_type = self.config.model_type
         model = None
         if m_type == "lstm":
             logging.info(f"Training LSTM for {ticker}. Input Shape: {X_scaled.shape}")
-            X_seq, y_seq = self._create_sequences(X_scaled, y)
+            X_seq, y_seq = self._create_sequences(X_scaled, y_scaled)
             logging.info(
                 f"LSTM Sequences created. X_seq: {X_seq.shape}, y_seq: {y_seq.shape}"
             )
@@ -361,6 +370,7 @@ class ModelBuilder:
         # Persistence
         self.model = model
         self.scaler = scaler
+        self.target_scaler = target_scaler  # Save target scaler for LSTM
 
         os.makedirs(self.config.model_path, exist_ok=True)
         model_filename = os.path.join(
@@ -370,6 +380,7 @@ class ModelBuilder:
             {
                 "model": model,
                 "scaler": scaler,
+                "target_scaler": target_scaler,  # Include target scaler
                 "features_count": X.shape[1],
                 "features_list": features_list,
                 "timestamp": time.time(),
@@ -402,6 +413,7 @@ class ModelBuilder:
 
             self.scaler = bundle["scaler"]
             self.model = bundle["model"]
+            self.target_scaler = bundle.get("target_scaler", None)  # Load target scaler for LSTM
             logging.info(f"Model for {ticker} loaded successfully.")
             return "loaded"
         except Exception as e:

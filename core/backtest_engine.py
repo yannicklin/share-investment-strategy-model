@@ -480,6 +480,12 @@ class BacktestEngine:
             print(f"Raw predictions sample (first 10): {raw_preds[:10]}")
             print(f"Raw predictions stats: min={raw_preds.min():.4f}, max={raw_preds.max():.4f}, mean={raw_preds.mean():.4f}")
             
+            # Inverse transform LSTM predictions if target was scaled
+            if self.model_builder.target_scaler is not None:
+                print(f"*** INVERSE TRANSFORMING LSTM PREDICTIONS ***")
+                raw_preds = self.model_builder.target_scaler.inverse_transform(raw_preds.reshape(-1, 1)).flatten()
+                print(f"After inverse transform: min={raw_preds.min():.2f}, max={raw_preds.max():.2f}, mean={raw_preds.mean():.2f}")
+            
             all_preds = np.zeros(len(df), dtype=np.float32)
             all_preds[seq_len:] = raw_preds
             
