@@ -411,6 +411,7 @@ class BacktestEngine:
                         quantity=position,
                         price=sell_price,
                         commission=s_fees,
+                        tax=tax,
                         cash_before=0.0,
                         cash_after=new_capital,
                         positions_before=positions_before,
