@@ -45,4 +45,5 @@ clean:
 	rm -rf data/models/*.h5
 	rm -rf data/models/*.keras
 	rm -rf data/models/*.json
+	rm -rf data/ledgers/*.*
 	find . -type d -name "__pycache__" -exec rm -rf {} +
