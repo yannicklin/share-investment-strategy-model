@@ -149,10 +149,12 @@ class BacktestEngine:
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
         df.ffill(inplace=True)
         result = df.dropna()
-        
+
         if result.empty:
-            logging.warning(f"_get_indicators returned empty dataframe after dropna. Original size: {len(data)}")
-        
+            logging.warning(
+                f"_get_indicators returned empty dataframe after dropna. Original size: {len(data)}"
+            )
+
         return result
 
     def _prepare_data(
@@ -171,15 +173,19 @@ class BacktestEngine:
         official_end = pd.Timestamp(df.index[-1])
         # Use official Taiwan Stock Exchange (XTAI) calendar for trading days
         self.trading_days = get_taiwan_trading_days(official_start, official_end)
-        
+
         # Normalize both to UTC-naive midnight for robust comparison
         df.index = pd.to_datetime(df.index).tz_localize(None).normalize()
-        trading_days_normalized = pd.to_datetime(self.trading_days).tz_localize(None).normalize()
-        
+        trading_days_normalized = (
+            pd.to_datetime(self.trading_days).tz_localize(None).normalize()
+        )
+
         df = df[df.index.isin(trading_days_normalized)]
-        
+
         if df.empty:
-            logging.warning(f"Dataframe empty for {ticker} after applying market calendar filter. Index: {raw_data.index[:1]} to {raw_data.index[-1:]}. Calendar: {self.trading_days[:1]} to {self.trading_days[-1:]}")
+            logging.warning(
+                f"Dataframe empty for {ticker} after applying market calendar filter. Index: {raw_data.index[:1]} to {raw_data.index[-1:]}. Calendar: {self.trading_days[:1]} to {self.trading_days[-1:]}"
+            )
             return None, None, {"error": f"Calendar mismatch for {ticker}"}
 
         features = [
@@ -373,8 +379,11 @@ class BacktestEngine:
         )
         for _, amount in settlement_queue:
             final_cap += amount
+        init_cap = float(self.config.init_capital)
+        roi = (final_cap - init_cap) / init_cap if init_cap > 0 else 0.0
+
         return {
-            "roi": (final_cap - self.config.init_capital) / self.config.init_capital,
+            "roi": roi,
             "final_capital": final_cap,
             "win_rate": sum(1 for t in trades if t["profit_pct"] > 0) / len(trades)
             if trades
@@ -485,24 +494,30 @@ class BacktestEngine:
             # Use sequence_length from model_builder for consistency
             seq_len = self.model_builder.sequence_length
             X_scaled = self.model_builder.scaler.transform(X_all).astype(np.float32)
-            
+
             # Create sequences: at time i, use [i-seq_len:i] to predict i+1
             # This matches training where [i:i+seq_len] predicts target[i+seq_len]=Close[i+seq_len+1]
             valid_indices = np.arange(seq_len, len(df))
-            X_seq = np.array([X_scaled[i - seq_len : i] for i in valid_indices], dtype=np.float32)
-            
+            X_seq = np.array(
+                [X_scaled[i - seq_len : i] for i in valid_indices], dtype=np.float32
+            )
+
             if len(X_seq) == 0:
-                logging.warning(f"Not enough data for LSTM sequences (need >{seq_len} days)")
+                logging.warning(
+                    f"Not enough data for LSTM sequences (need >{seq_len} days)"
+                )
                 return np.zeros(len(df), dtype=np.float32)
-            
+
             raw_preds = self.model_builder.model.predict(
                 X_seq, batch_size=64, verbose=0
             ).flatten()
-            
+
             # Inverse transform LSTM predictions if target was scaled
             if self.model_builder.target_scaler is not None:
-                raw_preds = self.model_builder.target_scaler.inverse_transform(raw_preds.reshape(-1, 1)).flatten()
-            
+                raw_preds = self.model_builder.target_scaler.inverse_transform(
+                    raw_preds.reshape(-1, 1)
+                ).flatten()
+
             all_preds = np.full(len(df), raw_preds[0], dtype=np.float32)
             all_preds[seq_len:] = raw_preds
             return all_preds
