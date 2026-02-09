@@ -1,8 +1,8 @@
 """
-ASX AI Trading System - Strategy Sensitivity View
+Taiwan Stock AI Trading System - Strategy Sensitivity View
 
 Purpose: Streamlit view for comparing trading strategies across different
-holding periods using consensus AI predictions.
+holding periods using consensus AI predictions for Taiwan market.
 
 Author: Yannick
 Copyright (c) 2026 Yannick
@@ -79,7 +79,7 @@ def render_strategy_sensitivity(ticker, ticker_res, models=None, tie_breaker=Non
         df_display["Net ROI"] = df["Net ROI"].apply(lambda x: f"{x * 100:.2f}%")
         df_display["Win Rate"] = df["Win Rate"].apply(lambda x: f"{x * 100:.2f}%")
         df_display["Final Portfolio"] = df["Final Portfolio"].apply(
-            lambda x: f"${x:,.2f}"
+            lambda x: f"NT${x:,.2f}"
         )
 
         # 1. ROI Comparison Chart

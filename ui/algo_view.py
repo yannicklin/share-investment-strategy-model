@@ -1,8 +1,8 @@
 """
-ASX AI Trading System - Algorithm Comparison View
+Taiwan Stock AI Trading System - Algorithm Comparison View
 
 Purpose: Streamlit view for comparing AI model performance metrics
-and visualizations.
+and visualizations for Taiwan market.
 
 Author: Yannick
 Copyright (c) 2026 Yannick
@@ -56,7 +56,9 @@ def render_algorithm_comparison(ticker, ticker_res):
         df_display = df.copy()
         df_display["Net ROI"] = df["Net ROI"].apply(lambda x: f"{x * 100:.2f}%")
         df_display["Win Rate"] = df["Win Rate"].apply(lambda x: f"{x * 100:.2f}%")
-        df_display["Final Capital"] = df["Final Capital"].apply(lambda x: f"${x:,.2f}")
+        df_display["Final Capital"] = df["Final Capital"].apply(
+            lambda x: f"NT${x:,.2f}"
+        )
 
         col_table, col_chart = st.columns([1, 1])
         with col_table:

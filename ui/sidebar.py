@@ -18,10 +18,15 @@ from core.model_builder import ModelBuilder
 def render_sidebar(config: Config):
     """Renders all sidebar inputs and returns the selected analysis mode."""
 
-    # Inject custom CSS for a friendlier Dark Mode sidebar
+    # Inject custom CSS for a friendlier Dark Mode sidebar with Green theme
     st.markdown(
         """
         <style>
+            /* Set Primary Color to Green */
+            :root {
+                --primary-color: #27ae60;
+            }
+            
             /* Sidebar background and borders */
             [data-testid="stSidebar"] {
                 border-right: 1px solid rgba(255, 255, 255, 0.1);
@@ -29,7 +34,7 @@ def render_sidebar(config: Config):
             
             /* Sidebar Headers */
             [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
-                color: #3d85c6 !important;
+                color: #27ae60 !important;
                 font-weight: 700 !important;
                 letter-spacing: -0.5px !important;
             }
@@ -42,9 +47,9 @@ def render_sidebar(config: Config):
             }
             
             [data-testid="stSidebar"] button:hover {
-                border-color: #3d85c6 !important;
-                color: #3d85c6 !important;
-                box-shadow: 0 0 10px rgba(61, 133, 198, 0.2) !important;
+                border-color: #27ae60 !important;
+                color: #27ae60 !important;
+                box-shadow: 0 0 10px rgba(39, 174, 96, 0.2) !important;
             }
 
             /* Horizontal dividers */

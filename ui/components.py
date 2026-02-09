@@ -87,19 +87,19 @@ def render_trade_details(ticker, res):
         )
 
         fig.update_yaxes(
-            title_text="Portfolio Value (AUD)",
+            title_text="Portfolio Value (TWD)",
             secondary_y=False,
             gridcolor="rgba(255,255,255,0.1)",
         )
         fig.update_yaxes(
-            title_text=f"{ticker} Price (AUD)", secondary_y=True, showgrid=False
+            title_text=f"{ticker} Price (TWD)", secondary_y=True, showgrid=False
         )
 
-        st.plotly_chart(fig, width='stretch')
+        st.plotly_chart(fig, width="stretch")
 
         # 2. Statistics
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Final Capital", f"${res['final_capital']:,.2f}")
+        c1.metric("Final Capital", f"NT${res['final_capital']:,.2f}")
         c2.metric("Total ROI", f"{res['roi']:.2%}")
         c3.metric("Win Rate", f"{res.get('win_rate', 0):.2%}")
         c4.metric("Trades", res["total_trades"])
@@ -125,23 +125,23 @@ def render_trade_details(ticker, res):
         trades_display = log_df.copy()
         if "buy_price" in trades_display.columns:
             trades_display["buy_price"] = log_df["buy_price"].apply(
-                lambda x: f"${x:,.2f}"
+                lambda x: f"NT${x:,.2f}"
             )
         if "sell_price" in trades_display.columns:
             trades_display["sell_price"] = log_df["sell_price"].apply(
-                lambda x: f"${x:,.2f}"
+                lambda x: f"NT${x:,.2f}"
             )
         if "fees" in trades_display.columns:
-            trades_display["fees"] = log_df["fees"].apply(lambda x: f"${x:,.2f}")
+            trades_display["fees"] = log_df["fees"].apply(lambda x: f"NT${x:,.2f}")
         if "tax" in trades_display.columns:
-            trades_display["tax"] = log_df["tax"].apply(lambda x: f"${x:,.2f}")
+            trades_display["tax"] = log_df["tax"].apply(lambda x: f"NT${x:,.2f}")
         if "profit_pct" in trades_display.columns:
             trades_display["profit_pct"] = log_df["profit_pct"].apply(
                 lambda x: f"{x * 100:.2f}%"
             )
         if "cumulative_capital" in trades_display.columns:
             trades_display["cumulative_capital"] = log_df["cumulative_capital"].apply(
-                lambda x: f"${x:,.2f}"
+                lambda x: f"NT${x:,.2f}"
             )
 
         st.dataframe(
@@ -159,11 +159,12 @@ def render_glossary():
     with st.expander("ℹ️ Understanding the Metrics & Signals"):
         st.markdown("""
         **Metrics:**
-        - **Net ROI:** Final return after all fees and ATO taxes.
+        - **Net ROI:** Final return after all fees and Securities Transaction Tax (STT).
         - **Win Rate:** Percentage of trades with Gross Profit > 0.
         - **Avg Profit/Trade:** Average net percentage gain per closed position.
 
         **Tax & Fees:**
-        - **ATO Tax:** Marginal CGT based on your annual income (includes 12-month 50% discount).
-        - **CMC Profile:** Greater of $11 or 0.10% flat brokerage.
+        - **STT (Securities Transaction Tax):** 0.3% of sell value (standard Taiwan government tax).
+        - **Brokerage:** Standard 0.1425% (min NT$20) with profile-specific discounts.
+        - **CGT:** Currently 0% for individual investors in Taiwan domestic stocks.
         """)

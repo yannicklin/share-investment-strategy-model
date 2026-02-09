@@ -1,8 +1,8 @@
 """
-ASX AI Trading System - Super Stars View
+Taiwan Stock AI Trading System - Super Stars View
 
 Purpose: Streamlit view for ranking and displaying top-performing stocks
-within ASX indices.
+within Taiwan indices.
 
 Author: Yannick
 Copyright (c) 2026 Yannick
@@ -71,7 +71,7 @@ def render_super_stars(index_name, all_ticker_res, models=None, tie_breaker=None
         df_display["Net ROI"] = df_top10["Net ROI"].apply(lambda x: f"{x * 100:.2f}%")
         df_display["Win Rate"] = df_top10["Win Rate"].apply(lambda x: f"{x * 100:.2f}%")
         df_display["Final Portfolio"] = df_top10["Final Portfolio"].apply(
-            lambda x: f"${x:,.2f}"
+            lambda x: f"NT${x:,.2f}"
         )
 
         # 1. Leaderboard Table
