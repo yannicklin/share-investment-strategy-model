@@ -258,151 +258,151 @@ class ModelBuilder:
             from FinMind.data import DataLoader
             dl = DataLoader()
 
-                # 1. Institutional Net Buy (Split by Foreign vs Trust)
-                try:
-                    inst = dl.taiwan_stock_institutional_investors(
-                        stock_id=stock_id,
-                        start_date=start_date.strftime("%Y-%m-%d"),
-                        end_date=end_date.strftime("%Y-%m-%d"),
-                    )
-                    if not inst.empty:
-                        inst["date"] = pd.to_datetime(inst["date"])
-                        inst["net"] = inst["buy"] - inst["sell"]
-                        # Pivot to get columns for each investor type
-                        inst_pivot = inst.pivot_table(
-                            index="date", columns="name", values="net", aggfunc="sum"
-                        ).fillna(0)
+            # 1. Institutional Net Buy (Split by Foreign vs Trust)
+            try:
+                inst = dl.taiwan_stock_institutional_investors(
+                    stock_id=stock_id,
+                    start_date=start_date.strftime("%Y-%m-%d"),
+                    end_date=end_date.strftime("%Y-%m-%d"),
+                )
+                if not inst.empty:
+                    inst["date"] = pd.to_datetime(inst["date"])
+                    inst["net"] = inst["buy"] - inst["sell"]
+                    # Pivot to get columns for each investor type
+                    inst_pivot = inst.pivot_table(
+                        index="date", columns="name", values="net", aggfunc="sum"
+                    ).fillna(0)
 
-                        # Foreign Investor (WaiZi)
-                        if "Foreign_Investor" in inst_pivot.columns:
-                            df["Foreign_Net"] = inst_pivot["Foreign_Investor"]
-                        else:
-                            df["Foreign_Net"] = 0
-
-                        # Investment Trust (TouXin)
-                        if "Investment_Trust" in inst_pivot.columns:
-                            df["Trust_Net"] = inst_pivot["Investment_Trust"]
-                        else:
-                            df["Trust_Net"] = 0
-
-                        # Dealer (Self + Hedging)
-                        dealer_cols = [c for c in inst_pivot.columns if "Dealer" in c]
-                        if dealer_cols:
-                            df["Dealer_Net"] = inst_pivot[dealer_cols].sum(axis=1)
-                        else:
-                            df["Dealer_Net"] = 0
+                    # Foreign Investor (WaiZi)
+                    if "Foreign_Investor" in inst_pivot.columns:
+                        df["Foreign_Net"] = inst_pivot["Foreign_Investor"]
                     else:
                         df["Foreign_Net"] = 0
+
+                    # Investment Trust (TouXin)
+                    if "Investment_Trust" in inst_pivot.columns:
+                        df["Trust_Net"] = inst_pivot["Investment_Trust"]
+                    else:
                         df["Trust_Net"] = 0
+
+                    # Dealer (Self + Hedging)
+                    dealer_cols = [c for c in inst_pivot.columns if "Dealer" in c]
+                    if dealer_cols:
+                        df["Dealer_Net"] = inst_pivot[dealer_cols].sum(axis=1)
+                    else:
                         df["Dealer_Net"] = 0
-                except Exception as e:
-                    logging.warning(f"FinMind Institutional failed: {e}")
+                else:
                     df["Foreign_Net"] = 0
                     df["Trust_Net"] = 0
                     df["Dealer_Net"] = 0
+            except Exception as e:
+                logging.warning(f"FinMind Institutional failed: {e}")
+                df["Foreign_Net"] = 0
+                df["Trust_Net"] = 0
+                df["Dealer_Net"] = 0
 
-                # 2. Margin Trading (RongZi / RongQuan)
-                try:
-                    margin = dl.taiwan_stock_margin_purchase_short_sale(
-                        stock_id=stock_id,
-                        start_date=start_date.strftime("%Y-%m-%d"),
-                        end_date=end_date.strftime("%Y-%m-%d"),
-                    )
-                    if not margin.empty:
-                        margin["date"] = pd.to_datetime(margin["date"])
-                        margin.set_index("date", inplace=True)
-                        if "MarginPurchaseTodayBalance" in margin.columns:
-                            df["Margin_Balance"] = margin["MarginPurchaseTodayBalance"]
-                        if "ShortSaleTodayBalance" in margin.columns:
-                            df["Short_Balance"] = margin["ShortSaleTodayBalance"]
-                except Exception as e:
-                    logging.warning(f"FinMind Margin failed: {e}")
+            # 2. Margin Trading (RongZi / RongQuan)
+            try:
+                margin = dl.taiwan_stock_margin_purchase_short_sale(
+                    stock_id=stock_id,
+                    start_date=start_date.strftime("%Y-%m-%d"),
+                    end_date=end_date.strftime("%Y-%m-%d"),
+                )
+                if not margin.empty:
+                    margin["date"] = pd.to_datetime(margin["date"])
+                    margin.set_index("date", inplace=True)
+                    if "MarginPurchaseTodayBalance" in margin.columns:
+                        df["Margin_Balance"] = margin["MarginPurchaseTodayBalance"]
+                    if "ShortSaleTodayBalance" in margin.columns:
+                        df["Short_Balance"] = margin["ShortSaleTodayBalance"]
+            except Exception as e:
+                logging.warning(f"FinMind Margin failed: {e}")
 
-                # 3. Monthly Revenue (With 45-day Lag to avoid look-ahead bias)
-                try:
-                    revenue = dl.taiwan_stock_month_revenue(
-                        stock_id=stock_id,
-                        start_date=(start_date - pd.DateOffset(months=6)).strftime(
-                            "%Y-%m-%d"
-                        ),
-                        end_date=end_date.strftime("%Y-%m-%d"),
-                    )
-                    if not revenue.empty:
-                        revenue["date"] = pd.to_datetime(revenue["date"])
-                        # Shift date by 45 days (approx release date is 10th of next month)
-                        revenue["date"] = revenue["date"] + pd.DateOffset(days=45)
-                        revenue.set_index("date", inplace=True)
+            # 3. Monthly Revenue (With 45-day Lag to avoid look-ahead bias)
+            try:
+                revenue = dl.taiwan_stock_month_revenue(
+                    stock_id=stock_id,
+                    start_date=(start_date - pd.DateOffset(months=6)).strftime(
+                        "%Y-%m-%d"
+                    ),
+                    end_date=end_date.strftime("%Y-%m-%d"),
+                )
+                if not revenue.empty:
+                    revenue["date"] = pd.to_datetime(revenue["date"])
+                    # Shift date by 45 days (approx release date is 10th of next month)
+                    revenue["date"] = revenue["date"] + pd.DateOffset(days=45)
+                    revenue.set_index("date", inplace=True)
 
-                        # Reindex to daily (forward fill the last known revenue growth)
-                        rev_aligned = revenue.reindex(df.index).ffill()
-                        if "revenue_year_growth" in rev_aligned.columns:
-                            df["Revenue_YoY"] = rev_aligned["revenue_year_growth"]
-                except Exception as e:
-                    logging.warning(f"FinMind Revenue failed: {e}")
+                    # Reindex to daily (forward fill the last known revenue growth)
+                    rev_aligned = revenue.reindex(df.index).ffill()
+                    if "revenue_year_growth" in rev_aligned.columns:
+                        df["Revenue_YoY"] = rev_aligned["revenue_year_growth"]
+            except Exception as e:
+                logging.warning(f"FinMind Revenue failed: {e}")
 
-                # 4. GLOBAL CONTEXT (Yahoo Finance)
-                # TWD=X (USD/TWD), ^SOX (Semiconductor), ^IXIC (Nasdaq)
-                try:
-                    import warnings
-                    global_tickers = ["TWD=X", "^SOX", "^IXIC"]
-                    # Fetch slightly earlier to ensure we have data for the start date
-                    g_start = start_date - pd.DateOffset(days=5)
-                    
-                    # Suppress yfinance warnings and errors
-                    with warnings.catch_warnings():
-                        warnings.simplefilter("ignore")
-                        try:
-                            g_data = yf.download(
-                                global_tickers,
-                                start=g_start,
-                                end=end_date,
-                                auto_adjust=True,
-                                progress=False,
-                            )
-                        except TypeError:
-                            # Fallback for older yfinance versions
-                            g_data = yf.download(
-                                global_tickers,
-                                start=g_start,
-                                end=end_date,
-                                auto_adjust=True,
-                                progress=False,
-                            )
+            # 4. GLOBAL CONTEXT (Yahoo Finance)
+            # TWD=X (USD/TWD), ^SOX (Semiconductor), ^IXIC (Nasdaq)
+            try:
+                import warnings
+                global_tickers = ["TWD=X", "^SOX", "^IXIC"]
+                # Fetch slightly earlier to ensure we have data for the start date
+                g_start = start_date - pd.DateOffset(days=5)
+                
+                # Suppress yfinance warnings and errors
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    try:
+                        g_data = yf.download(
+                            global_tickers,
+                            start=g_start,
+                            end=end_date,
+                            auto_adjust=True,
+                            progress=False,
+                        )
+                    except TypeError:
+                        # Fallback for older yfinance versions
+                        g_data = yf.download(
+                            global_tickers,
+                            start=g_start,
+                            end=end_date,
+                            auto_adjust=True,
+                            progress=False,
+                        )
 
-                    # Skip if no data was downloaded
-                    if g_data.empty:
-                        logging.info("Global market indices unavailable, continuing without them")
-                        raise ValueError("No global data available")
+                # Skip if no data was downloaded
+                if g_data.empty:
+                    logging.info("Global market indices unavailable, continuing without them")
+                    raise ValueError("No global data available")
 
-                    # Handle MultiIndex columns if present (common in recent yfinance)
-                    if isinstance(g_data.columns, pd.MultiIndex):
-                        # Extract Close price for each ticker
-                        # Structure is typically (Price, Ticker) or (Ticker, Price) depending on version
-                        # We'll try to extract 'Close' level
-                        try:
-                            g_close = g_data["Close"]
-                        except KeyError:
-                            # Fallback if structure is different
-                            g_close = g_data
-                    else:
+                # Handle MultiIndex columns if present (common in recent yfinance)
+                if isinstance(g_data.columns, pd.MultiIndex):
+                    # Extract Close price for each ticker
+                    # Structure is typically (Price, Ticker) or (Ticker, Price) depending on version
+                    # We'll try to extract 'Close' level
+                    try:
+                        g_close = g_data["Close"]
+                    except KeyError:
+                        # Fallback if structure is different
                         g_close = g_data
+                else:
+                    g_close = g_data
 
-                    # Timezone naive alignment
-                    g_close.index = pd.to_datetime(g_close.index).tz_localize(None)
+                # Timezone naive alignment
+                g_close.index = pd.to_datetime(g_close.index).tz_localize(None)
 
-                    # Reindex to Taiwan trading days (forward fill to propagate last US close)
-                    # We shift US data by 1 day because US close (T) affects Taiwan open (T+1)
-                    g_close_shifted = g_close.shift(1).reindex(df.index).ffill()
+                # Reindex to Taiwan trading days (forward fill to propagate last US close)
+                # We shift US data by 1 day because US close (T) affects Taiwan open (T+1)
+                g_close_shifted = g_close.shift(1).reindex(df.index).ffill()
 
-                    if "TWD=X" in g_close_shifted.columns:
-                        df["USD_TWD"] = g_close_shifted["TWD=X"]
-                    if "^SOX" in g_close_shifted.columns:
-                        df["SOX_Index"] = g_close_shifted["^SOX"]
-                    if "^IXIC" in g_close_shifted.columns:
-                        df["NASDAQ_Index"] = g_close_shifted["^IXIC"]
+                if "TWD=X" in g_close_shifted.columns:
+                    df["USD_TWD"] = g_close_shifted["TWD=X"]
+                if "^SOX" in g_close_shifted.columns:
+                    df["SOX_Index"] = g_close_shifted["^SOX"]
+                if "^IXIC" in g_close_shifted.columns:
+                    df["NASDAQ_Index"] = g_close_shifted["^IXIC"]
 
-                except Exception as e:
-                    logging.warning(f"Global Context failed: {e}")
+            except Exception as e:
+                logging.warning(f"Global Context failed: {e}")
         except Exception as e:
             logging.warning(f"FinMind supplementary data failed: {e}")
 
