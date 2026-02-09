@@ -125,7 +125,10 @@ def main():
                                 val,
                             )
                             res = engine.run_strategy_mode(
-                                ticker, config.model_types, tie_breaker=tie_breaker
+                                ticker,
+                                config.model_types,
+                                tie_breaker=tie_breaker,
+                                mode_prefix="ranking",
                             )
                             if "error" not in res:
                                 res["company_name"] = builder.get_company_name(ticker)
