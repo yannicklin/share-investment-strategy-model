@@ -338,6 +338,8 @@ class ModelBuilder:
         scaler = self._init_scaler()
         X_scaled = scaler.fit_transform(X)
         
+        m_type = self.config.model_type
+        
         # For LSTM, also scale the target
         target_scaler = None
         y_scaled = y
@@ -346,7 +348,6 @@ class ModelBuilder:
             target_scaler = StandardScaler()
             y_scaled = target_scaler.fit_transform(y.reshape(-1, 1)).flatten()
 
-        m_type = self.config.model_type
         model = None
         if m_type == "lstm":
             logging.info(f"Training LSTM for {ticker}. Input Shape: {X_scaled.shape}")
