@@ -25,8 +25,9 @@ try:
     import tensorflow as tf
 
     tf.get_logger().setLevel("ERROR")
+    # Suppress retracing warnings
     tf.autograph.set_verbosity(0)
-except (ImportError, Exception):
+except ImportError:
     pass
 
 logging.getLogger("cmdstanpy").setLevel(logging.ERROR)
@@ -58,7 +59,14 @@ class ModelBuilder:
     @classmethod
     def get_available_models(cls) -> List[str]:
         """Returns a list of models that have their dependencies installed."""
-        available = ["random_forest", "gradient_boosting"]
+        available = ["random_forest"]
+
+        try:
+            from ngboost import NGBRegressor
+
+            available.append("ngboost")
+        except (ImportError, Exception):
+            pass
 
         try:
             from catboost import CatBoostRegressor
@@ -78,9 +86,7 @@ class ModelBuilder:
             import tensorflow as tf
 
             available.append("lstm")
-            logging.info("LSTM dependencies (tensorflow) loaded successfully.")
-        except (ImportError, Exception) as e:
-            logging.warning(f"LSTM unavailable: {e}")
+        except (ImportError, Exception):
             pass
 
         return available
@@ -88,7 +94,18 @@ class ModelBuilder:
     def _init_model(self, input_dim: int = 0) -> Any:
         m_type = self.config.model_type
 
-        if m_type == "catboost":
+        if m_type == "ngboost":
+            from ngboost import NGBRegressor
+
+            logging.info("Initialized NGBoost model.")
+            return NGBRegressor(
+                n_estimators=100,
+                learning_rate=0.01,
+                random_state=42,
+                verbose=False,
+            )
+
+        elif m_type == "catboost":
             from catboost import CatBoostRegressor
 
             logging.info("Initialized CatBoost model.")
@@ -101,15 +118,11 @@ class ModelBuilder:
                 allow_writing_files=False,
             )
 
-        elif m_type == "gradient_boosting":
-            logging.info("Initialized Scikit-Learn Gradient Boosting model.")
-            return GradientBoostingRegressor(n_estimators=100, random_state=42)
-
         elif m_type == "prophet":
             from prophet import Prophet
 
             logging.info("Initialized Prophet model.")
-            return Prophet(daily_seasonality="auto", yearly_seasonality="auto")
+            return Prophet(daily_seasonality=True, yearly_seasonality=True)
 
         elif m_type == "lstm":
             import tensorflow as tf
@@ -127,11 +140,71 @@ class ModelBuilder:
                     Dense(1),
                 ]
             )
-            model.compile(optimizer="adam", loss="huber")
+            model.compile(optimizer="adam", loss="mean_squared_error")
             return model
 
-        logging.info("Initialized Scikit-Learn Random Forest model.")
+        logging.info("Initialized RandomForest model.")
         return RandomForestRegressor(n_estimators=100, random_state=42)
+
+    def _normalize_df(self, df: pd.DataFrame, ticker: str) -> pd.DataFrame:
+        """Forces any yfinance response into a clean, flat TitleCase DataFrame."""
+        if df is None or (isinstance(df, pd.DataFrame) and df.empty):
+            return pd.DataFrame()
+
+        data = df.copy()
+
+        # 1. Handle MultiIndex (Ticker/Price complexity)
+        if isinstance(data.columns, pd.MultiIndex):
+            # Try to extract the specific ticker level
+            for i in range(data.columns.nlevels):
+                if ticker in data.columns.get_level_values(i):
+                    data = data.xs(ticker, axis=1, level=i)
+                    break
+
+            # If still MultiIndex, collapse it
+            if isinstance(data.columns, pd.MultiIndex):
+                data.columns = [
+                    str(c[0]) if isinstance(c, tuple) else str(c) for c in data.columns
+                ]
+
+        # 2. Force Flat String Columns and Clean names
+        data.columns = [str(c).strip() for c in data.columns]
+
+        # 3. Handle 'Ticker.Price' format
+        new_cols = []
+        for c in data.columns:
+            if "." in c and ticker.lower() in c.lower():
+                new_cols.append(c.split(".")[-1])
+            else:
+                new_cols.append(c)
+        data.columns = new_cols
+
+        # 4. Final Standardization Map
+        name_map = {
+            "close": "Close",
+            "adj close": "Close",
+            "open": "Open",
+            "high": "High",
+            "low": "Low",
+            "volume": "Volume",
+        }
+
+        mapping = {}
+        for c in data.columns:
+            low_c = c.lower()
+            if low_c in name_map:
+                mapping[c] = name_map[low_c]
+
+        if mapping:
+            data.rename(columns=mapping, inplace=True)
+
+        # 5. Strict Deduplication & Type Casting
+        data = data.loc[:, ~data.columns.duplicated()]
+        for col in ["Close", "Open", "High", "Low", "Volume"]:
+            if col in data.columns:
+                data[col] = pd.to_numeric(data[col], errors="coerce")
+
+        return data
 
     def get_company_name(self, ticker: str) -> str:
         """Fetch long name using yfinance."""
@@ -145,42 +218,15 @@ class ModelBuilder:
 
     def is_etf(self, ticker: str) -> bool:
         """Heuristic for US ETFs."""
-        known_etfs = ["SPY", "QQQ", "IWM", "DIA", "VTI", "VOO", "VEU"]
-        if ticker in known_etfs:
-            return True
-        return False
-
-    def _ensure_market_data(self):
-        """Pre-fetch macro data (^VIX, ^TNX)."""
-        if self._market_data is not None:
-            return
-
         try:
-            indices = self.config.market_indices
-            if not indices:
-                return
-
-            tickers = list(indices.values())
-            df_raw = yf.download(tickers, period="10y", progress=False, threads=False)
-            if df_raw is None or df_raw.empty:
-                return
-
-            df: Any = df_raw["Close"] if "Close" in df_raw.columns else df_raw
-
-            # Normalize index for consistency
-            dt_idx: Any = pd.to_datetime(df.index)
-            df.index = dt_idx.tz_localize(None).normalize()
-
-            # Rename to internal standard
-            rename_map = {v: f"MKT_{k}" for k, v in indices.items()}
-            df = df.rename(columns=rename_map)
-
-            self._market_data = df.ffill().fillna(0)
-        except Exception as e:
-            logging.warning(f"Failed to fetch market data: {e}")
+            info = yf.Ticker(ticker).info
+            return info.get("quoteType") == "ETF"
+        except Exception:
+            known_etfs = ["SPY", "QQQ", "IWM", "DIA", "VTI", "VOO", "VEU"]
+            return ticker in known_etfs
 
     def fetch_data(self, ticker: str, years: int) -> pd.DataFrame:
-        """Fetch historical price data with caching."""
+        """Fetch historical price data with caching and normalization."""
         cache_key = f"{ticker}_{years}"
         if cache_key in self._data_cache:
             return self._data_cache[cache_key]
@@ -188,37 +234,106 @@ class ModelBuilder:
         end_date = pd.Timestamp.now()
         start_date = end_date - pd.DateOffset(years=years) - pd.DateOffset(days=90)
 
-        try:
-            df_raw = yf.download(
-                ticker, start=start_date, end=end_date, auto_adjust=True, progress=False, threads=False
-            )
-
-            if df_raw is None or df_raw.empty:
-                return pd.DataFrame()
-
-            df: Any = df_raw
-
-            # Clean columns
-            if isinstance(df.columns, pd.MultiIndex):
-                df.columns = [
-                    str(c[0]) if isinstance(c, tuple) else str(c) for c in df.columns
-                ]
-
-            # Standardize names and normalize index
-            df.index.name = "Date"
-            dt_idx: Any = pd.to_datetime(df.index)
-            df.index = dt_idx.tz_localize(None).normalize()
-
-            self._data_cache[cache_key] = df
-            return df
-        except Exception as e:
-            logging.error(f"Error fetching data for {ticker}: {e}")
-            return pd.DataFrame()
+        for attempt in range(3):
+            try:
+                data = yf.download(
+                    ticker,
+                    start=start_date,
+                    end=end_date,
+                    auto_adjust=True,
+                    progress=False,
+                    threads=False,
+                )
+                if not data.empty:
+                    norm = self._normalize_df(data, ticker)
+                    self._data_cache[cache_key] = norm
+                    return norm
+                time.sleep(1)
+            except Exception as e:
+                logging.error(
+                    f"Error fetching data for {ticker} (attempt {attempt + 1}): {e}"
+                )
+        return pd.DataFrame()
 
     def prefetch_data_batch(self, tickers: List[str], years: int):
-        """Sequential pre-fetch."""
-        for ticker in tickers:
-            self.fetch_data(ticker, years)
+        """Batch pre-fetch data for multiple tickers."""
+        if not tickers:
+            return
+        end_date = pd.Timestamp.now()
+        start_date = end_date - pd.DateOffset(years=years) - pd.DateOffset(days=90)
+        to_fetch = [t for t in tickers if f"{t}_{years}" not in self._data_cache]
+        if not to_fetch:
+            return
+
+        for i in range(0, len(to_fetch), 20):
+            batch = to_fetch[i : i + 20]
+            try:
+                data = yf.download(
+                    batch,
+                    start=start_date,
+                    end=end_date,
+                    auto_adjust=True,
+                    progress=False,
+                    threads=False,
+                    group_by="ticker",
+                )
+                if data.empty:
+                    continue
+                for t in batch:
+                    try:
+                        if len(batch) == 1:
+                            t_df = data
+                        else:
+                            if isinstance(
+                                data.columns, pd.MultiIndex
+                            ) and t in data.columns.get_level_values(0):
+                                t_df = data[t]
+                            else:
+                                t_df = data
+                        norm = self._normalize_df(t_df, t)
+                        if not norm.empty:
+                            self._data_cache[f"{t}_{years}"] = norm
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+
+    def _ensure_market_data(self):
+        """Pre-fetch macro data for US market context."""
+        if self._market_data is not None:
+            return
+
+        logging.info("Fetching US market and macro data...")
+        market_tickers = {
+            **self.config.market_indices,
+            **self.config.macro_indicators,
+        }
+
+        start_date = pd.Timestamp.now() - pd.DateOffset(years=10)
+        market_df = pd.DataFrame()
+
+        for name, ticker in market_tickers.items():
+            try:
+                df = yf.download(
+                    ticker,
+                    start=start_date,
+                    progress=False,
+                    auto_adjust=True,
+                    threads=False,
+                )
+
+                if df.empty:
+                    continue
+
+                df = self._normalize_df(df, ticker)
+
+                if "Close" in df.columns:
+                    col_name = f"MKT_{name}"
+                    market_df[col_name] = df["Close"]
+            except Exception as e:
+                logging.warning(f"Failed to fetch market data {name} ({ticker}): {e}")
+
+        self._market_data = market_df.ffill().fillna(0)
 
     def prepare_features(
         self, data: pd.DataFrame
@@ -229,42 +344,46 @@ class ModelBuilder:
 
         df = data.copy()
 
-        # Indicators
+        # 1. Basic Moving Averages
         df["MA5"] = df["Close"].rolling(window=5).mean()
         df["MA20"] = df["Close"].rolling(window=20).mean()
         df["MA50"] = df["Close"].rolling(window=50).mean()
 
+        # 2. RSI
         delta = df["Close"].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         rs = gain / (loss + 1e-9)
         df["RSI"] = 100 - (100 / (1 + rs))
 
+        # 3. MACD
         exp1 = df["Close"].ewm(span=12, adjust=False).mean()
         exp2 = df["Close"].ewm(span=26, adjust=False).mean()
         df["MACD"] = exp1 - exp2
         df["Signal_Line"] = df["MACD"].ewm(span=9, adjust=False).mean()
 
+        # 4. Bollinger Bands
         df["BB_Middle"] = df["Close"].rolling(window=20).mean()
         df["BB_Std"] = df["Close"].rolling(window=20).std()
         df["BB_Upper"] = df["BB_Middle"] + (2 * df["BB_Std"])
         df["BB_Lower"] = df["BB_Middle"] - (2 * df["BB_Std"])
         df["BB_Width"] = (df["BB_Upper"] - df["BB_Lower"]) / (df["BB_Middle"] + 1e-9)
 
+        # 5. ATR
         high_low = df["High"] - df["Low"]
         high_close = np.abs(df["High"] - df["Close"].shift())
         low_close = np.abs(df["Low"] - df["Close"].shift())
         tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
         df["ATR"] = tr.rolling(window=14).mean()
 
-        df["Daily_Return"] = df["Close"].pct_change(fill_method=None)
-
-        # Market Context
+        # 6. Market Context
         self._ensure_market_data()
         m_data = self._market_data
         if m_data is not None and not m_data.empty:
             market_subset = m_data.shift(1).reindex(df.index).ffill()
             df = df.join(market_subset)
+
+        df["Daily_Return"] = df["Close"].pct_change(fill_method=None)
 
         # Target: Next Day Close
         df["Target"] = df["Close"].shift(-1)
@@ -314,9 +433,6 @@ class ModelBuilder:
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Convert time-series to supervised sequences for LSTM."""
         if len(data_scaled) <= self.sequence_length:
-            logging.warning(
-                f"Data length ({len(data_scaled)}) <= sequence length ({self.sequence_length}). Cannot create sequences."
-            )
             return np.array([], dtype=np.float32), np.array([], dtype=np.float32)
 
         X_seq, y_seq = [], []
@@ -335,59 +451,72 @@ class ModelBuilder:
         if len(X) < 50:
             raise ValueError(f"Insufficient data for training {ticker} (min 50 days).")
 
-        scaler = self._init_scaler()
-        X_scaled = scaler.fit_transform(X)
-        
+        self.scaler = self._init_scaler()
+        X_scaled = self.scaler.fit_transform(X)
+
         m_type = self.config.model_type
-        
+
         # For LSTM, also scale the target
         target_scaler = None
         y_scaled = y
         if m_type == "lstm":
             from sklearn.preprocessing import StandardScaler
+
             target_scaler = StandardScaler()
             y_scaled = target_scaler.fit_transform(y.reshape(-1, 1)).flatten()
 
-        model = None
         if m_type == "lstm":
             logging.info(f"Training LSTM for {ticker}. Input Shape: {X_scaled.shape}")
             X_seq, y_seq = self._create_sequences(X_scaled, y_scaled)
-            logging.info(
-                f"LSTM Sequences created. X_seq: {X_seq.shape}, y_seq: {y_seq.shape}"
-            )
-            model = self._init_model(input_dim=X.shape[1])
-            model.fit(X_seq, y_seq, batch_size=32, epochs=20, verbose=0)
+            if len(X_seq) == 0:
+                raise ValueError(f"Not enough data for LSTM sequences for {ticker}")
+            self.model = self._init_model(input_dim=X.shape[1])
+            self.model.fit(X_seq, y_seq, batch_size=32, epochs=10, verbose=0)
+            self.target_scaler = target_scaler
         elif m_type == "prophet":
             from prophet import Prophet
 
             p_df = pd.DataFrame({"ds": data.index, "y": data["Close"].values.flatten()})
             p_df["ds"] = pd.to_datetime(p_df["ds"]).dt.tz_localize(None)
-            model = Prophet(daily_seasonality=True, yearly_seasonality=True)
-            model.fit(p_df.dropna())
+            self.model = Prophet(daily_seasonality=True, yearly_seasonality=True)
+            self.model.fit(p_df.dropna())
+            self.target_scaler = None
         else:
-            model = self._init_model()
-            model.fit(X_scaled, y)
+            self.model = self._init_model()
+            self.model.fit(X_scaled, y)
+            self.target_scaler = None
 
         # Persistence
-        self.model = model
-        self.scaler = scaler
-        self.target_scaler = target_scaler  # Save target scaler for LSTM
-
         os.makedirs(self.config.model_path, exist_ok=True)
         model_filename = os.path.join(
             self.config.model_path, f"{ticker}_{m_type}_model.joblib"
         )
-        joblib.dump(
-            {
-                "model": model,
-                "scaler": scaler,
-                "target_scaler": target_scaler,  # Include target scaler
-                "features_count": X.shape[1],
-                "features_list": features_list,
-                "timestamp": time.time(),
-            },
-            model_filename,
-        )
+
+        if m_type == "lstm" and hasattr(self.model, "save"):
+            keras_path = model_filename.replace(".joblib", ".keras")
+            self.model.save(keras_path)
+            joblib.dump(
+                {
+                    "scaler": self.scaler,
+                    "target_scaler": self.target_scaler,
+                    "keras_path": keras_path,
+                    "features_count": X.shape[1],
+                    "features_list": features_list,
+                },
+                model_filename,
+            )
+        else:
+            joblib.dump(
+                {
+                    "model": self.model,
+                    "scaler": self.scaler,
+                    "target_scaler": self.target_scaler,
+                    "features_count": X.shape[1],
+                    "features_list": features_list,
+                    "timestamp": time.time(),
+                },
+                model_filename,
+            )
         logging.info(f"Saved model to {model_filename}")
 
     def load_or_build(self, ticker: str) -> str:
@@ -403,21 +532,70 @@ class ModelBuilder:
         try:
             bundle = joblib.load(model_filename)
 
-            # Validation
+            # Feature check
             sample_data = self.fetch_data(ticker, self.config.backtest_years)
-            X_sample, _, _ = self.prepare_features(sample_data)
+            if sample_data.empty:
+                self.train(ticker)
+                return "retrained_no_data"
 
-            if bundle["features_count"] != X_sample.shape[1]:
+            X_sample, _, _ = self.prepare_features(sample_data)
+            if bundle.get("features_count") != X_sample.shape[1]:
                 logging.warning(f"Feature mismatch for {ticker}. Retraining...")
                 self.train(ticker)
-                return "retrained"
+                return "retrained_mismatch"
 
             self.scaler = bundle["scaler"]
-            self.model = bundle["model"]
-            self.target_scaler = bundle.get("target_scaler", None)  # Load target scaler for LSTM
-            logging.info(f"Model for {ticker} loaded successfully.")
+            self.target_scaler = bundle.get("target_scaler")
+
+            if "keras_path" in bundle:
+                from tensorflow.keras.models import load_model
+
+                try:
+                    self.model = load_model(bundle["keras_path"])
+                except Exception:
+                    self.train(ticker)
+                    return "retrained_keras_error"
+            else:
+                self.model = bundle["model"]
+
             return "loaded"
         except Exception as e:
             logging.error(f"Failed to load model for {ticker}: {e}")
             self.train(ticker)
-            return "retrained_on_error"
+            return "retrained_error"
+
+    def predict(
+        self, current_data: np.ndarray, date: Optional[pd.Timestamp] = None
+    ) -> float:
+        """Standardized prediction interface."""
+        if self.model is None:
+            return 0.0
+
+        m_type = self.config.model_type
+
+        if m_type == "prophet" and hasattr(self.model, "predict"):
+            future = pd.DataFrame(
+                {"ds": [(date + pd.DateOffset(days=1)).tz_localize(None)]}
+            )
+            return float(self.model.predict(future)["yhat"].iloc[0])
+
+        if m_type == "lstm" and hasattr(self.model, "predict"):
+            if len(current_data.shape) == 2:
+                X = self.scaler.transform(current_data)
+                pred = float(
+                    self.model.predict(
+                        X.reshape(1, self.sequence_length, -1), verbose=0
+                    )[0][0]
+                )
+                if self.target_scaler is not None:
+                    pred = float(self.target_scaler.inverse_transform([[pred]])[0][0])
+                return pred
+            return 0.0
+
+        X_input = (
+            current_data[-1].reshape(1, -1)
+            if len(current_data.shape) == 2
+            else current_data.reshape(1, -1)
+        )
+        X_scaled = self.scaler.transform(X_input)
+        return float(self.model.predict(X_scaled)[0])

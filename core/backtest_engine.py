@@ -71,13 +71,14 @@ class BacktestEngine:
     def _prepare_data(
         self, ticker: str
     ) -> Tuple[Optional[pd.DataFrame], Optional[List[str]], Optional[Dict[str, str]]]:
+        """Prepare and filter dataframe for backtesting."""
         raw_data = self.model_builder.fetch_data(ticker, self.config.backtest_years)
         if raw_data.empty:
             return None, None, {"error": f"No data for {ticker}"}
 
         df = raw_data.copy()
 
-        # Indicators
+        # Indicators (Synchronized with ModelBuilder)
         df["MA5"] = df["Close"].rolling(window=5).mean()
         df["MA20"] = df["Close"].rolling(window=20).mean()
         df["MA50"] = df["Close"].rolling(window=50).mean()
@@ -118,16 +119,18 @@ class BacktestEngine:
         df.ffill(inplace=True)
         df.fillna(0, inplace=True)
 
+        # Determine official start/end dates
         official_start = pd.Timestamp.now().normalize() - pd.DateOffset(
             years=self.config.backtest_years
         )
 
-        # Explicit normalization and naive
-        df_index = pd.to_datetime(df.index)
-        df.index = df_index.tz_localize(None).normalize()
+        # Normalize index for robust comparison
+        df.index = pd.to_datetime(df.index).tz_localize(None).normalize()
 
         official_end = pd.Timestamp(df.index[-1])
         self.trading_days = get_usa_trading_days(official_start, official_end)
+
+        # Filter to valid trading days
         df = df[df.index.isin(self.trading_days)]
 
         if df.empty:
@@ -173,6 +176,7 @@ class BacktestEngine:
         df: pd.DataFrame,
         features: List[str],
     ) -> Dict[str, Any]:
+        """Shared engine logic for backtesting."""
         capital = float(self.config.init_capital)
         position, buy_price, buy_date, buy_fees = 0.0, 0.0, None, 0.0
         trades = []
@@ -182,6 +186,7 @@ class BacktestEngine:
             date_ts = pd.Timestamp(df.index[i])
             current_price = float(df.iloc[i]["Close"])
 
+            # Process Settlement
             new_settlement_queue = []
             for avail_date, amount in settlement_queue:
                 if date_ts >= pd.Timestamp(avail_date):
@@ -207,6 +212,7 @@ class BacktestEngine:
             if position == 0 and is_bullish:
                 fees = self.calculate_fees(capital, is_sell=False)
                 new_position = (capital - fees) / current_price
+
                 self.ledger.add_entry(
                     date=date_ts,
                     ticker=ticker,
@@ -220,6 +226,7 @@ class BacktestEngine:
                     positions_after={ticker: new_position},
                     notes="Initial purchase",
                 )
+
                 position, buy_price, buy_date, buy_fees, capital = (
                     new_position,
                     current_price,
@@ -282,6 +289,7 @@ class BacktestEngine:
 
                     new_capital = val - total_costs - tax
 
+                    # T+1 Settlement for USA
                     settlement_date = None
                     if self.trading_days is not None:
                         settlement_date = calculate_trading_days_ahead(
@@ -306,6 +314,7 @@ class BacktestEngine:
                         positions_after={},
                         notes=f"{reason} triggered. Available {settlement_date.strftime('%Y-%m-%d')}",
                     )
+
                     trades.append(
                         {
                             "buy_date": buy_date,
@@ -324,6 +333,7 @@ class BacktestEngine:
                     )
                     position = 0.0
 
+        # Final Portfolio Value
         final_cap = capital
         if position > 0:
             final_cap += position * float(df.iloc[-1]["Close"])
@@ -344,6 +354,7 @@ class BacktestEngine:
         }
 
     def run_model_mode(self, ticker: str, model_type: str) -> Dict[str, Any]:
+        """Mode 1: Evaluate a single specific model."""
         self.ledger.clear()
         self.config.model_type = model_type
         self.model_builder.load_or_build(ticker)
@@ -376,6 +387,7 @@ class BacktestEngine:
     def run_strategy_mode(
         self, ticker: str, models: List[str], tie_breaker: Optional[str] = None
     ) -> Dict[str, Any]:
+        """Mode 2: Evaluate strategy sensitivity using multi-model consensus."""
         self.ledger.clear()
         df_tuple = self._prepare_data(ticker)
         df, features, error = df_tuple
@@ -424,6 +436,7 @@ class BacktestEngine:
     def _get_bulk_predictions(
         self, df: pd.DataFrame, features: List[str], model_type: str
     ) -> np.ndarray:
+        """Standardized bulk prediction helper."""
         X_all = df[features].values.astype(np.float32)
 
         if (
@@ -431,35 +444,37 @@ class BacktestEngine:
             and self.model_builder.model is not None
             and self.model_builder.scaler is not None
         ):
-            # Use sequence_length from model_builder for consistency
             seq_len = self.model_builder.sequence_length
             X_scaled = self.model_builder.scaler.transform(X_all).astype(np.float32)
-            
-            # Create sequences: at time i, use [i-seq_len:i] to predict i+1
+
             valid_indices = np.arange(seq_len, len(df))
-            X_seq = np.array([X_scaled[i - seq_len : i] for i in valid_indices], dtype=np.float32)
-            
+            X_seq = np.array(
+                [X_scaled[i - seq_len : i] for i in valid_indices], dtype=np.float32
+            )
+
             if len(X_seq) == 0:
-                logging.warning(f"Not enough data for LSTM sequences (need >{seq_len} days)")
                 return np.zeros(len(df), dtype=np.float32)
-            
+
             raw_preds = self.model_builder.model.predict(
                 X_seq, batch_size=64, verbose=0
             ).flatten()
-            
-            # Inverse transform LSTM predictions if target was scaled
+
             if self.model_builder.target_scaler is not None:
-                raw_preds = self.model_builder.target_scaler.inverse_transform(raw_preds.reshape(-1, 1)).flatten()
-            
+                raw_preds = self.model_builder.target_scaler.inverse_transform(
+                    raw_preds.reshape(-1, 1)
+                ).flatten()
+
             all_preds = np.zeros(len(df), dtype=np.float32)
             all_preds[seq_len:] = raw_preds
             return all_preds
+
         elif model_type == "prophet" and self.model_builder.model is not None:
             prophet_df = pd.DataFrame({"ds": df.index}).copy()
             prophet_df["ds"] = pd.to_datetime(prophet_df["ds"]).dt.tz_localize(None)
             prophet_df["ds"] = prophet_df["ds"] + pd.DateOffset(days=1)
             forecast = self.model_builder.model.predict(prophet_df)
             return forecast["yhat"].values.astype(np.float32)
+
         elif (
             self.model_builder.model is not None
             and self.model_builder.scaler is not None

@@ -2,7 +2,7 @@
 USA AI Trading System - Shared UI Components
 
 Purpose: Reusable Streamlit components for equity curves, trade logs,
-and glossary displays.
+and glossary displays for US stocks.
 
 Author: Yannick
 Copyright (c) 2026 Yannick
@@ -23,7 +23,7 @@ def render_trade_details(ticker, res):
         return
 
     if res.get("trades"):
-        # 1. Equity Curve
+        # 1. Equity Curve with Share Price overlay
         trade_points = [
             {
                 "date": pd.to_datetime(t["sell_date"]),
@@ -33,46 +33,69 @@ def render_trade_details(ticker, res):
         ]
         df_equity = pd.DataFrame(trade_points).sort_values("date")
 
-        # Price overlay
+        # Fetch historical price data for overlay
         price_df = pd.DataFrame()
         if "active_builder" in st.session_state:
             builder = st.session_state["active_builder"]
+            # We use the same years as configured in backtest
             price_df = builder.fetch_data(ticker, builder.config.backtest_years)
 
+        # Create figure with secondary y-axis
         fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+        # Add Capital Path (Primary Y-Axis) - Solid Line
         fig.add_trace(
             go.Scatter(
                 x=df_equity["date"],
                 y=df_equity["capital"],
                 name="Realized Capital",
                 line=dict(color="#00CC96", width=3),
+                mode="lines",  # Solid line, no markers
             ),
             secondary_y=False,
         )
 
+        # Add Share Price (Secondary Y-Axis) - Dash Line
         if not price_df.empty:
-            start_date = df_equity["date"].min()
-            price_df = price_df[price_df.index >= start_date]
+            # Filter price data to match the backtest range for cleaner look
+            if not df_equity.empty:
+                # We show the price trend for the entire range of the backtest
+                # based on the configured years, filtered to when the first trade started
+                start_date = df_equity["date"].min()
+                price_df = price_df[price_df.index >= start_date]
+
             fig.add_trace(
                 go.Scatter(
                     x=price_df.index,
                     y=price_df["Close"],
                     name=f"{ticker} Price Trend",
                     line=dict(color="rgba(173, 216, 230, 0.6)", width=2, dash="dot"),
+                    mode="lines",
                 ),
                 secondary_y=True,
             )
 
+        # Update layout
         fig.update_layout(
             title=f"Realized Capital vs {ticker} Price Path",
+            xaxis_title="Date",
+            legend=dict(
+                orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
+            ),
             hovermode="x unified",
             template="plotly_dark",
         )
-        fig.update_yaxes(title_text="Portfolio Value (USD)", secondary_y=False)
+
+        fig.update_yaxes(
+            title_text="Portfolio Value (USD)",
+            secondary_y=False,
+            gridcolor="rgba(255,255,255,0.1)",
+        )
         fig.update_yaxes(
             title_text=f"{ticker} Price (USD)", secondary_y=True, showgrid=False
         )
-        st.plotly_chart(fig, width="stretch")
+
+        st.plotly_chart(fig, use_container_width=True)
 
         # 2. Statistics
         c1, c2, c3, c4 = st.columns(4)
@@ -84,22 +107,49 @@ def render_trade_details(ticker, res):
         # 3. Log
         st.write("#### Detailed Transaction Log")
         log_df = pd.DataFrame(res["trades"])
+
+        # Round and format values in the dataframe for consistency
+        if "profit_pct" in log_df.columns:
+            log_df["profit_pct"] = log_df["profit_pct"].astype(float)
+        if "cumulative_capital" in log_df.columns:
+            log_df["cumulative_capital"] = log_df["cumulative_capital"].astype(float)
+
+        # Format dates with weekday abbreviation (e.g., "2023-03-03(FRI)")
         for d_col in ["buy_date", "sell_date"]:
             if d_col in log_df.columns:
                 log_df[d_col] = pd.to_datetime(log_df[d_col]).apply(
                     lambda x: format_date_with_weekday(x)
                 )
 
+        # Format display values
         trades_display = log_df.copy()
-        for col in ["buy_price", "sell_price", "fees", "tax", "cumulative_capital"]:
-            if col in trades_display.columns:
-                trades_display[col] = log_df[col].apply(lambda x: f"${x:,.2f}")
+        if "buy_price" in trades_display.columns:
+            trades_display["buy_price"] = log_df["buy_price"].apply(
+                lambda x: f"${x:,.2f}"
+            )
+        if "sell_price" in trades_display.columns:
+            trades_display["sell_price"] = log_df["sell_price"].apply(
+                lambda x: f"${x:,.2f}"
+            )
+        if "fees" in trades_display.columns:
+            trades_display["fees"] = log_df["fees"].apply(lambda x: f"${x:,.2f}")
+        if "tax" in trades_display.columns:
+            trades_display["tax"] = log_df["tax"].apply(lambda x: f"${x:,.2f}")
         if "profit_pct" in trades_display.columns:
             trades_display["profit_pct"] = log_df["profit_pct"].apply(
                 lambda x: f"{x * 100:.2f}%"
             )
+        if "cumulative_capital" in trades_display.columns:
+            trades_display["cumulative_capital"] = log_df["cumulative_capital"].apply(
+                lambda x: f"${x:,.2f}"
+            )
 
-        st.dataframe(trades_display, hide_index=True, width="stretch")
+        st.dataframe(
+            trades_display,
+            hide_index=True,
+            use_container_width=True,
+        )
+
     else:
         st.warning("No trades executed during this period.")
 
@@ -109,12 +159,12 @@ def render_glossary():
     with st.expander("ℹ️ Understanding the Metrics & Signals"):
         st.markdown("""
         **Metrics:**
-        - **Net ROI:** Final return after all fees and W-8BEN tax adjustments.
-        - **Win Rate:** Percentage of trades with Gross Profit > 0.
-        - **Avg Profit/Trade:** Average net percentage gain per closed position.
+        - **Net ROI:** Final return after all fees and W-8BEN adjusted taxes.
+        - **Win Rate:** Percentage of trades with net profit > 0.
+        - **Hurdle Rate:** Minimum predicted return required to cover fees and risk buffer.
 
         **Tax & Fees:**
-        - **W-8BEN (Ticked):** Treaty-aware logic for non-US residents (0% US Capital Gains Tax, 15% Dividend Withholding).
-        - **W-8BEN (Unticked):** Standard US non-resident rates (30% US Capital Gains/Backup Withholding, 30% Dividend Withholding).
-        - **Regulatory Fees:** SEC and FINRA TAF fees applied automatically to all sell orders.
+        - **W-8BEN:** Applies tax treaty benefits (0% CGT, 15% Dividends for foreigners).
+        - **SEC/FINRA Fees:** Regulatory fees applied to sell orders in US markets.
+        - **T+1 Settlement:** Standard US settlement cycle where funds clear next business day.
         """)

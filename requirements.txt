@@ -5,6 +5,7 @@ pandas_market_calendars
 numpy
 scikit-learn
 catboost
+ngboost
 prophet
 lxml # Required for pandas.read_html
 # Standard Scikit-Learn algorithms (RandomForest, GradientBoosting) are built-in

@@ -44,7 +44,7 @@ def render_super_stars(index_name, all_ticker_res, models=None, tie_breaker=None
         if res and "error" not in res:
             # Ensure win_rate is present and valid
             win_rate = float(res.get("win_rate", 0.0))
-            company_name = res.get("company", ticker)
+            company_name = res.get("company_name", ticker)
             yfinance_url = f"https://finance.yahoo.com/quote/{ticker}"
 
             summary.append(
@@ -87,7 +87,7 @@ def render_super_stars(index_name, all_ticker_res, models=None, tie_breaker=None
                 ),
             },
             hide_index=True,
-            width="stretch",
+            use_container_width=True,
         )
 
         # 2. Comparative Chart
@@ -95,20 +95,21 @@ def render_super_stars(index_name, all_ticker_res, models=None, tie_breaker=None
             df_top10,
             x="Ticker",
             y="Net ROI",
-            color="Net ROI",
             hover_data=["Company"],
-            color_continuous_scale="Viridis",
+            color="Net ROI",
             title="Top 10 Stocks by Profitability",
+            color_continuous_scale="RdYlGn",
             labels={"Net ROI": "Return on Investment"},
         )
 
         # Add labels to chart
         fig.update_traces(texttemplate="%{y:.2%}", textposition="outside")
         fig.update_layout(yaxis_tickformat=".2%", template="plotly_dark")
-        st.plotly_chart(fig, width="stretch")
+        st.plotly_chart(fig, use_container_width=True)
 
         # 3. Drill-down for winners
         st.subheader("Detailed Look at Winners")
+        # Creating a safe list of labels for tabs
         tab_labels = [row["Ticker"] for _, row in df_top10.iterrows()]
 
         tabs = st.tabs(tab_labels)

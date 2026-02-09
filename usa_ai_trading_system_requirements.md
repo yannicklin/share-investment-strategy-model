@@ -1,115 +1,106 @@
 # AI-Based Stock Investment System Requirements (USA Version)
 
 ## 1. Program Objective
-Develop a Python-based stock trading strategy system for the **USA Stock Market (NYSE, NASDAQ)**. The system uses AI models trained on **historical US market data** (e.g., OHLCV/K-line, MACD, indicators) to:
+Develop a Python-based stock trading strategy system for the **United States Stock Markets (NYSE/NASDAQ)**. The system uses AI models trained on **historical stock data** (e.g., OHLCV/K-line, MACD, indicators) to:
 
-- Train an AI investment model on US stock data
+- Train an AI investment model on US market data
 - Backtest historical performance in USD
 - Generate buy/sell recommendations for future trading
 - Predict optimal entry and exit points
-- Maximise investment returns while enforcing strict stop-loss rules
+- Maximise investment returns
+- Enforce strict stop-loss rules
 - Handle real-world scenarios such as price gaps (e.g., selling at actual market price when stop-loss cannot be executed)
 
 The model may buy even if projected returns do not meet take-profit thresholds, as long as it identifies favourable conditions. Stop-loss rules must always be followed.
 
 ---
-
 ## 2. Program Modules
 
-#### 2.1 Core Modules (`core/`)
-- **`config.py`** — Centralized configuration management (tickers, capital in USD, IRS tax brackets).
-- **`model_builder.py`** — AI factory supporting 5 algorithms (Random Forest, XGBoost, CatBoost, Prophet, LSTM) with automated scaling and sequential processing for LSTM.
+### 2.1 Core Modules (`core/`)
+- **`config.py`** — Centralized configuration management (tickers, capital, Broker/Tax profiles). Defaults to **Random Forest**, **NGBoost**, and **CatBoost** for benchmarking.
+- **`model_builder.py`** — AI factory supporting 5 algorithms (Random Forest, NGBoost, CatBoost, Prophet, LSTM) with automated scaling and sequential processing for LSTM.
+    - **Hardware Portability**: Uses **NGBoost** (Natural Gradient Boosting) and **CatBoost** to ensure native ARM64 support on Mac without external C-library (libomp) issues found in XGBoost/LightGBM.
+    - **ETF Identification**: Automatic security type detection to label ETFs in the results display.
 - **`backtest_engine.py`** — Dual-mode simulation engine:
+    - **Warm-up Buffer**: Implements a **90-day pre-test buffer** to prime technical indicators and LSTM sequences, ensuring all models can trade from Day 1 of the requested period.
+    - **Market Calendar Compliance**: Automatically excludes USA market holidays and weekends from backtest timeline (dynamically fetched via `pandas_market_calendars`).
+    - **Transaction Ledger**: Records every simulated trade in machine-parseable format for audit trail and post-analysis.
+    - **Portfolio Validation**: Pre-checks available cash before generating signals (skips ML execution if insufficient capital).
     - **Mode 1 (Models Comparison)**: Benchmarks individual AI performance for a fixed strategy.
     - **Mode 2 (Time-Span Comparison)**: Evaluates holding period efficiency using a **Multi-Model Consensus** (majority vote).
-        - **Tie-Breaker Rule**: In the event of a 50/50 vote split, a user-selected Tie-Breaker model makes the final decision.
-    - **Mode 3 (Find Super Stars)**: Scans US market indexes to identify the **Top 10** high-profit stocks.
-        - **Index Support**: S&P 500, Nasdaq 100, Dow Jones 30, and Russell 2000.
-        - **Trustable Data Sources**: Fetch constituents from authoritative sources (e.g., Wikipedia's real-time maintained tables or official ETF holding CSVs).
-        - **Consensus Analysis**: Ranks stocks using the multi-model consensus strategy.
-
-#### 2.3 Decision Layer & Hurdle Rate
-To ensure realism and profitability, the system employs a **Tax-Aware Dynamic Hurdle Rate** in the decision layer for all analysis modes:
-- **Break-even Calculation**: For every potential trade, the system calculates the minimum required return (%) using `Fees_Pct + (Risk_Buffer / (1 - Marginal_Tax_Rate))`.
-- **Hurdle-Filtered Signals**: The AI model (or consensus) only generates a "BUY" signal if the predicted price increase exceeds this hurdle rate.
-- **Tax Sensitivity**: Higher income brackets result in a higher hurdle rate, as the system requires a larger gross gain to achieve the same net-of-tax risk buffer.
-- **Small Capital Protection**: Prevents over-trading where brokerage fees or taxes would erode the majority of potential profits.
+        - **Consensus Logic**: Odd number of models uses a natural majority; even number of models uses a user-selected **Tie-Breaker** (Chairman model).
+        - **Holding Period Units**: "Day" = trading days; "Week/Month/Year" = calendar days.
+    - **Mode 3 (Find Super Stars)**: Scans entire market indexes (S&P 500, Nasdaq 100) to identify the **Top 10** performers for a chosen timeframe.
+        - **Company Profiles**: Displays full legal company names and provides direct links to **Yahoo Finance** for each winner.
 
 #### 2.2 UI Modules (`ui/`)
-- **`sidebar.py`** — Analysis mode selection via a **Segmented Button Switch** (Models vs. Time-Span vs. Super Stars).
-- **`algo_view.py`** — Renders the **Models Comparison** leaderboard.
-- **`strategy_view.py`** — Renders the **Time-Span Comparison** dashboard.
-- **`stars_view.py`** — Renders the **Super Stars** leaderboard (Hall of Fame).
-- **`components.py`** — Shared dashboard elements including the **Realized Equity Curve**, transaction logs with 2-decimal precision, and US financial glossary.
+- **`sidebar.py`** — Analysis mode selection via a **Segmented Button Switch**. Includes:
+    - **Dynamic Algorithm Filtering**: Automatically hides algorithms if their dependencies are not functional.
+    - **Percentage-Based Controls**: Stop-Loss and Take-Profit thresholds are adjusted via intuitive **% sliders**.
+- **`algo_view.py`** — Renders the **Models Comparison** leaderboard and individual model deep-dives. Features **ETF labeling** in headers.
+- **`strategy_view.py`** — Renders the **Time-Span Comparison** ROI bar charts and consensus equity paths.
+- **`stars_view.py`** — Renders the **Super Stars** leaderboard (Hall of Fame) with comparative ROI charts and drill-down trade analysis.
+- **`components.py`** — Shared dashboard elements including:
+    - **Dual-Axis Equity Curve**: Visualizes **Realized Capital** (solid line) against the **Share Price Trend** (dotted line) on a secondary Y-axis.
+    - **Standardized Logs**: numeral.js format: `$0,0.00` for currency, `0.00%` for percentages.
+    - **Financial Glossary**.
 
 ---
+## 3. Historical Data Source (USA)
+Exclusively uses **Yahoo Finance (`yfinance`)**. 
+- **Ticker format**: Standard US symbols (e.g., `AAPL`, `MSFT`, `SPY`).
+- **Adjustment**: Always use `auto_adjust=True` and target the `Close` price for calculations.
+- **Warm-up**: Fetches an additional 90 days of history prior to the start date for sequence initialization.
 
-## 3. Financial Accounting & Reinvestment
+### 3.1 Market Context & Macro Data
+- **Global Market Intelligence**:
+  - **S&P 500 (`^GSPC`)**: Captures US market sentiment.
+  - **Nasdaq 100 (`^NDX`)**: Captures tech sector performance.
+  - **VIX (`^VIX`)**: Global volatility/fear gauge.
+  - **10Y Yield (`^TNX`)**: US Treasury 10-year yield for rate environment context.
+- **Macroeconomic Drivers**:
+  - **Gold (`GC=F`)** and **Oil (`CL=F`)** futures for resource/inflation context.
+  - **Currency**: USD based; other pairs (e.g., `JPY=X`) as secondary indicators.
 
-### 3.1 Fee Structures
-The system supports broker profiles tailored for Australian investors trading the US market, ranging from "Classic" bank tiers to "Neobroker" and "Pro" levels.
-
-- **Classic Standard (e.g., Saxo / Global Prime)**:
-    - **Brokerage**: ~$5.00 USD per trade (Conservative Baseline).
-    - **Purpose**: A realistic stress test. Strategies must be robust enough to survive this fee.
-
-- **Stake (Retail Profile)**:
-    - **Brokerage**: $3.00 USD per trade (for trades ≤ $30,000 USD).
-    - **FX Costs**: ~70 basis points (0.70%) on AUD/USD transfers (Note: FX implied in model costs).
-    - **Regulatory Fees**: Pass-through of SEC and FINRA fees.
-
-- **Interactive Brokers (Pro Profile)**:
-    - **Brokerage**: ~$1.00 USD (Min) or $0.005 per share.
-    - **FX Costs**: Ultra-low (~0.20 bps + $2).
-    - **Purpose**: The "Gold Standard" for algorithmic execution.
-
-- **Big 4 Bank (Hard Mode)**:
-    - **Brokerage**: ~$19.95 USD.
-    - **Purpose**: Demonstrates why traditional AU banks are unsuitable for active algo trading.
-
-### 3.2 Taxation (Foreign Investor - US Side Obligations)
-The model simulates a Foreign Investor (e.g., Australian) trading in the US, focusing **exclusively on US tax obligations** collected at the source.
-
-- **Base Currency**: **USD**.
-- **W-8BEN Status**: Configurable option (Default: Filed).
-    - **Filed (Treaty Benefit)**: 
-        - **Dividends**: 15% Withholding Tax.
-        - **Capital Gains**: $0.00 US Tax.
-    - **Not Filed**: 
-        - **Dividends**: 30% Withholding Tax.
-        - **Capital Gains**: Potential 30% Backup Withholding (depending on broker enforcement).
-- **Disclaimer**: This model **does not** calculate domestic taxes in the investor's home country (e.g., Australian ATO Capital Gains Tax). Users must calculate their local tax liability separately based on these USD returns.
-
-### 3.3 Reinvestment & Settlement
-- **Settlement Logic**: Backtesting assumes a **T+1 reinvestment** cycle (capital available the next business day after a sale), providing a realistic simulation of US brokerage cash flow.
-- **Signal-Driven Entry**: Reinvestment only occurs when the **AI Consensus** triggers a "BUY" signal.
+### 3.2 Advanced Technical Indicators
+- **Bollinger Bands (20, 2)**: Adds `Upper`, `Lower`, and `Width` (Squeeze) to detect mean reversion and volatility breakouts.
+- **ATR (14)**: Average True Range added to measure pure price volatility for risk sizing.
 
 ---
+## 4. Trading Constraints & Realism
 
-## 4. Custodianship & Risk (Safety Net)
-Unlike the Australian **CHESS** system (HIN), where investors have direct legal ownership of shares on the registry, the US market operates on a **Custodian Model**.
+### 4.1 US Market Calendar Integration
+- **Dynamic Holiday Detection**: System automatically fetches NYSE/NASDAQ public holidays based on the backtest date range.
+- **Trading Day Definition**: Monday-Friday excluding US market holidays. Market half-days treated as off-days.
 
-- **Street Name**: Shares are held in the broker's name (or their custodian's) at the central depository (DTC). The investor is the "Beneficial Owner."
-- **SIPC Protection**: To mitigate the lack of direct ownership, US brokers are members of **SIPC (Securities Investor Protection Corporation)**. This protects client assets up to **$500,000 USD** (limit $250,000 for cash) if the broker fails.
-    - *Note for Model*: The strategy assumes the broker is SIPC-insured (e.g., Stake, IBKR, Schwab). The lack of HIN does not impact the algorithmic strategy but is a critical "Risk" factor for the user's capital allocation decisions.
-- **Direct Registration (DRS)**: While possible (e.g., via Computershare), it is **not recommended** for active trading due to high costs and slow execution speeds.
+### 4.2 Holding Period Units
+- **"Day" Unit**: Strictly interpreted as **TRADING DAYS** (excludes weekends + holidays).
+- **Other Units ("Week", "Month", "Year")**: Interpreted as **CALENDAR DAYS**.
+
+### 4.3 Portfolio Validation Before Signal Generation
+- **Pre-Transaction Check**: Before running ML models, system validates if current cash is sufficient to afford at least one ticker in the watchlist at current market prices.
+
+### 4.4 Transaction Ledger (Audit Trail)
+- **Machine-Parseable Format**: Transaction log stored in CSV format for automated analysis.
+- **Memory-Optimized Approach**: Batch write to disk after each backtest completes to maintain low RAM footprint.
+
+### 4.5 Date Display Format
+- **Standard Format**: `YYYY-MM-DD(DAY)` where DAY is 3-letter weekday abbreviation.
+
+### 4.6 Supported Broker Cost Profiles
+- **Saxo / Global Prime**: Conservative standard rates.
+- **Stake**: Low-cost flat fee for US trades.
+- **IBKR Pro Fixed**: Per-share commission model.
 
 ---
-
-## 5. Historical Data Source (USA) & Market Regime
-Exclusively uses **Yahoo Finance (`yfinance`)** but with an enhanced "Regime Awareness" architecture.
-
-- **Primary Asset Data**: Standard US symbols (e.g., `AAPL`, `TSLA`, `NVDA`).
-    - **Adjustment**: `auto_adjust=True`, Target `Close`.
-- **Market Regime Data (New)**: The AI model automatically fetches macro indicators to understand the "weather" of the market:
-    - **Volatility Index (`^VIX`)**: The "Fear Gauge." High VIX signals defensive posturing.
-    - **10-Year Treasury Yield (`^TNX`)**: The "Cost of Money." High yields signal headwinds for Growth/Tech stocks.
-- **Market Hours**: Operates on US Eastern Time (ET).
+## 5. Reinvestment & Settlement
+- **Settlement Logic**: Backtesting assumes a **T+1 settlement cycle** for US markets (funds clear next business day), matching current SEC regulations.
+- **Signal-Driven Entry**: Reinvestment only occurs when the **AI Consensus** triggers a "BUY" signal that exceeds the **Hurdle Rate**.
+- **Exit Strategy**: Supports Stop-Loss, Take-Profit, and Model-Exit.
 
 ---
-
 ## 6. Summary
-This system provides a rigorous, realistic backtesting environment for US trading, mirroring the ASX version's AI intelligence while strictly adhering to US regulatory fees, federal tax laws, and market structure constraints.
+This system provides a rigorous, realistic backtesting environment for US stock trading, accounting for technical AI signals and real-world financial constraints (SEC/FINRA fees, W-8BEN tax, T+1 settlement).
 
 ---
-*Last Updated: February 1, 2026*
+*Last Updated: February 9, 2026*
