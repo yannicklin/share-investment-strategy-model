@@ -17,8 +17,10 @@ import yfinance as yf
 import time
 import logging
 
-# Suppress heavy logging
+# Suppress heavy logging and warnings from backends
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["STAN_LOG_LEVEL"] = "ERROR"
+os.environ["CMDSTANPY_LOG_LEVEL"] = "ERROR"
 
 try:
     import tensorflow as tf
@@ -29,6 +31,7 @@ try:
 except ImportError:
     pass
 
+logging.getLogger("cmdstanpy").setLevel(logging.ERROR)
 logging.getLogger("prophet").setLevel(logging.ERROR)
 
 from typing import Optional, Any, Dict, List, Tuple
@@ -197,8 +200,12 @@ class ModelBuilder:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 df = yf.download(
-                    ticker, start=start_date, end=end_date, auto_adjust=True, 
-                    progress=False
+                    ticker, 
+                    start=start_date, 
+                    end=end_date, 
+                    auto_adjust=True, 
+                    progress=False,
+                    threads=False  # Prevents chrome impersonation errors
                 )
             
             if not df.empty:

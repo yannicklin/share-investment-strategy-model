@@ -2,20 +2,18 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Run Dashboard",
+            "label": "Auto-run Dashboard",
             "type": "shell",
             "command": "make run",
+            "runOptions": {
+                "runOn": "folderOpen"
+            },
             "presentation": {
+                "group": "status-servers",
                 "reveal": "always",
                 "panel": "dedicated"
             },
-            "isBackground": true,
-            "problemMatcher": []
-        },
-        {
-            "label": "Stop Dashboard",
-            "type": "shell",
-            "command": "lsof -ti:8502 | xargs kill -9 2>/dev/null || echo 'Not running'",
+            "notificationOnFatalError": true,
             "problemMatcher": []
         },
         {
