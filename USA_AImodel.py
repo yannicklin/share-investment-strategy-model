@@ -148,7 +148,10 @@ def render_app():
                             )
                             try:
                                 res = engine.run_strategy_mode(
-                                    ticker, config.model_types, tie_breaker=tie_breaker
+                                    ticker,
+                                    config.model_types,
+                                    tie_breaker=tie_breaker,
+                                    mode_prefix="ranking",
                                 )
                                 if "error" in res:
                                     st.error(f"Ranking Error: {res['error']}")

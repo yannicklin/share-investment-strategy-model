@@ -384,14 +384,18 @@ class BacktestEngine:
 
         result = self._core_run(ticker, signal, df, features)
         if "error" not in result:
-            ledger_filename = f"{ticker}_{model_type}_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
+            ledger_filename = f"{ticker}_algorithm_{model_type}.csv"
             result["ledger_path"] = self.ledger.save_to_file(filename=ledger_filename)
         return result
 
     def run_strategy_mode(
-        self, ticker: str, models: List[str], tie_breaker: Optional[str] = None
+        self,
+        ticker: str,
+        models: List[str],
+        tie_breaker: Optional[str] = None,
+        mode_prefix: str = "consensus",
     ) -> Dict[str, Any]:
-        """Mode 2: Evaluate strategy sensitivity using multi-model consensus."""
+        """Mode 2/3: Evaluate strategy sensitivity using multi-model consensus."""
         self.ledger.clear()
         df_tuple = self._prepare_data(ticker)
         df, features, error = df_tuple
@@ -433,7 +437,8 @@ class BacktestEngine:
 
         result = self._core_run(ticker, signal, df, features)
         if "error" not in result:
-            ledger_filename = f"{ticker}_consensus_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
+            timespan = f"{self.config.hold_period_value}{self.config.hold_period_unit}"
+            ledger_filename = f"{ticker}_{mode_prefix}_{timespan}.csv"
             result["ledger_path"] = self.ledger.save_to_file(filename=ledger_filename)
         return result
 
