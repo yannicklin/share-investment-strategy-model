@@ -1,5 +1,5 @@
 # Core AI and Data
-yfinance==0.2.57  # Last version without curl-cffi requirement
+yfinance==0.2.48  # Last stable version with threads=False fix
 FinMind  # Taiwan institutional data, margin trading, revenue
 pandas_datareader  # Global indices (^SOX, ^IXIC) and USD/TWD
 pandas
