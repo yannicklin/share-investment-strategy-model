@@ -257,9 +257,7 @@ def render_sidebar(config: Config):
     )
 
     st.sidebar.markdown("---")
-    run_analysis = st.sidebar.button(
-        "🚀 Run Analysis", type="primary", use_container_width=True
-    )
+    run_analysis = st.sidebar.button("🚀 Run Analysis", type="primary", width="stretch")
 
     return (
         analysis_mode,

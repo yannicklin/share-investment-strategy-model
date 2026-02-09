@@ -83,14 +83,14 @@ def render_strategy_sensitivity(ticker, ticker_res, models=None, tie_breaker=Non
             color_continuous_scale="Viridis",
             labels={"Net ROI": "Net Return on Investment"},
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
         # 2. Metrics Table
         st.subheader("Efficiency Metrics")
         st.dataframe(
             df_display,
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
         )
 
         # 3. Detailed Tabs

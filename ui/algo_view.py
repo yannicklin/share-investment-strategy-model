@@ -55,7 +55,7 @@ def render_algorithm_comparison(ticker, ticker_res):
             st.dataframe(
                 df_display.drop(columns=["Model"]),
                 hide_index=True,
-                use_container_width=True,
+                width="stretch",
             )
 
         with col_chart:
@@ -76,7 +76,7 @@ def render_algorithm_comparison(ticker, ticker_res):
                 ),
                 template="plotly_dark",
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
         st.subheader("Individual Model Analysis")
         tabs = st.tabs([m["Algorithm"] for m in summary])

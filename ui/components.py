@@ -95,7 +95,7 @@ def render_trade_details(ticker, res):
             title_text=f"{ticker} Price (USD)", secondary_y=True, showgrid=False
         )
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
         # 2. Statistics
         c1, c2, c3, c4 = st.columns(4)
@@ -147,7 +147,7 @@ def render_trade_details(ticker, res):
         st.dataframe(
             trades_display,
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
         )
 
     else:
