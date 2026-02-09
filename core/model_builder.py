@@ -44,6 +44,7 @@ class ModelBuilder:
         self.config = config
         self.model: Optional[Any] = None
         self.scaler: Optional[Any] = None
+        self.target_scaler: Optional[Any] = None  # For LSTM target scaling
         self.sequence_length = 30
         self._data_cache: Dict[str, pd.DataFrame] = {}
         self._stock_info_cache: Optional[pd.DataFrame] = None
@@ -438,14 +439,25 @@ class ModelBuilder:
         X_scaled = self.scaler.fit_transform(X)
 
         m_type = self.config.model_type
+        
+        # For LSTM, also scale the target
+        target_scaler = None
+        y_scaled = y
+        if m_type == "lstm":
+            from sklearn.preprocessing import StandardScaler
+            target_scaler = StandardScaler()
+            y_scaled = target_scaler.fit_transform(y.reshape(-1, 1)).flatten()
+        
         if m_type == "lstm":
             try:
-                X_seq, y_seq = self._create_sequences(X_scaled, y)
+                X_seq, y_seq = self._create_sequences(X_scaled, y_scaled)
                 self.model = self._init_model(input_dim=X.shape[1])
                 self.model.fit(X_seq, y_seq, batch_size=32, epochs=50, verbose=0)
+                self.target_scaler = target_scaler  # Save for inverse transform
             except Exception:
                 self.model = self._init_model()
                 self.model.fit(X_scaled, y)
+                self.target_scaler = None
         elif m_type == "prophet":
             try:
                 p_df = pd.DataFrame(
@@ -463,7 +475,7 @@ class ModelBuilder:
 
         os.makedirs(self.config.model_path, exist_ok=True)
         joblib.dump(
-            {"model": self.model, "scaler": self.scaler},
+            {"model": self.model, "scaler": self.scaler, "target_scaler": getattr(self, 'target_scaler', None)},
             os.path.join(self.config.model_path, f"{ticker}_{m_type}_model.joblib"),
         )
 
@@ -505,6 +517,7 @@ class ModelBuilder:
                 return "retrained"
 
             self.scaler = loaded_scaler
+            self.target_scaler = bundle.get("target_scaler", None)  # Load target scaler for LSTM
             self.model = bundle["model"]
 
             # Validation check to ensure scaler is fitted

@@ -476,6 +476,11 @@ class BacktestEngine:
             raw_preds = self.model_builder.model.predict(
                 X_seq, batch_size=64, verbose=0
             ).flatten()
+            
+            # Inverse transform LSTM predictions if target was scaled
+            if self.model_builder.target_scaler is not None:
+                raw_preds = self.model_builder.target_scaler.inverse_transform(raw_preds.reshape(-1, 1)).flatten()
+            
             all_preds = np.full(len(df), raw_preds[0], dtype=np.float32)
             all_preds[seq_len:] = raw_preds
             return all_preds
