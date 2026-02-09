@@ -365,6 +365,11 @@ class BacktestEngine:
             current_price = float(df_inner.iloc[i]["Close"])
             pred = all_preds[i]
             pred_return = (pred - current_price) / current_price
+            
+            # Debug first few signals
+            if i < 35 and model_type == "lstm":
+                logging.info(f"LSTM Signal Day {i}: price={current_price:.2f}, pred={pred:.2f}, pred_return={pred_return:.4f}, hurdle={hurdle:.4f}, buy={pred_return > hurdle}")
+            
             return bool(pred_return > hurdle)
 
         result = self._core_run(ticker, signal, df, features)
@@ -449,6 +454,12 @@ class BacktestEngine:
             ).flatten()
             all_preds = np.zeros(len(df), dtype=np.float32)
             all_preds[seq_len:] = raw_preds
+            
+            # Debug LSTM predictions
+            if len(raw_preds) > 0:
+                logging.info(f"LSTM: Generated {len(raw_preds)} predictions. Sample: min={raw_preds.min():.2f}, max={raw_preds.max():.2f}, mean={raw_preds.mean():.2f}")
+                logging.info(f"LSTM: Actual Close prices: min={df['Close'].iloc[seq_len:].min():.2f}, max={df['Close'].iloc[seq_len:].max():.2f}, mean={df['Close'].iloc[seq_len:].mean():.2f}")
+            
             return all_preds
         elif model_type == "prophet" and self.model_builder.model is not None:
             prophet_df = pd.DataFrame({"ds": df.index}).copy()
