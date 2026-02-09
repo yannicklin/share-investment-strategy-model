@@ -77,30 +77,13 @@ if command -v uv >/dev/null 2>&1; then
     # Ensure UV uses the correct python architecture
     uv venv .venv --python "$PYTHON_EXEC" 2>/dev/null || true
     
-    # Detect environment for yfinance version selection
-    if [ -n "$CODESPACES" ]; then
-        echo "☁️  GitHub Codespaces detected - using stable yfinance 0.2.48"
-        YFINANCE_VERSION="yfinance==0.2.48"
-    else
-        # Try modern yfinance with curl-cffi for all platforms
-        echo "🚀 Attempting yfinance 1.2.0 with curl-cffi for better Yahoo API access..."
-        uv pip install curl-cffi>=0.7.0 --native-tls 2>/dev/null && {
-            YFINANCE_VERSION="yfinance>=1.2.0"
-            echo "✅ curl-cffi installed successfully"
-        } || {
-            echo "⚠️  curl-cffi installation failed, falling back to yfinance 0.2.48"
-            YFINANCE_VERSION="yfinance==0.2.48"
-        }
-    fi
-    
-    # Install requirements with selected yfinance version
-    uv pip install "$YFINANCE_VERSION" --native-tls
-    uv pip install -r requirements.txt --native-tls
+    # Simple install - just use pyproject.toml dependencies
+    uv pip install -e ".[dev]" --native-tls
 else
     # Use pip directly from the venv to avoid architecture mismatches with global tools like uv
     echo "🐍 Using venv pip for reliable installation..."
     $INSTALL_CMD -m pip install --upgrade pip
-    $INSTALL_CMD -m pip install -e "."
+    $INSTALL_CMD -m pip install -e ".[dev]"
 fi
 
 echo "✅ Setup complete!"

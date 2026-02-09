@@ -219,6 +219,7 @@ class ModelBuilder:
 
         # FALLBACK: Try FinMind for basic OHLCV if Yahoo failed
         if df is None or df.empty:
+            logging.warning(f"Yahoo Finance failed for {ticker}, using FinMind fallback...")
             try:
                 from FinMind.data import DataLoader
                 dl = DataLoader()
@@ -240,6 +241,9 @@ class ModelBuilder:
                     )
                     df["date"] = pd.to_datetime(df["date"])
                     df.set_index("date", inplace=True)
+                    logging.info(f"FinMind fallback successful: {len(df)} rows for {ticker}")
+                else:
+                    logging.error(f"FinMind returned empty dataframe for {ticker}")
             except Exception as e:
                 logging.error(f"Both Yahoo Finance and FinMind failed for {ticker}: {e}")
                 return pd.DataFrame()
@@ -370,18 +374,20 @@ class ModelBuilder:
                     try:
                         # FRED: DEXCHUS (official Federal Reserve data)
                         usd_twd_data = pdr.get_data_fred("DEXCHUS", start=g_start, end=end_date)
-                    except:
+                        if not usd_twd_data.empty:
+                            usd_twd_data.index = pd.to_datetime(usd_twd_data.index).tz_localize(None)
+                            usd_twd_shifted = usd_twd_data.shift(1).reindex(df.index).ffill()
+                            df["USD_TWD"] = usd_twd_shifted
+                    except Exception as fred_error:
+                        logging.warning(f"FRED USD/TWD failed: {fred_error}, trying Stooq...")
                         # Fallback: Stooq
                         usd_twd_data = pdr.get_data_stooq("USDTWD", start=g_start, end=end_date)
-                    
-                    if not usd_twd_data.empty:
-                        usd_twd_data.index = pd.to_datetime(usd_twd_data.index).tz_localize(None)
-                        # FRED returns Series, Stooq returns DataFrame
-                        if isinstance(usd_twd_data, pd.Series):
-                            usd_twd_shifted = usd_twd_data.shift(1).reindex(df.index).ffill()
-                        else:
-                            usd_twd_shifted = usd_twd_data["Close"].shift(1).reindex(df.index).ffill()
-                        df["USD_TWD"] = usd_twd_shifted
+                        if not usd_twd_data.empty:
+                            usd_twd_data.index = pd.to_datetime(usd_twd_data.index).tz_localize(None)
+                            # Stooq returns DataFrame with OHLC columns
+                            close_col = usd_twd_data["Close"] if "Close" in usd_twd_data.columns else usd_twd_data.iloc[:, -1]
+                            usd_twd_shifted = close_col.shift(1).reindex(df.index).ffill()
+                            df["USD_TWD"] = usd_twd_shifted
                 except Exception as e:
                     logging.warning(f"USD/TWD exchange rate fetch failed: {e}")
                     df["USD_TWD"] = 0
