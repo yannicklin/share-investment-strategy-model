@@ -1,5 +1,5 @@
 [project]
-name = "share-investment-strategy-model"
+name = "share-investment-strategy-model-twn"
 version = "0.2.0"
 description = "AI-Based Stock Investment System (Taiwan Version)"
 authors = [{ name = "Yannick" }]
