@@ -418,7 +418,11 @@ class BacktestEngine:
         return result
 
     def run_strategy_mode(
-        self, ticker: str, models: List[str], tie_breaker: Optional[str] = None
+        self,
+        ticker: str,
+        models: List[str],
+        tie_breaker: Optional[str] = None,
+        mode_prefix: str = "consensus",
     ) -> Dict[str, Any]:
         self.ledger.clear()
         df_tuple = self._prepare_data(ticker)
@@ -467,7 +471,7 @@ class BacktestEngine:
         result = self._core_run(ticker, signal, df, features)
         if "error" not in result:
             result["ledger_path"] = self.ledger.save_to_file(
-                filename=f"{ticker}_consensus_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
+                filename=f"{ticker}_{mode_prefix}_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
             )
         return result
 
