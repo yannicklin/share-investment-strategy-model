@@ -27,6 +27,7 @@ The model may buy even if projected returns do not meet take-profit thresholds, 
     - **Transaction Ledger**: Records every simulated trade in machine-parseable format for audit trail and post-analysis.
     - **Portfolio Validation**: Pre-checks available cash before generating signals (skips ML execution if insufficient capital).
     - **Mode 1 (Models Comparison)**: Benchmarks individual AI performance for a fixed strategy.
+        - **File Naming Convention**: `{ticker}_algorithm_{mode_type}_{timespan}.csv` (e.g., `AAPL_algorithm_random_forest_14day.csv`).
     - **Mode 2 (Time-Span Comparison)**: Evaluates holding period efficiency using a **Multi-Model Consensus** (majority vote).
         - **Consensus Logic**: Odd number of models uses a natural majority; even number of models uses a user-selected **Tie-Breaker** (Chairman model).
         - **Holding Period Units**: "Day" = trading days; "Week/Month/Year" = calendar days.

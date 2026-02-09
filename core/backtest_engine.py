@@ -384,7 +384,7 @@ class BacktestEngine:
 
         result = self._core_run(ticker, signal, df, features)
         if "error" not in result:
-            ledger_filename = f"{ticker}_algorithm_{model_type}.csv"
+            ledger_filename = f"{ticker}_algorithm_{model_type}_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
             result["ledger_path"] = self.ledger.save_to_file(filename=ledger_filename)
         return result
 
