@@ -1,5 +1,5 @@
 # Core AI and Data
-yfinance
+yfinance>=0.2.38  # threads=False prevents chrome impersonation errors
 pandas
 pandas_market_calendars
 numpy

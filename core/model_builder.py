@@ -161,7 +161,7 @@ class ModelBuilder:
                 return
 
             tickers = list(indices.values())
-            df_raw = yf.download(tickers, period="10y", progress=False)
+            df_raw = yf.download(tickers, period="10y", progress=False, threads=False)
             if df_raw is None or df_raw.empty:
                 return
 
@@ -190,7 +190,7 @@ class ModelBuilder:
 
         try:
             df_raw = yf.download(
-                ticker, start=start_date, end=end_date, auto_adjust=True, progress=False
+                ticker, start=start_date, end=end_date, auto_adjust=True, progress=False, threads=False
             )
 
             if df_raw is None or df_raw.empty:
