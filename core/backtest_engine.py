@@ -171,7 +171,16 @@ class BacktestEngine:
         official_end = pd.Timestamp(df.index[-1])
         # Use official Taiwan Stock Exchange (XTAI) calendar for trading days
         self.trading_days = get_taiwan_trading_days(official_start, official_end)
-        df = df[df.index.isin(self.trading_days)]
+        
+        # Normalize both to UTC-naive midnight for robust comparison
+        df.index = pd.to_datetime(df.index).tz_localize(None).normalize()
+        trading_days_normalized = pd.to_datetime(self.trading_days).tz_localize(None).normalize()
+        
+        df = df[df.index.isin(trading_days_normalized)]
+        
+        if df.empty:
+            logging.warning(f"Dataframe empty for {ticker} after applying market calendar filter. Index: {raw_data.index[:1]} to {raw_data.index[-1:]}. Calendar: {self.trading_days[:1]} to {self.trading_days[-1:]}")
+            return None, None, {"error": f"Calendar mismatch for {ticker}"}
 
         features = [
             "Open",
