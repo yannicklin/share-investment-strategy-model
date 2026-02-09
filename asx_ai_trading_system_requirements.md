@@ -128,6 +128,7 @@ Exclusively uses **Yahoo Finance (`yfinance`)**.
   
 - **Mode-Specific Ledger Generation**:
   - **Mode 1 (Models Comparison)**: Each model → separate ledger for performance evaluation.
+    - File naming convention: `{ticker}_algorithm_{mode_type}_{timespan}.csv` (e.g., `BHP_algorithm_random_forest_14day.csv`).
     - Worst-case: ASX 200 × 5 models = 1,000 backtests = ~600-800 MB total disk output.
   - **Mode 2 (Time-Span)**: Models vote as consensus team → single ledger per holding period.
   - **Mode 3 (Super Stars)**: Models vote as consensus team → single ledger per stock.

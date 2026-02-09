@@ -492,7 +492,7 @@ class BacktestEngine:
 
         # Save ledger to file and clear from memory
         if "error" not in result:
-            ledger_filename = f"{ticker}_{model_type}_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
+            ledger_filename = f"{ticker}_algorithm_{model_type}_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
             ledger_path = self.ledger.save_to_file(filename=ledger_filename)
             result["ledger_path"] = ledger_path
 
