@@ -23,10 +23,6 @@ def render_trade_details(ticker, res):
         return
 
     if res.get("trades"):
-        # Show ledger path if available
-        if res.get("ledger_path"):
-            st.caption(f"📑 Ledger: `{res['ledger_path']}`")
-
         # 1. Equity Curve with Share Price overlay
         trade_points = [
             {
