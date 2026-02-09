@@ -155,6 +155,30 @@ class ModelBuilder:
         return False
 
     def fetch_data(self, ticker: str, years: int) -> pd.DataFrame:
+        """
+        Fetch Taiwan stock data with multi-source strategy.
+        
+        Data Sources Priority:
+        1. PRIMARY: Yahoo Finance Taiwan
+           - OHLCV (Open, High, Low, Close, Volume)
+           - Most reliable and up-to-date price data
+        
+        2. SUPPLEMENTARY: FinMind
+           - Institutional flows (Foreign/Trust/Dealer Net Buy)
+           - Margin trading (RongZi/RongQuan balances)
+           - Monthly revenue YoY growth (with 45-day lag)
+           - Global context (TWD=X, ^SOX, ^IXIC via Yahoo Finance)
+        
+        3. FALLBACK: FinMind OHLCV
+           - Only used if Yahoo Finance completely fails
+        
+        Args:
+            ticker: Taiwan stock symbol (e.g., "2330.TW")
+            years: Historical data years to fetch
+        
+        Returns:
+            DataFrame with OHLCV + supplementary features
+        """
         cache_key = f"{ticker}_{years}"
         if cache_key in self._data_cache:
             return self._data_cache[cache_key]
@@ -162,29 +186,77 @@ class ModelBuilder:
         end_date = pd.Timestamp.now()
         start_date = end_date - pd.DateOffset(years=years) - pd.DateOffset(days=90)
 
-        # PRIMARY: FinMind
+        # PRIMARY: Yahoo Finance Taiwan (for OHLCV data)
+        df = None
+        try:
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                try:
+                    df = yf.download(
+                        ticker, start=start_date, end=end_date, auto_adjust=True, 
+                        progress=False
+                    )
+                except TypeError:
+                    # Fallback for older yfinance versions
+                    df = yf.download(
+                        ticker, start=start_date, end=end_date, auto_adjust=True, 
+                        progress=False
+                    )
+            
+            if not df.empty:
+                # Normalize column names
+                if isinstance(df.columns, pd.MultiIndex):
+                    df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
+                df.rename(columns={
+                    "Open": "Open",
+                    "High": "High",
+                    "Low": "Low",
+                    "Close": "Close",
+                    "Volume": "Volume",
+                }, inplace=True)
+                df.index = pd.to_datetime(df.index).tz_localize(None)
+        except Exception as e:
+            logging.warning(f"Yahoo Finance failed for {ticker}: {e}")
+            df = None
+
+        # FALLBACK: Try FinMind for basic OHLCV if Yahoo failed
+        if df is None or df.empty:
+            try:
+                from FinMind.data import DataLoader
+                dl = DataLoader()
+                stock_id = ticker.split(".")[0]
+                df = dl.taiwan_stock_daily(
+                    stock_id=stock_id,
+                    start_date=start_date.strftime("%Y-%m-%d"),
+                    end_date=end_date.strftime("%Y-%m-%d"),
+                )
+                if not df.empty:
+                    df = df.rename(
+                        columns={
+                            "open": "Open",
+                            "max": "High",
+                            "min": "Low",
+                            "close": "Close",
+                            "Trading_Volume": "Volume",
+                        }
+                    )
+                    df["date"] = pd.to_datetime(df["date"])
+                    df.set_index("date", inplace=True)
+            except Exception as e:
+                logging.error(f"Both Yahoo Finance and FinMind failed for {ticker}: {e}")
+                return pd.DataFrame()
+
+        # If still no data, return empty
+        if df is None or df.empty:
+            logging.error(f"No data available for {ticker}")
+            return pd.DataFrame()
+
+        # SUPPLEMENTARY: FinMind for Taiwan-specific institutional data
+        stock_id = ticker.split(".")[0]
         try:
             from FinMind.data import DataLoader
-
             dl = DataLoader()
-            stock_id = ticker.split(".")[0]
-            df = dl.taiwan_stock_daily(
-                stock_id=stock_id,
-                start_date=start_date.strftime("%Y-%m-%d"),
-                end_date=end_date.strftime("%Y-%m-%d"),
-            )
-            if not df.empty:
-                df = df.rename(
-                    columns={
-                        "open": "Open",
-                        "max": "High",
-                        "min": "Low",
-                        "close": "Close",
-                        "Trading_Volume": "Volume",
-                    }
-                )
-                df["date"] = pd.to_datetime(df["date"])
-                df.set_index("date", inplace=True)
 
                 # 1. Institutional Net Buy (Split by Foreign vs Trust)
                 try:
@@ -279,14 +351,23 @@ class ModelBuilder:
                     # Suppress yfinance warnings and errors
                     with warnings.catch_warnings():
                         warnings.simplefilter("ignore")
-                        g_data = yf.download(
-                            global_tickers,
-                            start=g_start,
-                            end=end_date,
-                            auto_adjust=True,
-                            progress=False,
-                            show_errors=False,  # Suppress yfinance error messages
-                        )
+                        try:
+                            g_data = yf.download(
+                                global_tickers,
+                                start=g_start,
+                                end=end_date,
+                                auto_adjust=True,
+                                progress=False,
+                            )
+                        except TypeError:
+                            # Fallback for older yfinance versions
+                            g_data = yf.download(
+                                global_tickers,
+                                start=g_start,
+                                end=end_date,
+                                auto_adjust=True,
+                                progress=False,
+                            )
 
                     # Skip if no data was downloaded
                     if g_data.empty:
@@ -322,48 +403,13 @@ class ModelBuilder:
 
                 except Exception as e:
                     logging.warning(f"Global Context failed: {e}")
-
-                df.fillna(0, inplace=True)
-                self._data_cache[cache_key] = df
-                return df
         except Exception as e:
-            logging.warning(
-                f"FinMind failed for {ticker}: {e}. Falling back to YFinance."
-            )
+            logging.warning(f"FinMind supplementary data failed: {e}")
 
-        # FALLBACK: Yahoo Finance
-        try:
-            import warnings
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                data = yf.download(
-                    ticker, start=start_date, end=end_date, auto_adjust=True, 
-                    progress=False, show_errors=False
-                )
-            if not data.empty:
-                # Basic normalization
-                df = data.copy()
-                if isinstance(df.columns, pd.MultiIndex):
-                    df.columns = [
-                        c[0] if isinstance(c, tuple) else c for c in df.columns
-                    ]
-                df.rename(
-                    columns={
-                        "Open": "Open",
-                        "High": "High",
-                        "Low": "Low",
-                        "Close": "Close",
-                        "Volume": "Volume",
-                    },
-                    inplace=True,
-                )
-                df["Inst_Net_Buy"] = 0
-                self._data_cache[cache_key] = df
-                return df
-        except Exception:
-            pass
-
-        return pd.DataFrame()
+        # Final cleanup and cache
+        df.fillna(0, inplace=True)
+        self._data_cache[cache_key] = df
+        return df
 
     def prefetch_data_batch(self, tickers: List[str], years: int):
         for ticker in tickers:
@@ -387,7 +433,11 @@ class ModelBuilder:
         # KD
         low_9 = df["Low"].rolling(9).min()
         high_9 = df["High"].rolling(9).max()
-        rsv = (df["Close"] - low_9) / (high_9 - low_9 + 1e-9) * 100
+        # Safeguard against empty rolling windows
+        h_l_diff = high_9 - low_9
+        h_l_diff = h_l_diff.replace(0, np.nan)  # Avoid division by zero
+        rsv = ((df["Close"] - low_9) / (h_l_diff + 1e-9)) * 100
+        rsv = rsv.fillna(50)  # Default RSV to 50 when undefined
         df["K"] = rsv.ewm(com=2).mean()
         df["D"] = df["K"].ewm(com=2).mean()
 
@@ -410,7 +460,12 @@ class ModelBuilder:
 
         # CLEANUP: Handle Inf values created by division (e.g. RSI gain/loss)
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
+        
         df = df.dropna()
+        
+        if df.empty:
+            logging.error("Empty dataframe after feature engineering and dropna!")
+            return np.array([]), np.array([])
 
         features = [
             "Open",
@@ -436,7 +491,11 @@ class ModelBuilder:
             "NASDAQ_Index",
             "Daily_Return",
         ]
-        return df[features].values, df["Target"].values
+        
+        X = df[features].values
+        y = df["Target"].values
+        
+        return X, y
 
     def _create_sequences(self, data_scaled, target):
         X_seq, y_seq = [], []

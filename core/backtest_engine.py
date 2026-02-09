@@ -18,7 +18,7 @@ from core.config import Config
 from core.model_builder import ModelBuilder
 from core.utils import (
     format_date_with_weekday,
-    get_asx_trading_days,
+    get_taiwan_trading_days,
     calculate_trading_days_ahead,
     validate_buy_capacity,
 )
@@ -122,7 +122,11 @@ class BacktestEngine:
         # KD
         low_9 = df["Low"].rolling(9).min()
         high_9 = df["High"].rolling(9).max()
-        rsv = (df["Close"] - low_9) / (high_9 - low_9 + 1e-9) * 100
+        # Safeguard against empty rolling windows
+        h_l_diff = high_9 - low_9
+        h_l_diff = h_l_diff.replace(0, np.nan)  # Avoid division by zero
+        rsv = ((df["Close"] - low_9) / (h_l_diff + 1e-9)) * 100
+        rsv = rsv.fillna(50)  # Default RSV to 50 when undefined
         df["K"] = rsv.ewm(com=2).mean()
         df["D"] = df["K"].ewm(com=2).mean()
 
@@ -144,7 +148,12 @@ class BacktestEngine:
         # CLEANUP: Handle Inf values created by division (e.g. RSI gain/loss)
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
         df.ffill(inplace=True)
-        return df.dropna()
+        result = df.dropna()
+        
+        if result.empty:
+            logging.warning(f"_get_indicators returned empty dataframe after dropna. Original size: {len(data)}")
+        
+        return result
 
     def _prepare_data(
         self, ticker: str
@@ -160,7 +169,8 @@ class BacktestEngine:
             years=self.config.backtest_years
         )
         official_end = pd.Timestamp(df.index[-1])
-        self.trading_days = get_asx_trading_days(official_start, official_end)
+        # Use official Taiwan Stock Exchange (XTAI) calendar for trading days
+        self.trading_days = get_taiwan_trading_days(official_start, official_end)
         df = df[df.index.isin(self.trading_days)]
 
         features = [
@@ -373,20 +383,6 @@ class BacktestEngine:
         if error or df is None or features is None:
             return error or {"error": "Failed to prepare data"}
         all_preds = self._get_bulk_predictions(df, features, model_type)
-        
-        # Debug predictions
-        non_zero_preds = all_preds[all_preds != 0]
-        print(f"\n=== {model_type.upper()} PREDICTIONS DEBUG ===")
-        print(f"Total predictions: {len(all_preds)}")
-        print(f"Non-zero predictions: {len(non_zero_preds)}")
-        if len(non_zero_preds) > 0:
-            print(f"Pred range: [{non_zero_preds.min():.2f}, {non_zero_preds.max():.2f}]")
-            print(f"Pred mean: {non_zero_preds.mean():.2f}")
-            print(f"Sample preds: {non_zero_preds[:5]}")
-        close_prices = df['Close'].values
-        print(f"Close range: [{close_prices.min():.2f}, {close_prices.max():.2f}]")
-        print(f"Close mean: {close_prices.mean():.2f}")
-        print(f"={'='*40}\n")
 
         def signal(i, df_inner, features_inner, current_cap):
             hurdle = self.get_hurdle_rate(current_cap)
@@ -394,11 +390,6 @@ class BacktestEngine:
             if current_price <= 1e-9:
                 return False
             pred_return = (all_preds[i] - current_price) / current_price
-            
-            # Debug first few signals
-            if i < 10:
-                print(f"Day {i}: price={current_price:.2f}, pred={all_preds[i]:.2f}, pred_return={pred_return:.4f}, hurdle={hurdle:.4f}, buy={pred_return > hurdle}")
-            
             return pred_return > hurdle
 
         result = self._core_run(ticker, signal, df, features)
@@ -467,7 +458,7 @@ class BacktestEngine:
     ) -> np.ndarray:
         # Validate Input Shape
         if df.empty or len(features) == 0:
-            print(f"WARNING: Empty df or features for {model_type}")
+            logging.warning(f"Empty df or features for {model_type}")
             return np.zeros(len(df), dtype=np.float32)
 
         X_all = df[features].values.astype(np.float32)
@@ -478,10 +469,8 @@ class BacktestEngine:
 
         # Ensure model is ready
         if self.model_builder.model is None:
-            print(f"WARNING: Model is None for {model_type}")
+            logging.warning(f"Model is None for {model_type}")
             return np.zeros(len(df), dtype=np.float32)
-        
-        print(f"_get_bulk_predictions for {model_type}: df_len={len(df)}, features={len(features)}, model={type(self.model_builder.model).__name__}")
 
         if model_type == "lstm" and self.model_builder.scaler:
             # Use sequence_length from model_builder for consistency

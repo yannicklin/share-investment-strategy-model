@@ -22,6 +22,19 @@ def format_date_with_weekday(dt: pd.Timestamp) -> str:
     return f"{dt.strftime('%Y-%m-%d')}({weekday})"
 
 
+def get_taiwan_trading_days(
+    start_date: pd.Timestamp,
+    end_date: pd.Timestamp,
+) -> pd.DatetimeIndex:
+    """
+    Fetch Taiwan Stock Exchange (XTAI) trading days for specified date range.
+    
+    Uses exchange_calendars/pandas_market_calendars to get official trading days
+    accounting for Taiwan holidays and market closures.
+    """
+    return get_asx_trading_days(start_date, end_date, market="TWN")
+
+
 def get_asx_trading_days(
     start_date: pd.Timestamp,
     end_date: pd.Timestamp,
