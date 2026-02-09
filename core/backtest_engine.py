@@ -10,6 +10,7 @@ Copyright (c) 2026 Yannick
 
 import pandas as pd
 import numpy as np
+import logging
 from typing import List, Dict, Any, Callable, Optional, Tuple
 
 from core.config import Config, BROKERS, get_tax_profile
@@ -430,10 +431,19 @@ class BacktestEngine:
             and self.model_builder.model is not None
             and self.model_builder.scaler is not None
         ):
-            seq_len = 30
+            # Use sequence_length from model_builder for consistency
+            seq_len = self.model_builder.sequence_length
             X_scaled = self.model_builder.scaler.transform(X_all).astype(np.float32)
+            
+            # Create sequences: at time i, use [i-seq_len:i] to predict i+1
+            # This matches training where [i:i+seq_len] predicts target[i+seq_len]=Close[i+seq_len+1]
             valid_indices = np.arange(seq_len, len(df))
-            X_seq = np.array([X_scaled[i - seq_len : i] for i in valid_indices])
+            X_seq = np.array([X_scaled[i - seq_len : i] for i in valid_indices], dtype=np.float32)
+            
+            if len(X_seq) == 0:
+                logging.warning(f"Not enough data for LSTM sequences (need >{seq_len} days)")
+                return np.zeros(len(df), dtype=np.float32)
+            
             raw_preds = self.model_builder.model.predict(
                 X_seq, batch_size=64, verbose=0
             ).flatten()

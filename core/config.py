@@ -103,7 +103,7 @@ class Config:
     init_capital: float = 3000.00
     hold_period_unit: str = "month"
     hold_period_value: int = 1
-    hurdle_risk_buffer: float = 0.01
+    hurdle_risk_buffer: float = 0.01  # 1.0% default, adjustable in 0.1% increments via UI
     risk_free_rate: float = 0.04
     annual_income: float = 0.0  # Not used in USA CGT logic (0% for W-8BEN)
 
