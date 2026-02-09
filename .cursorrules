@@ -21,7 +21,7 @@
 
 **Stack**:
 - **Backend**: Python 3.x, pandas, scikit-learn, yfinance
-- **ML Models**: Random Forest, XGBoost, CatBoost, Prophet, LSTM (5 algorithms)
+- **ML Models**: Random Forest, NGBoost, CatBoost, Prophet, LSTM (5 algorithms)
 - **Frontend**: Streamlit dashboard with segmented views
 - **Data**: Yahoo Finance (ASX tickers with .AX suffix)
 
@@ -72,7 +72,7 @@
 **Must Preserve**:
 - ✅ Majority vote consensus (≥3/5 models for signal)
 - ✅ Tie-breaker mechanism (user-selectable model)
-- ✅ Individual model availability checks (XGB/CatBoost/Prophet/LSTM optional)
+- ✅ Individual model availability checks (NGBoost/CatBoost/Prophet/LSTM optional)
 - ✅ Standardized prediction interface across all models
 
 **Forbidden**:

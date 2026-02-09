@@ -32,7 +32,7 @@ The goal is to build a Python-based trading strategy system for the Australian S
 2. **Security Priorities**: NEVER commit API keys or sensitive financial data.
 3. **Data Integrity**: Use `.AX` ticker suffix. Use `auto_adjust=True` and the `Close` column for all calculations.
 4. **Technical Indicators**: Implement RSI, MACD, **Bollinger Bands, ATR**, and Moving Averages as standard features.
-5. **Model Flexibility**: Support multiple algorithms (Random Forest, Gradient Boosting, CatBoost, Prophet, LSTM) via factory pattern. Prefer native Scikit-Learn versions for maximum portability.
+5. **Model Flexibility**: Support multiple algorithms (Random Forest, NGBoost, CatBoost, Prophet, LSTM) via factory pattern. Prefer native Scikit-Learn versions for maximum portability.
 6. **Dual-Mode Analysis**:
    - **Mode 1**: Compare algorithms for a fixed strategy (Models Comparison).
    - **Mode 2**: Compare strategy timing/holding periods (Time-Span Comparison) using multi-model **Consensus**.

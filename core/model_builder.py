@@ -59,7 +59,14 @@ class ModelBuilder:
     @classmethod
     def get_available_models(cls) -> List[str]:
         """Returns a list of models that have their dependencies installed."""
-        available = ["random_forest", "gradient_boosting"]
+        available = ["random_forest"]
+
+        try:
+            from ngboost import NGBRegressor
+
+            available.append("ngboost")
+        except (ImportError, Exception):
+            pass
 
         try:
             from catboost import CatBoostRegressor
@@ -87,7 +94,18 @@ class ModelBuilder:
     def _init_model(self, input_dim: int = 0) -> Any:
         m_type = self.config.model_type
 
-        if m_type == "catboost":
+        if m_type == "ngboost":
+            from ngboost import NGBRegressor
+
+            logging.info("Initialized NGBoost model.")
+            return NGBRegressor(
+                n_estimators=100,
+                learning_rate=0.01,
+                random_state=42,
+                verbose=False,
+            )
+
+        elif m_type == "catboost":
             from catboost import CatBoostRegressor
 
             logging.info("Initialized CatBoost model.")
@@ -99,10 +117,6 @@ class ModelBuilder:
                 thread_count=-1,
                 allow_writing_files=False,
             )
-
-        elif m_type == "gradient_boosting":
-            logging.info("Initialized Scikit-Learn Gradient Boosting model.")
-            return GradientBoostingRegressor(n_estimators=100, random_state=42)
 
         elif m_type == "prophet":
             from prophet import Prophet
@@ -439,15 +453,16 @@ class ModelBuilder:
         X_scaled = self.scaler.fit_transform(X)
 
         m_type = self.config.model_type
-        
+
         # For LSTM, also scale the target
         target_scaler = None
         y_scaled = y
         if m_type == "lstm":
             from sklearn.preprocessing import StandardScaler
+
             target_scaler = StandardScaler()
             y_scaled = target_scaler.fit_transform(y.reshape(-1, 1)).flatten()
-        
+
         if m_type == "lstm":
             try:
                 X_seq, y_seq = self._create_sequences(X_scaled, y_scaled)
@@ -495,7 +510,9 @@ class ModelBuilder:
                 {
                     "model": self.model,
                     "scaler": self.scaler,
-                    "target_scaler": getattr(self, 'target_scaler', None),  # Include if exists
+                    "target_scaler": getattr(
+                        self, "target_scaler", None
+                    ),  # Include if exists
                     "model_class": self.model.__class__.__name__,
                 },
                 model_filename,
@@ -538,7 +555,9 @@ class ModelBuilder:
                 return "retrained"
 
             self.scaler = loaded_scaler
-            self.target_scaler = data_bundle.get("target_scaler", None)  # Load target scaler for LSTM
+            self.target_scaler = data_bundle.get(
+                "target_scaler", None
+            )  # Load target scaler for LSTM
 
             # 4. Load Model
             if "keras_path" in data_bundle or "lstm_h5" in data_bundle:

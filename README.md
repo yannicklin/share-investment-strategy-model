@@ -5,7 +5,7 @@ A Python-based automated trading strategy system designed specifically for the *
 ## 🚀 Key Features
 
 -   **Multi-Model Support**: Compare performance across 5 different algorithms:
-    -   Random Forest, XGBoost, CatBoost (Gradient Boosting)
+    -   Random Forest, NGBoost, CatBoost
     -   Prophet (Time-series forecasting)
     -   **LSTM (Deep Learning / Sequential Memory)**
 -   **Realistic Backtesting Engine**:
@@ -98,7 +98,7 @@ make scan
 
 -   **`core/`**:
     -   `config.py`: Global settings and defaults (Tickers, Capital, ATO Tax).
-    -   `model_builder.py`: AI model factory (RF, XGB, CatBoost, Prophet, LSTM).
+    -   `model_builder.py`: AI model factory (RF, NGBoost, CatBoost, Prophet, LSTM).
     -   `backtest_engine.py`: Dual-mode simulation logic with consensus voting, market calendar compliance, transaction ledger, and portfolio validation.
     -   `index_manager.py`: Reliable constituent fetcher for market indices.
 -   **`ui/`**:

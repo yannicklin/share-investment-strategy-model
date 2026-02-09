@@ -45,7 +45,7 @@ This project's framework and philosophy were developed with assistance from vari
 - **streamlit** - Interactive dashboard framework
 
 ### AI/ML Models
-- **XGBoost** - Gradient boosting framework
+- **NGBoost** - Natural Gradient Boosting with uncertainty estimation
 - **CatBoost** - Gradient boosting with categorical support
 - **Prophet** - Time-series forecasting (Facebook/Meta)
 - **TensorFlow/Keras** - Deep learning (LSTM implementation)

@@ -20,9 +20,9 @@ The model may buy even if projected returns do not meet take-profit thresholds, 
 ### 2. Program Modules
 
 #### 2.1 Core Modules (`core/`)
-- **`config.py`** — Centralized configuration management (tickers, capital, ATO tax brackets). Defaults to **Random Forest** and **CatBoost** for benchmarking.
-- **`model_builder.py`** — AI factory supporting 5 algorithms (Random Forest, Gradient Boosting, CatBoost, Prophet, LSTM) with automated scaling and sequential processing for LSTM.
-    - **Hardware Portability**: Replaced XGBoost/LightGBM with Scikit-Learn **Gradient Boosting** to ensure native ARM64 support on Mac without external C-libraries (libomp).
+- **`config.py`** — Centralized configuration management (tickers, capital, ATO tax brackets). Defaults to **Random Forest**, **NGBoost**, and **CatBoost** for benchmarking.
+- **`model_builder.py`** — AI factory supporting 5 algorithms (Random Forest, NGBoost, CatBoost, Prophet, LSTM) with automated scaling and sequential processing for LSTM.
+    - **Hardware Portability**: Uses **NGBoost** (Natural Gradient Boosting) and **CatBoost** to ensure native ARM64 support on Mac without external C-library (libomp) issues found in XGBoost/LightGBM.
     - **ETF Identification**: Automatic security type detection to label ETFs in the results display.
 - **`backtest_engine.py`** — Dual-mode simulation engine:
     - **Warm-up Buffer**: Implements a **90-day pre-test buffer** to prime technical indicators and LSTM sequences, ensuring all models can trade from Day 1 of the requested period.
