@@ -189,27 +189,43 @@ class BacktestEngine:
             return None, None, {"error": f"Calendar mismatch for {ticker}"}
 
         features = [
+            # Base OHLCV (5)
             "Open",
             "High",
             "Low",
             "Close",
             "Volume",
+            # Moving Averages (3)
             "MA5",
             "MA20",
+            "MA50",
+            # Momentum Indicators (3)
             "RSI",
             "MACD",
             "Signal_Line",
+            # Bollinger Bands (3)
+            "BB_Upper",
+            "BB_Lower",
+            "BB_Width",
+            # Volatility (1)
+            "ATR",
+            # Stochastic (2)
             "K",
             "D",
+            # Taiwan Institutional Flows (3)
             "Foreign_Net",
             "Trust_Net",
             "Dealer_Net",
+            # Taiwan Margin Trading (2)
             "Margin_Balance",
             "Short_Balance",
+            # Taiwan Fundamentals (1)
             "Revenue_YoY",
+            # Global Market Context (3)
             "USD_TWD",
             "SOX_Index",
             "NASDAQ_Index",
+            # Returns (1)
             "Daily_Return",
         ]
         return df, features, None

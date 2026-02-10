@@ -471,31 +471,51 @@ class ModelBuilder:
 
     def prepare_features(self, data: pd.DataFrame):
         df = data.copy()
+        
+        # Moving Averages
         df["MA5"] = df["Close"].rolling(5).mean()
         df["MA20"] = df["Close"].rolling(20).mean()
+        df["MA50"] = df["Close"].rolling(50).mean()
+        
+        # RSI (Relative Strength Index)
         delta = df["Close"].diff()
         gain = (delta.where(delta > 0, 0)).rolling(14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
         df["RSI"] = 100 - (100 / (1 + (gain / (loss + 1e-9))))
+        
+        # MACD (Moving Average Convergence Divergence)
         df["MACD"] = (
             df["Close"].ewm(span=12, adjust=False).mean()
             - df["Close"].ewm(span=26, adjust=False).mean()
         )
         df["Signal_Line"] = df["MACD"].ewm(span=9, adjust=False).mean()
+        
+        # Bollinger Bands
+        sma_20 = df["Close"].rolling(window=20).mean()
+        std_20 = df["Close"].rolling(window=20).std()
+        df["BB_Upper"] = sma_20 + (std_20 * 2)
+        df["BB_Lower"] = sma_20 - (std_20 * 2)
+        df["BB_Width"] = (df["BB_Upper"] - df["BB_Lower"]) / sma_20
+        
+        # ATR (Average True Range)
+        high_low = df["High"] - df["Low"]
+        high_close = np.abs(df["High"] - df["Close"].shift())
+        low_close = np.abs(df["Low"] - df["Close"].shift())
+        true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+        df["ATR"] = true_range.rolling(window=14).mean()
+        
+        # Daily Return
         df["Daily_Return"] = df["Close"].pct_change(fill_method=None)
 
-        # KD
-        low_9 = df["Low"].rolling(9).min()
-        high_9 = df["High"].rolling(9).max()
-        # Safeguard against empty rolling windows
-        h_l_diff = high_9 - low_9
+        # Stochastic Oscillator (KD)
+        low_14 = df["Low"].rolling(14).min()
+        high_14 = df["High"].rolling(14).max()
+        h_l_diff = high_14 - low_14
         h_l_diff = h_l_diff.replace(0, np.nan)  # Avoid division by zero
-        rsv = ((df["Close"] - low_9) / (h_l_diff + 1e-9)) * 100
-        rsv = rsv.fillna(50)  # Default RSV to 50 when undefined
-        df["K"] = rsv.ewm(com=2).mean()
-        df["D"] = df["K"].ewm(com=2).mean()
+        df["K"] = 100 * ((df["Close"] - low_14) / (h_l_diff + 1e-9))
+        df["D"] = df["K"].rolling(window=3).mean()
 
-        # Fill missing new features if not present (e.g. from fallback)
+        # Fill missing Taiwan-specific and global features if not present (e.g. from fallback)
         for col in [
             "Foreign_Net",
             "Trust_Net",
@@ -522,27 +542,43 @@ class ModelBuilder:
             return np.array([]), np.array([])
 
         features = [
+            # Base OHLCV (5)
             "Open",
             "High",
             "Low",
             "Close",
             "Volume",
+            # Moving Averages (3)
             "MA5",
             "MA20",
+            "MA50",
+            # Momentum Indicators (3)
             "RSI",
             "MACD",
             "Signal_Line",
+            # Bollinger Bands (3)
+            "BB_Upper",
+            "BB_Lower",
+            "BB_Width",
+            # Volatility (1)
+            "ATR",
+            # Stochastic (2)
             "K",
             "D",
+            # Taiwan Institutional Flows (3)
             "Foreign_Net",
             "Trust_Net",
             "Dealer_Net",
+            # Taiwan Margin Trading (2)
             "Margin_Balance",
             "Short_Balance",
+            # Taiwan Fundamentals (1)
             "Revenue_YoY",
+            # Global Market Context (3)
             "USD_TWD",
             "SOX_Index",
             "NASDAQ_Index",
+            # Returns (1)
             "Daily_Return",
         ]
 

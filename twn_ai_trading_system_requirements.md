@@ -1,7 +1,7 @@
 # AI-Based Stock Investment System Requirements (Taiwan Version)
 
 ## 1. Program Objective
-Develop a Python-based stock trading strategy system for the **Taiwan Stock Market (TWSE, TPEx)**. The system uses AI models trained on **historical Taiwan market data** (e.g., OHLCV/K-line, MACD, RSI, KD, Volume indicators) to:
+Develop a Python-based stock trading strategy system for the **Taiwan Stock Market (TWSE, TPEx)**. The system uses AI models trained on **historical Taiwan market data** with **27 engineered features** (18 base technical + 3 market context + 6 Taiwan-specific institutional) to:
 
 - Train an AI investment model on Taiwan stock data
 - Backtest historical performance in TWD (New Taiwan Dollar)
@@ -69,25 +69,53 @@ Taiwan-specific broker profiles:
 
 ---
 
-## 4. Market Characteristics & Data
+## 4. Feature Engineering & Model Inputs
 
-### 4.1 Data Sources
+### 4.1 Feature Structure (27 Total Features)
+The Taiwan model uses **27 features** organized into three categories:
+
+#### 4.1.1 Base Technical Features (18 features)
+Standard technical indicators including OHLCV, Moving Averages (MA5/MA20/MA50), Momentum indicators (RSI, MACD), Bollinger Bands, ATR, and Stochastic Oscillator (K/D).
+
+#### 4.1.2 Market Context Features (3 features)
+Global market indicators via Yahoo Finance: USD_TWD exchange rate, SOX Index (semiconductors), and NASDAQ Composite.
+
+#### 4.1.3 Taiwan-Specific Institutional Features (6 features)
+Unique data from FinMind API: Foreign/Trust/Dealer institutional flows (三大法人), Margin/Short trading balances, and Revenue YoY growth
+
+### 4.2 Data Sources
 - **FinMind API (Primary)**:
     - **Enhanced Features**: Includes OHLCV + **Institutional Net Buy (三大法人)**.
     - **Stability**: Highly reliable for Taiwan market data.
 - **Yahoo Finance (`yfinance`) (Fallback)**:
     - **TWSE Tickers**: `[4-digit].TW` (e.g., `2330.TW`)
     - **TPEx Tickers**: `[4-digit].TWO` (e.g., `6488.TWO`)
+    - **Market Context**: Used for USD_TWD, ^SOX, ^IXIC indices
 
-### 4.2 Trading Rules
+### 4.3 Trading Rules
 - **Trading Hours**: 09:00 - 13:30 Taiwan Standard Time (TST).
 - **Price Limits (Ceiling/Floor)**: Daily movement limited to **±10%**. The system respects these limits in execution simulation.
 - **Lot Size**: Standard trading unit is **1,000 shares**.
 
 ---
 
-## 5. Summary
-This system provides a rigorous, realistic backtesting environment for Taiwan trading, incorporating the zero-CGT advantage while strictly enforcing the high-friction STT and T+2 settlement constraints.
+## 5. Model Architecture & Feature Alignment
 
----
-*Last Updated: February 7, 2026 (Sync with ASX Realism & T+2 standards)*
+### 5.1 Cross-Market Feature Standardization
+All markets (ASX, USA, TWN) now follow a consistent structure:
+- **Base Technical Features**: Standard OHLCV derivatives universally applicable
+- **Market Context Features**: Global indices/macro data via Yahoo Finance, prefixed with `MKT_`
+- **Market-Specific Features**: Regional institutional/fundamental data (e.g., FinMind for Taiwan)
+
+### 5.2 Taiwan Feature Count Evolution
+- **Previous**: 22 features (incomplete base technical, inline global indices)
+- **Current**: 27 features (complete base technical + separated market context + Taiwan-specific)
+- **Added**: MA50, Bollinger Bands (BB_Upper, BB_Lower, BB_Width), ATR
+- **Standardized**: Stochastic K/D now uses 14-day calculation (universal standard)
+
+**Note**: Models trained on the old 22-feature structure will need retraining to use the new 27-feature dataset.
+Notes
+
+All markets (ASX, USA, TWN) follow a consistent three-category structure: Base Technical + Market Context + Market-Specific features. Taiwan evolved from 22 to 27 features for comprehensive technical coverage.
+
+**Note**: Models trained on the old 22-feature structure require retraining for the new 27-feature dataset
