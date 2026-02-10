@@ -2,7 +2,7 @@
 Taiwan Stock AI Trading System - Utility Functions
 
 Purpose: Date formatting, market calendar management, and helper utilities.
-Supports ASX and Taiwan (XTAI) markets.
+Supports Taiwan (XTAI) and other markets via market calendar APIs.
 
 Author: Yannick
 Copyright (c) 2026 Yannick
@@ -32,10 +32,10 @@ def get_taiwan_trading_days(
     Uses exchange_calendars/pandas_market_calendars to get official trading days
     accounting for Taiwan holidays and market closures.
     """
-    return get_asx_trading_days(start_date, end_date, market="TWN")
+    return get_trading_days(start_date, end_date, market="TWN")
 
 
-def get_asx_trading_days(
+def get_trading_days(
     start_date: pd.Timestamp,
     end_date: pd.Timestamp,
     market: str = "TWN",

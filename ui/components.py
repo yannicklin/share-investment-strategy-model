@@ -1,5 +1,5 @@
 """
-ASX AI Trading System - Shared UI Components
+Taiwan Stock AI Trading System - Shared UI Components
 
 Purpose: Reusable Streamlit components for equity curves, trade logs,
 and glossary displays.
