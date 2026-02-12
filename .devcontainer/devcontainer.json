@@ -42,7 +42,7 @@
     }
   },
   
-  "postCreateCommand": "make setup && pip install --upgrade curl-cffi --index-url https://pypi.org/simple 2>/dev/null || true && python -c \"try:\n    from curl_cffi.const import CHROME_VERSIONS\n    print('✅ Supported Chrome versions:', list(CHROME_VERSIONS.keys()))\nexcept ImportError:\n    print('⚠️  curl-cffi not installed (skipping Chrome version check)')\" || true",
+  "postCreateCommand": "bash -c 'make setup && pip install --upgrade curl-cffi --index-url https://pypi.org/simple 2>/dev/null || true && echo \"export CURL_IMPERSONATE=chrome131\" >> ~/.bashrc && echo \"export CURL_IMPERSONATE=chrome131\" >> ~/.zshrc && export CURL_IMPERSONATE=chrome131 && python -c \"import os; os.environ.setdefault(\\\"CURL_IMPERSONATE\\\", \\\"chrome131\\\"); print(\\\"✅ CURL_IMPERSONATE set to:\\\", os.getenv(\\\"CURL_IMPERSONATE\\\"))\" && python -c \"try:\n    from curl_cffi.const import CHROME_VERSIONS\n    print(\\\"✅ Supported Chrome versions:\\\", list(CHROME_VERSIONS.keys()))\nexcept ImportError:\n    print(\\\"⚠️  curl-cffi not installed (skipping Chrome version check)\\\")\" || true'",
   "postStartCommand": "git pull",
   
   "remoteUser": "vscode"
