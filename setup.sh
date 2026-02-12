@@ -1,15 +1,22 @@
 #!/bin/bash
 
-# ASX AI Trading System - Robust Setup Script
+# Taiwan Stock AI Trading System - Robust Setup Script
 # This script ensures the correct environment is created for your architecture (Intel/ARM).
 
 set -e
 
 echo "🔍 Detecting hardware..."
-# Detect physical hardware, not just what the shell reports (handles Rosetta)
-IS_APPLE_SILICON=$(sysctl -n machdep.cpu.brand_string | grep -q "Apple" && echo "true" || echo "false")
-ARCH=$(uname -m)
+# Detect physical hardware (handles macOS Rosetta and Linux)
 OS=$(uname -s)
+ARCH=$(uname -m)
+
+if [ "$OS" == "Darwin" ]; then
+    # macOS-specific detection
+    IS_APPLE_SILICON=$(sysctl -n machdep.cpu.brand_string 2>/dev/null | grep -q "Apple" && echo "true" || echo "false")
+else
+    # Linux/Codespace - no Apple Silicon
+    IS_APPLE_SILICON="false"
+fi
 
 echo "💻 OS: $OS, Shell Arch: $ARCH, Apple Silicon: $IS_APPLE_SILICON"
 
@@ -74,16 +81,17 @@ fi
 # Detect if UV is available (Codespace/Linux) or use pip (macOS)
 if command -v uv >/dev/null 2>&1; then
     echo "🚀 Using UV for fast dependency installation..."
-    # Ensure UV uses the correct python architecture
-    uv venv .venv --python "$PYTHON_EXEC" 2>/dev/null || true
-    
-    # Simple install - just use pyproject.toml dependencies
-    uv pip install -e ".[dev]" --native-tls
+    # UV sync reads from pyproject.toml and handles everything
+    uv sync --no-dev || {
+        echo "⚠️  UV sync failed, trying with dev dependencies..."
+        uv sync
+    }
 else
-    # Use pip directly from the venv to avoid architecture mismatches with global tools like uv
+    # Use pip directly from the venv (reads from pyproject.toml)
     echo "🐍 Using venv pip for reliable installation..."
     $INSTALL_CMD -m pip install --upgrade pip
-    $INSTALL_CMD -m pip install -e ".[dev]"
+    # Non-editable install (avoids -e issues in some environments)
+    $INSTALL_CMD -m pip install .
 fi
 
 echo "✅ Setup complete!"
