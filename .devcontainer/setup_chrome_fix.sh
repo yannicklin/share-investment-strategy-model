@@ -28,4 +28,13 @@ echo ""
 echo "✅ Setup complete!"
 echo "ℹ️  Fix applied: CURL_IMPERSONATE=chrome131 (forces safe Chrome version)"
 echo "ℹ️  curl-cffi upgrade attempted (adds chrome142 support if available)"
+echo ""
+echo "🚀 Starting application..."
+echo "   Access the dashboard at: http://localhost:8502"
+echo ""
+
+# Start Streamlit in background
+cd /workspaces/share-investment-strategy-model
+nohup make run > /tmp/streamlit.log 2>&1 &
+echo "   View logs: tail -f /tmp/streamlit.log"
 
