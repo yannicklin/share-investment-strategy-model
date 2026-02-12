@@ -1,8 +1,8 @@
 """
-USA AI Trading System - Shared UI Components
+USA Stock AI Trading System - Shared UI Components
 
 Purpose: Reusable Streamlit components for equity curves, trade logs,
-and glossary displays for US stocks.
+and glossary displays.
 
 Author: Yannick
 Copyright (c) 2026 Yannick
@@ -87,13 +87,11 @@ def render_trade_details(ticker, res):
         )
 
         fig.update_yaxes(
-            title_text="Portfolio Value (USD)",
+            title_text="Portfolio Value",
             secondary_y=False,
             gridcolor="rgba(255,255,255,0.1)",
         )
-        fig.update_yaxes(
-            title_text=f"{ticker} Price (USD)", secondary_y=True, showgrid=False
-        )
+        fig.update_yaxes(title_text=f"{ticker} Price", secondary_y=True, showgrid=False)
 
         st.plotly_chart(fig, width="stretch")
 
@@ -159,12 +157,11 @@ def render_glossary():
     with st.expander("ℹ️ Understanding the Metrics & Signals"):
         st.markdown("""
         **Metrics:**
-        - **Net ROI:** Final return after all fees and W-8BEN adjusted taxes.
-        - **Win Rate:** Percentage of trades with net profit > 0.
-        - **Hurdle Rate:** Minimum predicted return required to cover fees and risk buffer.
+        - **Net ROI:** Final return after all fees and taxes.
+        - **Win Rate:** Percentage of trades with Gross Profit > 0.
+        - **Avg Profit/Trade:** Average net percentage gain per closed position.
 
-        **Tax & Fees:**
-        - **W-8BEN:** Applies tax treaty benefits (0% CGT, 15% Dividends for foreigners).
-        - **SEC/FINRA Fees:** Regulatory fees applied to sell orders in US markets.
-        - **T+1 Settlement:** Standard US settlement cycle where funds clear next business day.
+        **Tax & Fees (USA):**
+        - **W-8BEN:** Foreign investor treaty benefit (0% CGT, 15% Dividend Withholding).
+        - **Regulatory Fees:** Includes SEC & FINRA fees applied on sell orders.
         """)

@@ -1,8 +1,8 @@
 """
-USA AI Trading System - Strategy Sensitivity View
+USA Stock AI Trading System - Strategy Sensitivity View
 
 Purpose: Streamlit view for comparing trading strategies across different
-holding periods using consensus AI predictions for US stocks.
+holding periods using consensus AI predictions.
 
 Author: Yannick
 Copyright (c) 2026 Yannick
@@ -45,7 +45,7 @@ def render_strategy_sensitivity(ticker, ticker_res, models=None, tie_breaker=Non
     errors = []
 
     for p_name, res in ticker_res.items():
-        if isinstance(res, dict) and "roi" in res and "error" not in res:
+        if res and "error" not in res:
             summary.append(
                 {
                     "Hold Period": p_name,
@@ -55,7 +55,7 @@ def render_strategy_sensitivity(ticker, ticker_res, models=None, tie_breaker=Non
                     "Final Portfolio": float(res["final_capital"]),
                 }
             )
-        elif isinstance(res, dict) and "error" in res:
+        elif res and "error" in res:
             errors.append(f"{p_name}: {res['error']}")
 
     if errors:

@@ -1,16 +1,18 @@
 """
-USA AI Trading System - Sidebar Configuration
+USA Stock AI Trading System - Sidebar Component
 
-Purpose: Renders the Streamlit sidebar for user input parameters for US stocks.
+Purpose: Streamlit sidebar for mode selection, ticker input, and
+backtest parameters.
 
 Author: Yannick
 Copyright (c) 2026 Yannick
 """
 
 import streamlit as st
-from core.config import Config, BROKERS
-from core.model_builder import ModelBuilder
+import yfinance as yf
+from core.config import Config
 from core.index_manager import load_index_constituents, update_index_data
+from core.model_builder import ModelBuilder
 
 
 def render_sidebar(config: Config):
@@ -26,13 +28,8 @@ def render_sidebar(config: Config):
             }
             
             /* Sidebar Headers */
-            [data-testid="stSidebar"] h1, 
-            [data-testid="stSidebar"] h2, 
-            [data-testid="stSidebar"] h3,
-            [data-testid="stSidebar"] .stMarkdown h1,
-            [data-testid="stSidebar"] .stMarkdown h2,
-            [data-testid="stSidebar"] .stMarkdown h3 {
-                color: #DC143C !important;
+            [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
+                color: #3d85c6 !important;
                 font-weight: 700 !important;
                 letter-spacing: -0.5px !important;
             }
@@ -45,9 +42,9 @@ def render_sidebar(config: Config):
             }
             
             [data-testid="stSidebar"] button:hover {
-                border-color: #DC143C !important;
-                color: #DC143C !important;
-                box-shadow: 0 0 10px rgba(220, 20, 60, 0.2) !important;
+                border-color: #3d85c6 !important;
+                color: #3d85c6 !important;
+                box-shadow: 0 0 10px rgba(61, 133, 198, 0.2) !important;
             }
 
             /* Horizontal dividers */
@@ -67,7 +64,7 @@ def render_sidebar(config: Config):
 
     st.sidebar.header("Analysis Mode")
 
-    # 1. Mode Selection using segmented control
+    # Selection mode
     analysis_mode_short = st.sidebar.segmented_control(
         "Workflow Selection",
         options=["Models", "Time-Span", "Super Stars"],
@@ -75,6 +72,9 @@ def render_sidebar(config: Config):
         label_visibility="collapsed",
         help="Models: Compare AI algorithms. Time-Span: Find best period. Super Stars: Find top 10 stocks.",
     )
+
+    # Get available models based on installed libraries
+    available_models = ModelBuilder.get_available_models()
 
     # Map back to full names
     mode_map = {
@@ -85,9 +85,6 @@ def render_sidebar(config: Config):
     short_val = str(analysis_mode_short) if analysis_mode_short else "Models"
     analysis_mode = mode_map.get(short_val, "Models Comparison")
     index_choice = None
-
-    # Get available models based on installed libraries
-    available_models = ModelBuilder.get_available_models()
 
     # --- 1. SHARED GLOBAL SETTINGS ---
     st.sidebar.markdown("---")
@@ -110,11 +107,11 @@ def render_sidebar(config: Config):
         index_choice = st.sidebar.selectbox(
             "Select Index to Scan",
             list(index_data.keys()),
-            help="S&P 500: Blue Chips. Nasdaq 100: Tech benchmark.",
+            help="USA Stock 50: Blue Chips. USA Stock 200: Benchmark index.",
         )
 
         if st.sidebar.button("🔄 Update Index Constituents"):
-            with st.spinner("Scraping Wikipedia for latest constituents..."):
+            with st.spinner("Fetching latest market data..."):
                 results = update_index_data()
                 st.sidebar.success("Updated!")
                 for idx, msg in results.items():
@@ -128,13 +125,10 @@ def render_sidebar(config: Config):
         "Backtest Years", 1, 10, config.backtest_years
     )
     config.init_capital = st.sidebar.number_input(
-        "Initial Capital ($)",
-        value=float(config.init_capital),
-        format="%.2f",
-        step=100.0,
+        "Initial Capital", value=float(config.init_capital), format="%.2f", step=100.0
     )
 
-    # Loss and Gain Thresholds
+    # Display as percentage but store as decimal
     sl_val = st.sidebar.slider(
         "Stop-Loss Threshold",
         1.0,
@@ -175,9 +169,9 @@ def render_sidebar(config: Config):
         col_unit, col_val = st.sidebar.columns([2, 1])
         unit_options = ["day", "week", "month", "year"]
         config.hold_period_unit = col_unit.selectbox(
-            "Holding Period Unit", unit_options, index=2
+            "Holding Period", unit_options, index=2
         )
-        config.hold_period_value = col_val.number_input("Value", value=1, min_value=1)
+        config.hold_period_value = col_val.number_input("Val", value=1, min_value=1)
         config.model_types = st.sidebar.multiselect(
             "AI Algorithms to Benchmark",
             available_models,
@@ -196,7 +190,16 @@ def render_sidebar(config: Config):
             )
         test_periods = st.sidebar.multiselect(
             "Time-Spans to Evaluate",
-            list(period_map.keys()),
+            [
+                "1 day",
+                "2 days",
+                "1 week",
+                "2 weeks",
+                "1 month",
+                "3 months",
+                "6 months",
+                "1 year",
+            ],
             default=["1 day", "1 month", "1 year"],
         )
 
@@ -213,7 +216,16 @@ def render_sidebar(config: Config):
             )
         star_period = st.sidebar.selectbox(
             "Strategy Time-Span",
-            list(period_map.keys()),
+            [
+                "1 day",
+                "2 days",
+                "1 week",
+                "2 weeks",
+                "1 month",
+                "3 months",
+                "6 months",
+                "1 year",
+            ],
             index=4,  # Default to "1 month"
         )
         test_periods = [star_period]
@@ -227,19 +239,20 @@ def render_sidebar(config: Config):
     )
 
     with st.sidebar.expander("Costs & Taxes"):
+        profile_options = ["default", "cmc_markets", "tiger_au"]
         config.cost_profile = st.selectbox(
             "Broker Profile",
-            list(BROKERS.keys()),
-            index=list(BROKERS.keys()).index(config.cost_profile)
-            if config.cost_profile in BROKERS
+            profile_options,
+            index=profile_options.index(config.cost_profile)
+            if config.cost_profile in profile_options
             else 0,
         )
-        config.w8ben = st.checkbox(
-            "W-8BEN Filed (0% CGT)",
-            value=config.w8ben,
-            help="Ticked: Applies tax treaty benefits (0% Capital Gains, 15% Dividends). Unticked: Applies maximum backup withholding (30% Capital Gains, 30% Dividends).",
+        config.annual_income = st.number_input(
+            "Annual Income (for Tax)",
+            value=float(config.annual_income),
+            format="%.2f",
+            step=5000.0,
         )
-
         # Display as percentage (0-5%) but store as decimal (0-0.05)
         buffer_val = st.slider(
             "Hurdle Risk Buffer",
@@ -257,7 +270,7 @@ def render_sidebar(config: Config):
     )
 
     st.sidebar.markdown("---")
-    run_analysis = st.sidebar.button("🚀 Run Analysis", type="primary", width="stretch")
+    run_analysis = st.sidebar.button("🚀 Run Analysis", width="stretch")
 
     return (
         analysis_mode,

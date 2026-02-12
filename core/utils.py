@@ -1,5 +1,5 @@
 """
-USA AI Trading System - Utility Functions
+USA Stock AI Trading System - Utility Functions
 
 Purpose: Date formatting, market calendar management, and helper utilities.
 
@@ -9,86 +9,129 @@ Copyright (c) 2026 Yannick
 
 import pandas as pd
 import pandas_market_calendars as mcal
-import numpy as np
-from typing import Optional, Any
+from typing import Optional
+from datetime import datetime
 
 
-def format_date_with_weekday(dt: Any) -> str:
-    """Format pandas Timestamp as YYYY-MM-DD(DAY)."""
-    ts = pd.Timestamp(dt)
-    if pd.isna(ts):
-        return "N/A"
-    weekday = ts.strftime("%a").upper()
-    return f"{ts.strftime('%Y-%m-%d')}({weekday})"
+def format_date_with_weekday(dt: pd.Timestamp) -> str:
+    """
+    Format pandas Timestamp as YYYY-MM-DD(DAY).
+
+    Args:
+        dt: Timestamp object (timezone-aware or naive)
+
+    Returns:
+        String like "2026-02-06(THU)"
+
+    Examples:
+        >>> format_date_with_weekday(pd.Timestamp("2026-02-06"))
+        '2026-02-06(THU)'
+        >>> format_date_with_weekday(pd.Timestamp("2026-12-25"))
+        '2026-12-25(FRI)'
+    """
+    weekday = dt.strftime("%a").upper()
+    return f"{dt.strftime('%Y-%m-%d')}({weekday})"
 
 
 def get_usa_trading_days(
-    start_date: Any, end_date: Any, use_cache: bool = True
+    start_date: pd.Timestamp, end_date: pd.Timestamp, use_cache: bool = True
 ) -> pd.DatetimeIndex:
-    """Fetch USA (NYSE) trading days for specified date range."""
-    s = pd.Timestamp(start_date)
-    e = pd.Timestamp(end_date)
-
+    """
+    Fetch USA trading days (NYSE) for specified date range.
+    """
     try:
         if use_cache:
-            nyse_calendar = mcal.get_calendar("XNYS")
-            schedule = nyse_calendar.schedule(start_date=s, end_date=e)
-            if schedule.empty:
-                all_dates: Any = pd.date_range(start=s, end=e, freq="D")
-                trading_days = all_dates[all_dates.dayofweek < 5]
-            else:
-                idx: Any = pd.to_datetime(schedule.index)
-                trading_days = idx.tz_localize(None).normalize()
+            nyse_calendar = mcal.get_calendar("NYSE")
+            schedule = nyse_calendar.schedule(start_date=start_date, end_date=end_date)
+            trading_days = schedule.index
         else:
-            all_dates: Any = pd.date_range(start=s, end=e, freq="D")
+            all_dates = pd.date_range(start=start_date, end=end_date, freq="D")
             trading_days = all_dates[all_dates.dayofweek < 5]
     except Exception:
-        all_dates: Any = pd.date_range(start=s, end=e, freq="D")
+        all_dates = pd.date_range(start=start_date, end=end_date, freq="D")
         trading_days = all_dates[all_dates.dayofweek < 5]
 
-    return pd.DatetimeIndex(trading_days).unique()
+    return pd.DatetimeIndex(trading_days)
 
 
 def calculate_trading_days_ahead(
-    start_date: Any, num_days: int, trading_days: pd.DatetimeIndex
+    start_date: pd.Timestamp, num_days: int, trading_days: pd.DatetimeIndex
 ) -> Optional[pd.Timestamp]:
-    """Calculate the date that is `num_days` TRADING DAYS ahead from start_date."""
-    s = pd.Timestamp(start_date)
-    if pd.isna(s):
-        return None
+    """
+    Calculate the date that is `num_days` TRADING DAYS ahead from start_date.
 
-    s = s.tz_localize(None).normalize()
+    Args:
+        start_date: Starting date (must be a valid trading day)
+        num_days: Number of trading days to count forward
+        trading_days: Pre-filtered DatetimeIndex of valid trading days
 
+    Returns:
+        Timestamp of the target date, or None if insufficient trading days available
+
+    Examples:
+        >>> trading_days = get_usa_trading_days(
+        ...     pd.Timestamp("2026-01-01"), pd.Timestamp("2026-12-31")
+        ... )
+        >>> calculate_trading_days_ahead(
+        ...     pd.Timestamp("2026-02-03"), 30, trading_days
+        ... )
+        Timestamp('2026-03-20 00:00:00')  # 30 trading days later
+    """
+    # Find index of start_date in trading_days
     try:
-        loc_result = trading_days.get_loc(s)
-        if isinstance(loc_result, (int, np.integer)):
-            start_idx = int(loc_result)
-        elif isinstance(loc_result, slice):
-            start_idx = int(loc_result.start)
+        loc_result = trading_days.get_loc(start_date)
+        # get_loc can return int, slice, or boolean array - we want int
+        if isinstance(loc_result, int):
+            start_idx = loc_result
         else:
+            # If slice or array, get the first index
             start_idx = 0
-    except (KeyError, Exception):
-        future_days = trading_days[trading_days >= s]
+    except KeyError:
+        # start_date not in trading_days (e.g., weekend/holiday)
+        # Find next valid trading day
+        future_days = trading_days[trading_days >= start_date]
         if len(future_days) == 0:
             return None
         loc_result = trading_days.get_loc(future_days[0])
-        if isinstance(loc_result, (int, np.integer)):
-            start_idx = int(loc_result)
-        elif isinstance(loc_result, slice):
-            start_idx = int(loc_result.start)
-        else:
-            start_idx = 0
+        start_idx = loc_result if isinstance(loc_result, int) else 0
 
-    target_idx = start_idx + num_days
+    target_idx = int(start_idx) + num_days
 
     if target_idx >= len(trading_days):
-        return None
+        return None  # Not enough trading days available
 
     return pd.Timestamp(trading_days[target_idx])
 
 
 def validate_buy_capacity(available_cash: float, price_dict: dict) -> dict:
-    """Check if portfolio has sufficient cash to afford any tickers."""
+    """
+    Check if portfolio has sufficient cash to afford any tickers.
+
+    Args:
+        available_cash: Current portfolio cash balance
+        price_dict: {ticker: current_price} mapping
+
+    Returns:
+        {
+            "can_trade": bool,  # True if can afford at least one ticker
+            "affordable_tickers": dict,  # {ticker: max_units}
+            "reason": str  # Explanation if can_trade is False
+        }
+
+    Examples:
+        >>> validate_buy_capacity(10000, {"ABB.AX": 15.25, "SIG.AX": 55.0})
+        {
+            'can_trade': True,
+            'affordable_tickers': {'ABB.AX': 655, 'SIG.AX': 181},
+            'reason': ''
+        }
+        >>> validate_buy_capacity(50, {"ABB.AX": 55.0})
+        {
+            'can_trade': False,
+            'affordable_tickers': {},
+            'reason': 'Insufficient cash: $50.00 < minimum price $55.00'
+        }
+    """
     if not price_dict:
         return {
             "can_trade": False,
@@ -96,7 +139,7 @@ def validate_buy_capacity(available_cash: float, price_dict: dict) -> dict:
             "reason": "No tickers provided",
         }
 
-    min_price = float(min(price_dict.values()))
+    min_price = min(price_dict.values())
 
     if available_cash < min_price:
         return {
@@ -107,9 +150,8 @@ def validate_buy_capacity(available_cash: float, price_dict: dict) -> dict:
 
     affordable = {}
     for ticker, price in price_dict.items():
-        p = float(price)
-        if available_cash >= p:
-            max_units = int(available_cash / p)
+        if available_cash >= price:
+            max_units = int(available_cash / price)
             affordable[ticker] = max_units
 
     return {

@@ -1,8 +1,8 @@
 """
 USA AI Trading System - Index Manager
 
-Purpose: Manages USA index constituents (S&P 500, Nasdaq 100, Dow Jones)
-with live updates and caching using Wikipedia as a reliable source.
+Purpose: Manages US index constituents with live updates and caching
+for Dow 30, Nasdaq 100, and S&P 500.
 
 Author: Yannick
 Copyright (c) 2026 Yannick
@@ -11,84 +11,159 @@ Copyright (c) 2026 Yannick
 import pandas as pd
 import json
 import os
-import requests  # Needed for web scraping with User-Agent
-import io  # Required for pd.read_html StringIO
-import re  # Required for regular expressions in ticker cleaning
+import re
+import requests
 from typing import List, Dict
 
-CACHE_FILE = "data/models/usa_index_cache.json"
+CACHE_FILE = "data/models/index_cache.json"
 
-# User-Agent to mimic a browser and avoid 403 Forbidden errors
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+# Reliable sources for US Indices (Wikipedia often has the most stable table structures)
+SOURCE_URLS = {
+    "Dow 30": "https://en.wikipedia.org/wiki/Dow_Jones_Industrial_Average",
+    "Nasdaq 100": "https://en.wikipedia.org/wiki/Nasdaq-100",
+    "S&P 500": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
 }
 
 DEFAULT_INDEX_DATA = {
-    "S&P 500": [
+    "Dow 30": [
         "AAPL",
-        "MSFT",
-        "GOOGL",
         "AMZN",
-        "NVDA",
-        "META",
-        "BRK-B",
-        "TSLA",
-        "LLY",
-        "V",
-        "JPM",
-        "UNH",
-        "MA",
-        "XOM",
-        "AVGO",
-        "PG",
+        "AXP",
+        "BA",
+        "CAT",
+        "CRM",
+        "CSCO",
+        "CVX",
+        "DIS",
+        "GS",
         "HD",
-        "COST",
+        "HON",
+        "IBM",
+        "INTC",
         "JNJ",
-        "ORCL",
+        "JPM",
+        "KO",
+        "MCD",
+        "MMM",
+        "MRK",
+        "MSFT",
+        "NKE",
+        "PG",
+        "TRV",
+        "UNH",
+        "V",
+        "VZ",
+        "WBA",
+        "WMT",
+        "DIS",
     ],
     "Nasdaq 100": [
         "AAPL",
+        "ABNB",
+        "ADBE",
+        "ADI",
+        "ADP",
+        "ADSK",
+        "AEP",
+        "ALGN",
+        "AMAT",
+        "AMD",
+        "AMGN",
+        "AMZN",
+        "ANSS",
+        "ASML",
+        "AVGO",
+        "AZN",
+        "BKR",
+        "BKNG",
+        "BIIB",
+        "CDNS",
+        "CEG",
+        "CHTR",
+        "CPRT",
+        "CSGP",
+        "CSCO",
+        "CSX",
+        "CTAS",
+        "CTSH",
+        "DDOG",
+        "DLTR",
+        "DXCM",
+        "EA",
+        "EBAY",
+        "ENPH",
+        "EXC",
+        "FAST",
+        "FANG",
+        "FTNT",
+        "GILD",
+        "GOOG",
+        "GOOGL",
+        "HON",
+        "IDXX",
+        "ILMN",
+        "INTC",
+        "INTU",
+        "ISRG",
+        "JD",
+        "KDP",
+        "KLA",
+        "LCID",
+        "LRCX",
+        "LULU",
+        "MAR",
+        "MCHP",
+        "MDLZ",
+        "MELI",
+        "META",
+        "MNST",
+        "MRNA",
+        "MRVL",
+        "MSFT",
+        "MU",
+        "NFLX",
+        "NVDA",
+        "NXPI",
+        "ORLY",
+        "PANW",
+        "PAYX",
+        "PCAR",
+        "PDD",
+        "PEP",
+        "PYPL",
+        "QCOM",
+        "REGN",
+        "ROST",
+        "SBUX",
+        "SIRI",
+        "SGEN",
+        "SNPS",
+        "SPLK",
+        "SWKS",
+        "TMUS",
+        "TSLA",
+        "TXN",
+        "VRSK",
+        "VRSN",
+        "VRTX",
+        "WBA",
+        "WBD",
+        "WDAY",
+        "XEL",
+        "ZM",
+        "ZS",
+    ],
+    "S&P 500": [
+        "AAPL",
         "MSFT",
         "AMZN",
         "NVDA",
-        "META",
         "GOOGL",
+        "META",
         "GOOG",
-        "AVGO",
+        "BRK.B",
         "TSLA",
-        "COST",
-        "PEP",
-        "ADBE",
-        "LIN",
-        "AMD",
-        "NFLX",
-        "TMUS",
-        "CSCO",
-        "INTU",
-        "QCOM",
-        "AMAT",
-    ],
-    "Dow Jones 30": [
         "UNH",
-        "GS",
-        "HD",
-        "MSFT",
-        "CAT",
-        "MCD",
-        "V",
-        "CRM",
-        "BA",
-        "HON",
-        "AMGN",
-        "AXP",
-        "JPM",
-        "IBM",
-        "AAPL",
-        "TRV",
-        "WMT",
-        "NKE",
-        "PG",
-        "DIS",
     ],
 }
 
@@ -105,66 +180,54 @@ def load_index_constituents() -> Dict[str, List[str]]:
 
 
 def update_index_data() -> Dict[str, str]:
-    """Updates constituent data by scraping Wikipedia."""
+    """Fetches latest constituents from Wikipedia tables and updates cache."""
     updated_counts = {}
     new_data = {}
 
-    # 1. Scrape S&P 500
-    try:
-        url_sp500 = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-        html_content = requests.get(url_sp500, headers=HEADERS, timeout=10).text
-        tables = pd.read_html(io.StringIO(html_content))
-        df = tables[0]
-        sp500_tickers = df["Symbol"].tolist()
-        # Wikipedia uses dots for classes (BRK.B), but yfinance uses dashes (BRK-B)
-        sp500_tickers = sorted(
-            list(set([t.replace(".", "-") for t in sp500_tickers]))
-        )  # Ensure unique and sorted
-        new_data["S&P 500"] = sp500_tickers
-        updated_counts["S&P 500"] = f"Updated {len(sp500_tickers)} tickers"
-    except Exception as e:
-        updated_counts["S&P 500"] = f"Failed: {str(e)}"
-        new_data["S&P 500"] = DEFAULT_INDEX_DATA["S&P 500"]
+    for name, url in SOURCE_URLS.items():
+        try:
+            # For US indices on Wikipedia, pandas read_html is very effective
+            tables = pd.read_html(url)
 
-    # 2. Scrape Nasdaq 100
-    try:
-        url_nasdaq100 = "https://en.wikipedia.org/wiki/Nasdaq-100"
-        html_content = requests.get(url_nasdaq100, headers=HEADERS, timeout=10).text
-        tables = pd.read_html(io.StringIO(html_content))
-        # Nasdaq 100 table is usually the 4th one
-        df = tables[4]
-        df_columns_list = df.columns.tolist()
-        if "Ticker" in df_columns_list:
-            nasdaq_tickers = df["Ticker"].tolist()
-        elif "Symbol" in df_columns_list:
-            nasdaq_tickers = df["Symbol"].tolist()
-        else:
-            nasdaq_tickers = DEFAULT_INDEX_DATA["Nasdaq 100"]
+            if name == "Dow 30":
+                df = tables[1]  # Usually the second table
+                tickers = df.iloc[:, 1].tolist()  # Symbol column
+            elif name == "Nasdaq 100":
+                df = tables[4]  # Usually the components table
+                tickers = df.iloc[:, 1].tolist()
+            elif name == "S&P 500":
+                df = tables[0]
+                tickers = df.iloc[:, 0].tolist()
+            else:
+                tickers = []
 
-        nasdaq_tickers = sorted(list(set(nasdaq_tickers)))  # Ensure unique and sorted
-        new_data["Nasdaq 100"] = nasdaq_tickers
-        updated_counts["Nasdaq 100"] = f"Updated {len(nasdaq_tickers)} tickers"
-    except Exception as e:
-        updated_counts["Nasdaq 100"] = f"Failed: {str(e)}"
-        new_data["Nasdaq 100"] = DEFAULT_INDEX_DATA["Nasdaq 100"]
+            # Clean tickers
+            clean_tickers = sorted(
+                list(
+                    set(
+                        [
+                            str(t)
+                            .strip()
+                            .replace(
+                                ".", "-"
+                            )  # Wikipedia uses . for classes, yfinance uses -
+                            for t in tickers
+                            if isinstance(t, str) and len(t) > 0 and len(t) < 10
+                        ]
+                    )
+                )
+            )
 
-    # 3. Scrape Dow Jones 30
-    try:
-        url_dow = "https://en.wikipedia.org/wiki/Dow_Jones_Industrial_Average"
-        html_content = requests.get(url_dow, headers=HEADERS, timeout=10).text
-        tables = pd.read_html(io.StringIO(html_content))
-        # Based on previous debug output, table 2 contains the Dow Jones constituents
-        df = tables[2]
-        dow_tickers = df["Symbol"].astype(str).tolist()
-        # Clean up any non-ticker entries (e.g., table headers that got included)
-        dow_tickers = [t for t in dow_tickers if re.match(r"^[A-Z]{1,5}$", t)]
-        dow_tickers = sorted(list(set(dow_tickers)))  # Ensure unique and sorted
-        new_data["Dow Jones 30"] = dow_tickers
+            if len(clean_tickers) > 5:
+                new_data[name] = clean_tickers
+                updated_counts[name] = f"Updated {len(clean_tickers)} tickers"
+            else:
+                updated_counts[name] = "Failed: No tickers found"
+                new_data[name] = DEFAULT_INDEX_DATA.get(name, [])
 
-        updated_counts["Dow Jones 30"] = f"Updated {len(dow_tickers)} tickers"
-    except Exception as e:
-        updated_counts["Dow Jones 30"] = f"Failed: {str(e)}"
-        new_data["Dow Jones 30"] = DEFAULT_INDEX_DATA["Dow Jones 30"]
+        except Exception as e:
+            updated_counts[name] = f"Failed: {str(e)}"
+            new_data[name] = DEFAULT_INDEX_DATA.get(name, [])
 
     # Save to cache
     os.makedirs("data/models", exist_ok=True)

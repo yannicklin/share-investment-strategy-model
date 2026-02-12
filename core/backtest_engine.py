@@ -10,12 +10,14 @@ Copyright (c) 2026 Yannick
 
 import pandas as pd
 import numpy as np
+import os
+import joblib
 import logging
-from typing import List, Dict, Any, Callable, Optional, Tuple
-
+from typing import List, Dict, Any, Callable, Optional, Tuple, Union
 from core.config import Config, BROKERS, get_tax_profile
 from core.model_builder import ModelBuilder
 from core.utils import (
+    format_date_with_weekday,
     get_usa_trading_days,
     calculate_trading_days_ahead,
     validate_buy_capacity,
@@ -68,45 +70,104 @@ class BacktestEngine:
 
         return fees_pct + self.config.hurdle_risk_buffer
 
+    def _get_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
+        if data is None or data.empty:
+            return pd.DataFrame()
+
+        # IMPORTANT: The data from ModelBuilder.fetch_data is already normalized.
+        # However, we perform a safety check to ensure standard columns are available.
+        df = data.copy()
+
+        standard_cols = ["Close", "Open", "High", "Low", "Volume"]
+
+        # Verify mandatory columns
+        for col in ["Close", "Open", "High", "Low"]:
+            if col not in df.columns:
+                # If a core column is missing, it means normalization failed.
+                # We try one last desperate search.
+                found = False
+                for c in df.columns:
+                    if col.lower() in str(c).lower():
+                        df.rename(columns={c: col}, inplace=True)
+                        found = True
+                        break
+                if not found:
+                    raise KeyError(
+                        f"CRITICAL: Column '{col}' not found. Available: {list(df.columns)}"
+                    )
+
+        # Ensure numeric
+        for col in standard_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+
+        df = df.dropna(subset=["Close", "Open", "High", "Low"])
+
+        # MACD
+        df["MACD"] = df["Close"].ewm(span=12).mean() - df["Close"].ewm(span=26).mean()
+
+        df["Signal_Line"] = df["MACD"].ewm(span=9).mean()
+        delta = df["Close"].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+        df["RSI"] = 100 - (100 / (1 + (gain / loss)))
+        df["MA5"], df["MA20"] = (
+            df["Close"].rolling(5).mean(),
+            df["Close"].rolling(20).mean(),
+        )
+        df["Daily_Return"] = df["Close"].pct_change(fill_method=None)
+        return df.dropna()
+
     def _prepare_data(
         self, ticker: str
     ) -> Tuple[Optional[pd.DataFrame], Optional[List[str]], Optional[Dict[str, str]]]:
-        """Prepare and filter dataframe for backtesting."""
+        """Prepare and filter dataframe for backtesting.
+
+        Returns:
+            (df, features, error_dict) - If error, df will be None
+        """
         raw_data = self.model_builder.fetch_data(ticker, self.config.backtest_years)
         if raw_data.empty:
             return None, None, {"error": f"No data for {ticker}"}
 
+        # Use the unified feature preparation from model_builder
+        # We need the full dataframe with indicators for the core loop
+        # So we'll recreate the feature list logic here to match exactly
         df = raw_data.copy()
 
-        # Indicators (Synchronized with ModelBuilder)
+        # 1. Basic Moving Averages
         df["MA5"] = df["Close"].rolling(window=5).mean()
         df["MA20"] = df["Close"].rolling(window=20).mean()
         df["MA50"] = df["Close"].rolling(window=50).mean()
 
+        # 2. RSI
         delta = df["Close"].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         rs = gain / (loss + 1e-9)
         df["RSI"] = 100 - (100 / (1 + rs))
 
+        # 3. MACD
         exp1 = df["Close"].ewm(span=12, adjust=False).mean()
         exp2 = df["Close"].ewm(span=26, adjust=False).mean()
         df["MACD"] = exp1 - exp2
         df["Signal_Line"] = df["MACD"].ewm(span=9, adjust=False).mean()
 
+        # 4. Bollinger Bands
         df["BB_Middle"] = df["Close"].rolling(window=20).mean()
         df["BB_Std"] = df["Close"].rolling(window=20).std()
         df["BB_Upper"] = df["BB_Middle"] + (2 * df["BB_Std"])
         df["BB_Lower"] = df["BB_Middle"] - (2 * df["BB_Std"])
         df["BB_Width"] = (df["BB_Upper"] - df["BB_Lower"]) / (df["BB_Middle"] + 1e-9)
 
+        # 5. ATR
         high_low = df["High"] - df["Low"]
         high_close = np.abs(df["High"] - df["Close"].shift())
         low_close = np.abs(df["Low"] - df["Close"].shift())
         tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
         df["ATR"] = tr.rolling(window=14).mean()
 
-        # Market Context
+        # 6. Market Context Integration
         self.model_builder._ensure_market_data()
         m_data = self.model_builder._market_data
         if m_data is not None and not m_data.empty:
@@ -115,33 +176,35 @@ class BacktestEngine:
 
         df["Daily_Return"] = df["Close"].pct_change(fill_method=None)
 
+        # Clean up
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
         df.ffill(inplace=True)
         df.fillna(0, inplace=True)
 
-        # Determine official start/end dates
+        # Determine the official start/end dates for trading
         official_start = pd.Timestamp.now().normalize() - pd.DateOffset(
             years=self.config.backtest_years
         )
-
-        # Normalize index for robust comparison
-        df.index = pd.to_datetime(df.index).tz_localize(None).normalize()
-
         official_end = pd.Timestamp(df.index[-1])
         self.trading_days = get_usa_trading_days(official_start, official_end)
 
-        # Filter to valid trading days
-        df = df[df.index.isin(self.trading_days)]
+        # Normalize both to UTC-naive midnight for robust comparison
+        df.index = pd.DatetimeIndex(df.index).tz_localize(None).normalize()
+        trading_days_normalized = (
+            pd.DatetimeIndex(self.trading_days).tz_localize(None).normalize()
+            if self.trading_days is not None
+            else pd.DatetimeIndex([])
+        )
 
+        # Filter dataframe to only include valid trading days
+        df = df[df.index.isin(trading_days_normalized)]
         if df.empty:
-            return (
-                None,
-                None,
-                {
-                    "error": f"No valid trading days for {ticker} after calendar filtering"
-                },
+            logging.warning(
+                f"Dataframe empty for {ticker} after applying market calendar filter. Index: {raw_data.index[:1]} to {raw_data.index[-1:]}. Calendar: {self.trading_days[:1]} to {self.trading_days[-1:]}"
             )
+            return None, None, {"error": f"No valid trading days for {ticker}"}
 
+        # Synchronized Features List (MUST MATCH model_builder.py)
         features = [
             "Open",
             "High",
@@ -161,11 +224,11 @@ class BacktestEngine:
             "Daily_Return",
         ]
 
+        # Add dynamic market features
         if m_data is not None:
             for col in m_data.columns:
-                col_str = str(col)
-                if col_str in df.columns and col_str not in features:
-                    features.append(col_str)
+                if col in df.columns:
+                    features.append(col)
 
         return df, features, None
 
@@ -176,45 +239,57 @@ class BacktestEngine:
         df: pd.DataFrame,
         features: List[str],
     ) -> Dict[str, Any]:
-        """Shared engine logic for backtesting."""
-        capital = float(self.config.init_capital)
+        """The shared engine logic for both modes.
+
+        Args:
+            ticker: Stock symbol
+            signal_func: Function(i, df, features, capital) -> bool
+            df: Pre-filtered dataframe (trading days only)
+            features: Feature columns list
+        """
+
+        capital = self.config.init_capital
         position, buy_price, buy_date, buy_fees = 0.0, 0.0, None, 0.0
         trades = []
-        settlement_queue = []
+        settlement_queue = []  # List of (available_date, amount)
 
         for i in range(len(df) - 1):
-            date_ts = pd.Timestamp(df.index[i])
+            date = pd.Timestamp(df.index[i])
             current_price = float(df.iloc[i]["Close"])
 
-            # Process Settlement
+            # Process Settlement Queue: Check if any cash has cleared today
             new_settlement_queue = []
             for avail_date, amount in settlement_queue:
-                if date_ts >= pd.Timestamp(avail_date):
-                    capital += float(amount)
+                if date >= avail_date:
+                    capital += amount
                 else:
                     new_settlement_queue.append((avail_date, amount))
             settlement_queue = new_settlement_queue
 
+            # Portfolio validation before signal generation (for BUY signals only)
             if position == 0:
+                # Signal engine needs to know current available capital
                 validation = validate_buy_capacity(capital, {ticker: current_price})
                 if not validation["can_trade"]:
+                    # Skip signal generation if insufficient cash
                     continue
 
-            is_bullish = bool(
-                signal_func(
-                    i,
-                    df,
-                    features,
-                    capital if position == 0 else (position * current_price),
-                )
+            is_bullish = signal_func(
+                i,
+                df,
+                features,
+                capital if position == 0 else (position * current_price),
             )
 
             if position == 0 and is_bullish:
-                fees = self.calculate_fees(capital, is_sell=False)
+                fees = self.calculate_fees(capital)
                 new_position = (capital - fees) / current_price
+                positions_before = {}
+                positions_after = {ticker: new_position}
 
+                # Add BUY entry to ledger
                 self.ledger.add_entry(
-                    date=date_ts,
+                    date=date,
                     ticker=ticker,
                     action="BUY",
                     quantity=new_position,
@@ -222,43 +297,44 @@ class BacktestEngine:
                     commission=fees,
                     cash_before=capital,
                     cash_after=0.0,
-                    positions_before={},
-                    positions_after={ticker: new_position},
+                    positions_before=positions_before,
+                    positions_after=positions_after,
                     notes="Initial purchase",
                 )
 
-                position, buy_price, buy_date, buy_fees, capital = (
-                    new_position,
-                    current_price,
-                    date_ts,
-                    fees,
-                    0.0,
-                )
+                position = new_position
+                buy_price, buy_date, buy_fees = current_price, date, fees
+                capital = 0
 
             elif position > 0:
+                # Calculate sell date based on holding period unit
                 min_hold_passed = False
                 if buy_date is not None and self.trading_days is not None:
                     if self.config.hold_period_unit.lower() == "day":
+                        # "Day" unit = TRADING DAYS (excludes weekends + holidays)
                         target_date = calculate_trading_days_ahead(
-                            pd.Timestamp(buy_date),
-                            self.config.hold_period_value,
-                            self.trading_days,
+                            buy_date, self.config.hold_period_value, self.trading_days
                         )
                         if target_date is not None:
-                            min_hold_passed = date_ts >= target_date
+                            min_hold_passed = date >= target_date
                     else:
-                        unit_map = {"week": "weeks", "month": "months", "year": "years"}
+                        # Other units (Week/Month/Year) = CALENDAR DAYS
+                        unit_map = {
+                            "week": "weeks",
+                            "month": "months",
+                            "year": "years",
+                        }
                         unit = unit_map.get(
                             self.config.hold_period_unit.lower(), "months"
                         )
                         offset = {unit: self.config.hold_period_value}
-                        min_hold_passed = date_ts >= (
-                            pd.Timestamp(buy_date) + pd.DateOffset(**offset)
-                        )
+                        min_hold_passed = date >= (buy_date + pd.DateOffset(**offset))
 
                 low_p, high_p = float(df.iloc[i]["Low"]), float(df.iloc[i]["High"])
-                sl_p = buy_price * (1.0 - self.config.stop_loss_threshold)
-                tp_p = buy_price * (1.0 + self.config.stop_profit_threshold)
+                sl_p, tp_p = (
+                    buy_price * (1 - self.config.stop_loss_threshold),
+                    buy_price * (1 + self.config.stop_profit_threshold),
+                )
 
                 reason, sell_price = None, 0.0
                 if low_p <= sl_p:
@@ -289,20 +365,25 @@ class BacktestEngine:
 
                     new_capital = val - total_costs - tax
 
-                    # T+1 Settlement for USA
+                    # STRICT REALISM: T+1 Settlement Delay for USA
                     settlement_date = None
                     if self.trading_days is not None:
                         settlement_date = calculate_trading_days_ahead(
-                            date_ts, 1, self.trading_days
+                            date, 1, self.trading_days
                         )
+                        if settlement_date is None:
+                            settlement_date = date + pd.DateOffset(days=1)
+                        settlement_queue.append((settlement_date, new_capital))
+                    else:
+                        settlement_date = date + pd.DateOffset(days=1)
+                        settlement_queue.append((settlement_date, new_capital))
 
-                    if settlement_date is None:
-                        settlement_date = date_ts + pd.DateOffset(days=1)
+                    positions_before = {ticker: position}
+                    positions_after = {}
 
-                    settlement_queue.append((settlement_date, new_capital))
-
+                    # Add SELL entry to ledger
                     self.ledger.add_entry(
-                        date=date_ts,
+                        date=date,
                         ticker=ticker,
                         action="SELL",
                         quantity=position,
@@ -311,15 +392,15 @@ class BacktestEngine:
                         tax=tax,
                         cash_before=0.0,
                         cash_after=new_capital,
-                        positions_before={ticker: position},
-                        positions_after={},
-                        notes=f"{reason} triggered. Available {settlement_date.strftime('%Y-%m-%d')}",
+                        positions_before=positions_before,
+                        positions_after=positions_after,
+                        notes=f"{reason} triggered. Funds available {settlement_date.strftime('%Y-%m-%d') if hasattr(settlement_date, 'strftime') else settlement_date}",
                     )
 
                     trades.append(
                         {
                             "buy_date": buy_date,
-                            "sell_date": date_ts,
+                            "sell_date": date,
                             "profit_pct": (
                                 new_capital - (position * buy_price + buy_fees)
                             )
@@ -332,15 +413,19 @@ class BacktestEngine:
                             "tax": tax,
                         }
                     )
-                    position = 0.0
+                    # capital = new_capital (REMOVED - now handled by settlement queue)
+                    position = 0
 
-        # Final Portfolio Value
+        # Final Portfolio Value: Position + Cash + Pending Settlement
         final_cap = capital
         if position > 0:
             final_cap += position * float(df.iloc[-1]["Close"])
+
+        # Add any pending cash in the settlement queue
         for _, amount in settlement_queue:
             final_cap += amount
 
+        # Calculate Win Rate
         win_rate = 0.0
         if trades:
             wins = sum(1 for t in trades if t["profit_pct"] > 0)
@@ -359,33 +444,36 @@ class BacktestEngine:
 
     def run_model_mode(self, ticker: str, model_type: str) -> Dict[str, Any]:
         """Mode 1: Evaluate a single specific model."""
+        # Clear ledger from previous run (no archiving)
         self.ledger.clear()
-        self.config.model_type = model_type
-        self.model_builder.load_or_build(ticker)
 
+        self.config.model_type = model_type
+        self.model_builder.load_or_build(ticker)  # Load once
+
+        # Prepare filtered data (trading days only)
         df_tuple = self._prepare_data(ticker)
         df, features, error = df_tuple
         if error or df is None or features is None:
             return error if error else {"error": "Failed to prepare data"}
 
+        # Bulk pre-calculate predictions on FILTERED data
         all_preds = self._get_bulk_predictions(df, features, model_type)
 
-        def signal(
-            i: int,
-            df_inner: pd.DataFrame,
-            features_inner: List[str],
-            current_cap: float,
-        ) -> bool:
-            hurdle = self.get_hurdle_rate(current_cap)
+        def signal(i, df_inner, features_inner, current_cap):
             current_price = float(df_inner.iloc[i]["Close"])
+            hurdle = self.get_hurdle_rate(current_cap)
             pred = all_preds[i]
             pred_return = (pred - current_price) / current_price
-            return bool(pred_return > hurdle)
+            return pred_return > hurdle
 
         result = self._core_run(ticker, signal, df, features)
+
+        # Save ledger to file and clear from memory
         if "error" not in result:
             ledger_filename = f"{ticker}_algorithm_{model_type}_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
-            result["ledger_path"] = self.ledger.save_to_file(filename=ledger_filename)
+            ledger_path = self.ledger.save_to_file(filename=ledger_filename)
+            result["ledger_path"] = ledger_path
+
         return result
 
     def run_strategy_mode(
@@ -396,34 +484,34 @@ class BacktestEngine:
         mode_prefix: str = "consensus",
     ) -> Dict[str, Any]:
         """Mode 2/3: Evaluate strategy sensitivity using multi-model consensus."""
+        # Clear ledger from previous run (no archiving)
         self.ledger.clear()
+
+        # Prepare filtered data (trading days only)
         df_tuple = self._prepare_data(ticker)
         df, features, error = df_tuple
         if error or df is None or features is None:
             return error if error else {"error": "Failed to prepare data"}
 
+        # Bulk pre-calculate predictions for all models in the committee on FILTERED data
         committee_preds = {}
         for m_type in models:
             self.config.model_type = m_type
             self.model_builder.load_or_build(ticker)
             committee_preds[m_type] = self._get_bulk_predictions(df, features, m_type)
 
-        def signal(
-            i: int,
-            df_inner: pd.DataFrame,
-            features_inner: List[str],
-            current_cap: float,
-        ) -> bool:
+        def signal(i, df_inner, features_inner, current_cap):
             votes = 0
             current_price = float(df_inner.iloc[i]["Close"])
             hurdle = self.get_hurdle_rate(current_cap)
-            tb_model = tie_breaker if tie_breaker else models[0]
             tie_breaker_bullish = False
+            tb_model = tie_breaker if tie_breaker else models[0]
 
             for m_type in models:
                 pred = committee_preds[m_type][i]
                 pred_return = (pred - current_price) / current_price
-                is_m_bullish = bool(pred_return > hurdle)
+                is_m_bullish = pred_return > hurdle
+
                 if is_m_bullish:
                     votes += 1
                 if m_type == tb_model:
@@ -436,16 +524,19 @@ class BacktestEngine:
             return False
 
         result = self._core_run(ticker, signal, df, features)
+
+        # Save ledger to file and clear from memory
         if "error" not in result:
-            timespan = f"{self.config.hold_period_value}{self.config.hold_period_unit}"
-            ledger_filename = f"{ticker}_{mode_prefix}_{timespan}.csv"
-            result["ledger_path"] = self.ledger.save_to_file(filename=ledger_filename)
+            ledger_filename = f"{ticker}_{mode_prefix}_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
+            ledger_path = self.ledger.save_to_file(filename=ledger_filename)
+            result["ledger_path"] = ledger_path
+
         return result
 
     def _get_bulk_predictions(
         self, df: pd.DataFrame, features: List[str], model_type: str
     ) -> np.ndarray:
-        """Standardized bulk prediction helper."""
+        """Helper to get predictions for all rows in one go with memory safety."""
         X_all = df[features].values.astype(np.float32)
 
         if (
@@ -453,34 +544,45 @@ class BacktestEngine:
             and self.model_builder.model is not None
             and self.model_builder.scaler is not None
         ):
+            # Use sequence_length from model_builder for consistency
             seq_len = self.model_builder.sequence_length
             X_scaled = self.model_builder.scaler.transform(X_all).astype(np.float32)
 
+            # Create sequences: at time i, use [i-seq_len:i] to predict i+1
+            # This matches training where [i:i+seq_len] predicts target[i+seq_len]=Close[i+seq_len+1]
             valid_indices = np.arange(seq_len, len(df))
             X_seq = np.array(
                 [X_scaled[i - seq_len : i] for i in valid_indices], dtype=np.float32
             )
 
             if len(X_seq) == 0:
+                logging.warning(
+                    f"Not enough data for LSTM sequences (need >{seq_len} days)"
+                )
                 return np.zeros(len(df), dtype=np.float32)
 
+            # Batch predict with a smaller batch size to avoid GPU memory overflow on M3
             raw_preds = self.model_builder.model.predict(
                 X_seq, batch_size=64, verbose=0
             ).flatten()
 
+            # Inverse transform LSTM predictions if target was scaled
             if self.model_builder.target_scaler is not None:
                 raw_preds = self.model_builder.target_scaler.inverse_transform(
                     raw_preds.reshape(-1, 1)
                 ).flatten()
 
+            # Pad the beginning with zeros (no predictions for first seq_len days)
             all_preds = np.zeros(len(df), dtype=np.float32)
             all_preds[seq_len:] = raw_preds
             return all_preds
 
         elif model_type == "prophet" and self.model_builder.model is not None:
+            # Prophet bulk predict
             prophet_df = pd.DataFrame({"ds": df.index}).copy()
-            prophet_df["ds"] = pd.to_datetime(prophet_df["ds"]).dt.tz_localize(None)
+            prophet_df["ds"] = prophet_df["ds"].dt.tz_localize(None)
             prophet_df["ds"] = prophet_df["ds"] + pd.DateOffset(days=1)
+
             forecast = self.model_builder.model.predict(prophet_df)
             return forecast["yhat"].values.astype(np.float32)
 
@@ -488,6 +590,7 @@ class BacktestEngine:
             self.model_builder.model is not None
             and self.model_builder.scaler is not None
         ):
+            # Standard SKLearn-like models
             X_scaled = self.model_builder.scaler.transform(X_all).astype(np.float32)
             return self.model_builder.model.predict(X_scaled).astype(np.float32)
 

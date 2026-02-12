@@ -1,8 +1,8 @@
 """
-USA AI Trading System - Super Stars View
+USA Stock AI Trading System - Super Stars View
 
 Purpose: Streamlit view for ranking and displaying top-performing stocks
-within US indices.
+within USA Stock indices.
 
 Author: Yannick
 Copyright (c) 2026 Yannick
@@ -104,7 +104,7 @@ def render_super_stars(index_name, all_ticker_res, models=None, tie_breaker=None
 
         # Add labels to chart
         fig.update_traces(texttemplate="%{y:.2%}", textposition="outside")
-        fig.update_layout(yaxis_tickformat=".2%", template="plotly_dark")
+        fig.update_layout(yaxis_tickformat=".2%")
         st.plotly_chart(fig, width="stretch")
 
         # 3. Drill-down for winners
