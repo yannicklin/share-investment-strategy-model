@@ -15,6 +15,14 @@ import pandas as pd
 import yfinance as yf
 import time
 import logging
+from typing import Optional, Any, Dict, List
+
+# Try to use curl-cffi for rate limit bypass
+try:
+    from curl_cffi import requests as cf_requests
+    CURL_CFFI_AVAILABLE = True
+except ImportError:
+    CURL_CFFI_AVAILABLE = False
 
 # Suppress heavy logging and warnings from backends
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -33,7 +41,6 @@ except ImportError:
 logging.getLogger("cmdstanpy").setLevel(logging.ERROR)
 logging.getLogger("prophet").setLevel(logging.ERROR)
 
-from typing import Optional, Any, Dict, List
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.preprocessing import StandardScaler, RobustScaler
 from core.config import Config
@@ -55,6 +62,56 @@ class ModelBuilder:
         if self.config.scaler_type == "robust":
             return RobustScaler()
         return StandardScaler()
+
+    def _download_with_retry(
+        self, ticker: str, start_date, max_retries: int = 3, base_delay: float = 2.0
+    ) -> pd.DataFrame:
+        """Download data with exponential backoff retry and curl-cffi session support."""
+        
+        # Create curl-cffi session if available
+        session = None
+        if CURL_CFFI_AVAILABLE:
+            try:
+                # Use environment CURL_IMPERSONATE or default to chrome131
+                impersonate = os.environ.get("CURL_IMPERSONATE", "chrome131")
+                session = cf_requests.Session(impersonate=impersonate)
+            except Exception as e:
+                logging.warning(f"Failed to create curl-cffi session: {e}")
+        
+        for attempt in range(max_retries):
+            try:
+                # Add small delay between attempts to avoid rate limits
+                if attempt > 0:
+                    delay = base_delay * (2 ** attempt) + (0.5 * attempt)  # Exponential backoff
+                    logging.info(f"Retry {attempt + 1}/{max_retries} for {ticker} after {delay:.1f}s delay...")
+                    time.sleep(delay)
+                
+                # Download with optional curl-cffi session
+                df = yf.download(
+                    ticker,
+                    start=start_date,
+                    progress=False,
+                    auto_adjust=True,
+                    threads=False,
+                    session=session if session else None,
+                )
+                
+                if not df.empty:
+                    return df
+                    
+            except Exception as e:
+                error_msg = str(e)
+                if "Rate limit" in error_msg or "Too Many Requests" in error_msg:
+                    if attempt < max_retries - 1:
+                        logging.warning(f"Rate limit hit for {ticker}, will retry...")
+                        continue
+                    else:
+                        logging.error(f"Rate limit exceeded for {ticker} after {max_retries} attempts")
+                else:
+                    logging.error(f"Download failed for {ticker}: {e}")
+                    break
+        
+        return pd.DataFrame()
 
     @classmethod
     def get_available_models(cls) -> List[str]:
@@ -235,23 +292,12 @@ class ModelBuilder:
         # so that indicators and LSTM sequences are ready on the actual start date.
         start_date = end_date - pd.DateOffset(years=years) - pd.DateOffset(days=90)
 
-        for attempt in range(3):
-            try:
-                data = yf.download(
-                    ticker,
-                    start=start_date,
-                    end=end_date,
-                    auto_adjust=True,
-                    progress=False,
-                    threads=False,
-                )
-                if not data.empty:
-                    norm = self._normalize_df(data, ticker)
-                    self._data_cache[cache_key] = norm
-                    return norm
-                time.sleep(1)
-            except Exception:
-                pass
+        data = self._download_with_retry(ticker, start_date)
+        if not data.empty:
+            norm = self._normalize_df(data, ticker)
+            self._data_cache[cache_key] = norm
+            return norm
+        
         return pd.DataFrame()
 
     def prefetch_data_batch(self, tickers: List[str], years: int):
@@ -266,6 +312,11 @@ class ModelBuilder:
         for i in range(0, len(to_fetch), 20):
             batch = to_fetch[i : i + 20]
             try:
+                # For batch downloads, use first ticker to get session then download all
+                # Note: batch download doesn't support custom session, so use delay between batches
+                if i > 0:
+                    time.sleep(2)  # Delay between batches to avoid rate limit
+                
                 data = yf.download(
                     batch,
                     start=start_date,
@@ -312,20 +363,17 @@ class ModelBuilder:
         start_date = pd.Timestamp.now() - pd.DateOffset(years=10)
 
         market_df = pd.DataFrame()
+        successful_tickers = []
+        failed_tickers = []
 
         for name, ticker in market_tickers.items():
             try:
-                # Use history for cleaner single-ticker fetch
-                # or download. we need daily close.
-                df = yf.download(
-                    ticker,
-                    start=start_date,
-                    progress=False,
-                    auto_adjust=True,
-                    threads=False,
-                )
+                # Use retry helper with curl-cffi session support
+                df = self._download_with_retry(ticker, start_date)
 
                 if df.empty:
+                    logging.warning(f"No data returned for {name} ({ticker})")
+                    failed_tickers.append(f"{name}({ticker})")
                     continue
 
                 # Clean and normalize
@@ -335,11 +383,21 @@ class ModelBuilder:
                     # Rename to prevent collision and identify source
                     col_name = f"MKT_{name}"
                     market_df[col_name] = df["Close"]
+                    successful_tickers.append(f"{name}({ticker})")
 
                     # Also add Returns for indices/macro (optional but useful)
                     # market_df[f"{col_name}_Ret"] = df["Close"].pct_change()
+                else:
+                    logging.warning(f"No 'Close' column for {name} ({ticker})")
+                    failed_tickers.append(f"{name}({ticker})")
             except Exception as e:
                 logging.warning(f"Failed to fetch market data {name} ({ticker}): {e}")
+                failed_tickers.append(f"{name}({ticker})")
+
+        # Log summary
+        logging.info(f"✅ Successfully fetched {len(successful_tickers)} market features: {', '.join(successful_tickers)}")
+        if failed_tickers:
+            logging.warning(f"❌ Failed to fetch {len(failed_tickers)} market features: {', '.join(failed_tickers)}")
 
         # Forward fill to handle different trading calendars (e.g. US holidays vs AU)
         self._market_data = market_df.ffill().fillna(0)
