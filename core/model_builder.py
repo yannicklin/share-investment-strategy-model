@@ -1,9 +1,8 @@
 """
-Taiwan Stock AI Trading System - Model Builder (FinMind-Centric)
+Taiwan Stock AI Trading System - Model Builder
 
-Purpose: Factory for creating and training machine learning models.
-Uses FinMind as the primary source for Taiwan market data, including
-Institutional Flows and KD indicators.
+Purpose: Factory for creating and training machine learning models with
+standardized interfaces for prediction and backtesting for the Taiwan market.
 
 Author: Yannick
 Copyright (c) 2026 Yannick
@@ -34,8 +33,8 @@ except ImportError:
 logging.getLogger("cmdstanpy").setLevel(logging.ERROR)
 logging.getLogger("prophet").setLevel(logging.ERROR)
 
-from typing import Optional, Any, Dict, List, Tuple
-from sklearn.ensemble import RandomForestRegressor
+from typing import Optional, Any, Dict, List
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.preprocessing import StandardScaler, RobustScaler
 from core.config import Config
 
@@ -50,56 +49,66 @@ class ModelBuilder:
         self.target_scaler: Optional[Any] = None  # For LSTM target scaling
         self.sequence_length = 30
         self._data_cache: Dict[str, pd.DataFrame] = {}
-        self._stock_info_cache: Optional[pd.DataFrame] = None
+        self._market_data: Optional[pd.DataFrame] = None
 
     def _init_scaler(self) -> Any:
-        return (
-            RobustScaler() if self.config.scaler_type == "robust" else StandardScaler()
-        )
+        if self.config.scaler_type == "robust":
+            return RobustScaler()
+        return StandardScaler()
 
     @classmethod
     def get_available_models(cls) -> List[str]:
+        """Returns a list of models that have their dependencies installed."""
         available = ["random_forest"]
+
         try:
             from ngboost import NGBRegressor
 
             available.append("ngboost")
-        except ImportError:
+        except (ImportError, Exception):
             pass
+
         try:
             from catboost import CatBoostRegressor
 
             available.append("catboost")
-        except ImportError:
+        except (ImportError, Exception):
             pass
+
         try:
             from prophet import Prophet
 
             available.append("prophet")
-        except ImportError:
+        except (ImportError, Exception):
             pass
+
         try:
             import tensorflow as tf
 
             available.append("lstm")
-        except ImportError:
+        except (ImportError, Exception):
             pass
+
         return available
 
     def _init_model(self, input_dim: int = 0) -> Any:
         m_type = self.config.model_type
+
         if m_type == "ngboost":
             from ngboost import NGBRegressor
 
+            logging.info("Initialized NGBoost model.")
             return NGBRegressor(
                 n_estimators=100,
                 learning_rate=0.01,
                 random_state=42,
                 verbose=False,
             )
+
         elif m_type == "catboost":
             from catboost import CatBoostRegressor
 
+            logging.info("Initialized CatBoost model.")
             return CatBoostRegressor(
                 n_estimators=100,
                 learning_rate=0.05,
@@ -108,55 +117,97 @@ class ModelBuilder:
                 thread_count=-1,
                 allow_writing_files=False,
             )
+
         elif m_type == "prophet":
             from prophet import Prophet
 
+            logging.info("Initialized Prophet model.")
             return Prophet(daily_seasonality=True, yearly_seasonality=True)
+
         elif m_type == "lstm":
             import tensorflow as tf
             from tensorflow.keras.models import Sequential
-            from tensorflow.keras.layers import (
-                LSTM,
-                Dense,
-                Dropout,
-                Input,
-                BatchNormalization,
-            )
+            from tensorflow.keras.layers import LSTM, Dense, Dropout, Input
 
+            logging.info("Initialized LSTM model.")
             model = Sequential(
                 [
                     Input(shape=(self.sequence_length, input_dim)),
-                    LSTM(64, return_sequences=True),
-                    BatchNormalization(),
-                    Dropout(0.2),
-                    LSTM(32, return_sequences=False),
-                    Dense(16, activation="relu"),
+                    LSTM(32, return_sequences=True),
+                    Dropout(0.1),
+                    LSTM(16, return_sequences=False),
+                    Dense(8, activation="relu"),
                     Dense(1),
                 ]
             )
-            model.compile(optimizer="adam", loss="huber")
+            model.compile(optimizer="adam", loss="mean_squared_error")
             return model
+
+        logging.info("Initialized RandomForest model.")
         return RandomForestRegressor(n_estimators=100, random_state=42)
 
+    def _normalize_df(self, df: pd.DataFrame, ticker: str) -> pd.DataFrame:
+        """Forces any yfinance response into a clean, flat TitleCase DataFrame."""
+        if df is None or (isinstance(df, pd.DataFrame) and df.empty):
+            return pd.DataFrame()
+
+        data = df.copy()
+
+        # 1. Handle MultiIndex (Ticker/Price complexity)
+        if isinstance(data.columns, pd.MultiIndex):
+            # Try to extract the specific ticker level
+            for i in range(data.columns.nlevels):
+                if ticker in data.columns.get_level_values(i):
+                    data = data.xs(ticker, axis=1, level=i)
+                    break
+
+            # If still MultiIndex, collapse it
+            if isinstance(data.columns, pd.MultiIndex):
+                data.columns = [
+                    str(c[0]) if isinstance(c, tuple) else str(c) for c in data.columns
+                ]
+
+        # 2. Force Flat String Columns and Clean names
+        data.columns = [str(c).strip() for c in data.columns]
+
+        # 3. Handle 'Ticker.Price' format
+        new_cols = []
+        for c in data.columns:
+            if "." in c and ticker.lower() in c.lower():
+                new_cols.append(c.split(".")[-1])
+            else:
+                new_cols.append(c)
+        data.columns = new_cols
+
+        # 4. Final Standardization Map
+        name_map = {
+            "close": "Close",
+            "adj close": "Close",
+            "open": "Open",
+            "high": "High",
+            "low": "Low",
+            "volume": "Volume",
+        }
+
+        mapping = {}
+        for c in data.columns:
+            low_c = c.lower()
+            if low_c in name_map:
+                mapping[c] = name_map[low_c]
+
+        if mapping:
+            data.rename(columns=mapping, inplace=True)
+
+        # 5. Strict Deduplication & Type Casting
+        data = data.loc[:, ~data.columns.duplicated()]
+        for col in ["Close", "Open", "High", "Low", "Volume"]:
+            if col in data.columns:
+                data[col] = pd.to_numeric(data[col], errors="coerce")
+
+        return data
+
     def get_company_name(self, ticker: str) -> str:
-        """Fetch Chinese name using FinMind primarily."""
-        try:
-            from FinMind.data import DataLoader
-
-            dl = DataLoader()
-            if self._stock_info_cache is None:
-                self._stock_info_cache = dl.taiwan_stock_info()
-
-            stock_id = ticker.split(".")[0]
-            match = self._stock_info_cache[
-                self._stock_info_cache["stock_id"] == stock_id
-            ]
-            if not match.empty:
-                return match.iloc[0]["stock_name"]
-        except Exception:
-            pass
-
-        # Fallback to Yahoo
+        """Fetches the long name of the company from yfinance."""
         try:
             info = yf.Ticker(ticker).info
             return info.get("longName", ticker)
@@ -164,427 +215,232 @@ class ModelBuilder:
             return ticker
 
     def is_etf(self, ticker: str) -> bool:
-        stock_id = ticker.split(".")[0]
-        # Taiwan ETFs usually start with 00 or 03
-        if stock_id.startswith("00") or stock_id.startswith("03"):
-            return True
-        return False
+        """Determines if a ticker is an ETF using yfinance info."""
+        try:
+            # We don't want to call .info for every run, so we might want a small cache
+            # or just rely on the quoteType if we had it.
+            # For now, a quick fetch is fine as it's only called during rendering once per ticker.
+            info = yf.Ticker(ticker).info
+            return info.get("quoteType") == "ETF"
+        except Exception:
+            return False
 
     def fetch_data(self, ticker: str, years: int) -> pd.DataFrame:
-        """
-        Fetch Taiwan stock data with multi-source strategy.
-
-        Data Sources Priority:
-        1. PRIMARY: Yahoo Finance Taiwan
-           - OHLCV (Open, High, Low, Close, Volume)
-           - Most reliable and up-to-date price data for .TW stocks
-
-        2. SUPPLEMENTARY: FinMind
-           - Institutional flows (Foreign/Trust/Dealer Net Buy)
-           - Margin trading (RongZi/RongQuan balances)
-           - Monthly revenue YoY growth (with 45-day lag)
-
-        3. GLOBAL CONTEXT: pandas_datareader
-           - ^SOX (Semiconductor Index) from Stooq
-           - ^IXIC (Nasdaq Composite) from Stooq
-           - USD/TWD exchange rate from FRED/Stooq
-
-        4. FALLBACK: FinMind OHLCV
-           - Only used if Yahoo Finance completely fails
-
-        Args:
-            ticker: Taiwan stock symbol (e.g., "2330.TW")
-            years: Historical data years to fetch
-
-        Returns:
-            DataFrame with OHLCV + supplementary features
-        """
         cache_key = f"{ticker}_{years}"
         if cache_key in self._data_cache:
             return self._data_cache[cache_key]
 
         end_date = pd.Timestamp.now()
+        # Add a 60-day warm-up buffer (approx 2 months of trading days)
+        # so that indicators and LSTM sequences are ready on the actual start date.
         start_date = end_date - pd.DateOffset(years=years) - pd.DateOffset(days=90)
 
-        # PRIMARY: Yahoo Finance Taiwan (for OHLCV data)
-        df = None
-        try:
-            import warnings
-
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                df = yf.download(
+        for attempt in range(3):
+            try:
+                data = yf.download(
                     ticker,
                     start=start_date,
                     end=end_date,
                     auto_adjust=True,
                     progress=False,
-                    threads=False,  # Prevents chrome impersonation errors
+                    threads=False,
                 )
-
-            if not df.empty:
-                # Normalize column names
-                if isinstance(df.columns, pd.MultiIndex):
-                    df.columns = [
-                        c[0] if isinstance(c, tuple) else c for c in df.columns
-                    ]
-                df.rename(
-                    columns={
-                        "Open": "Open",
-                        "High": "High",
-                        "Low": "Low",
-                        "Close": "Close",
-                        "Volume": "Volume",
-                    },
-                    inplace=True,
-                )
-                df.index = pd.to_datetime(df.index).tz_localize(None)
-        except Exception as e:
-            logging.warning(f"Yahoo Finance failed for {ticker}: {e}")
-            df = None
-
-        # FALLBACK: Try FinMind for basic OHLCV if Yahoo failed
-        if df is None or df.empty:
-            logging.warning(
-                f"Yahoo Finance failed for {ticker}, using FinMind fallback..."
-            )
-            try:
-                from FinMind.data import DataLoader
-
-                dl = DataLoader()
-                stock_id = ticker.split(".")[0]
-                df = dl.taiwan_stock_daily(
-                    stock_id=stock_id,
-                    start_date=start_date.strftime("%Y-%m-%d"),
-                    end_date=end_date.strftime("%Y-%m-%d"),
-                )
-                if not df.empty:
-                    df = df.rename(
-                        columns={
-                            "open": "Open",
-                            "max": "High",
-                            "min": "Low",
-                            "close": "Close",
-                            "Trading_Volume": "Volume",
-                        }
-                    )
-                    df["date"] = pd.to_datetime(df["date"])
-                    df.set_index("date", inplace=True)
-                    logging.info(
-                        f"FinMind fallback successful: {len(df)} rows for {ticker}"
-                    )
-                else:
-                    logging.error(f"FinMind returned empty dataframe for {ticker}")
-            except Exception as e:
-                logging.error(
-                    f"Both Yahoo Finance and FinMind failed for {ticker}: {e}"
-                )
-                return pd.DataFrame()
-
-        # If still no data, return empty
-        if df is None or df.empty:
-            logging.error(f"No data available for {ticker}")
-            return pd.DataFrame()
-
-        # SUPPLEMENTARY: FinMind for Taiwan-specific institutional data
-        stock_id = ticker.split(".")[0]
-        try:
-            from FinMind.data import DataLoader
-
-            dl = DataLoader()
-
-            # 1. Institutional Net Buy (Split by Foreign vs Trust)
-            try:
-                inst = dl.taiwan_stock_institutional_investors(
-                    stock_id=stock_id,
-                    start_date=start_date.strftime("%Y-%m-%d"),
-                    end_date=end_date.strftime("%Y-%m-%d"),
-                )
-                if not inst.empty:
-                    inst["date"] = pd.to_datetime(inst["date"])
-                    inst["net"] = inst["buy"] - inst["sell"]
-                    # Pivot to get columns for each investor type
-                    inst_pivot = inst.pivot_table(
-                        index="date", columns="name", values="net", aggfunc="sum"
-                    ).fillna(0)
-
-                    # Foreign Investor (WaiZi)
-                    if "Foreign_Investor" in inst_pivot.columns:
-                        df["Foreign_Net"] = inst_pivot["Foreign_Investor"]
-                    else:
-                        df["Foreign_Net"] = 0
-
-                    # Investment Trust (TouXin)
-                    if "Investment_Trust" in inst_pivot.columns:
-                        df["Trust_Net"] = inst_pivot["Investment_Trust"]
-                    else:
-                        df["Trust_Net"] = 0
-
-                    # Dealer (Self + Hedging)
-                    dealer_cols = [c for c in inst_pivot.columns if "Dealer" in c]
-                    if dealer_cols:
-                        df["Dealer_Net"] = inst_pivot[dealer_cols].sum(axis=1)
-                    else:
-                        df["Dealer_Net"] = 0
-                else:
-                    df["Foreign_Net"] = 0
-                    df["Trust_Net"] = 0
-                    df["Dealer_Net"] = 0
-            except Exception as e:
-                logging.warning(f"FinMind Institutional failed: {e}")
-                df["Foreign_Net"] = 0
-                df["Trust_Net"] = 0
-                df["Dealer_Net"] = 0
-
-            # 2. Margin Trading (RongZi / RongQuan)
-            try:
-                margin = dl.taiwan_stock_margin_purchase_short_sale(
-                    stock_id=stock_id,
-                    start_date=start_date.strftime("%Y-%m-%d"),
-                    end_date=end_date.strftime("%Y-%m-%d"),
-                )
-                if not margin.empty:
-                    margin["date"] = pd.to_datetime(margin["date"])
-                    margin.set_index("date", inplace=True)
-                    if "MarginPurchaseTodayBalance" in margin.columns:
-                        df["Margin_Balance"] = margin["MarginPurchaseTodayBalance"]
-                    if "ShortSaleTodayBalance" in margin.columns:
-                        df["Short_Balance"] = margin["ShortSaleTodayBalance"]
-            except Exception as e:
-                logging.warning(f"FinMind Margin failed: {e}")
-
-            # 3. Monthly Revenue (With 45-day Lag to avoid look-ahead bias)
-            try:
-                revenue = dl.taiwan_stock_month_revenue(
-                    stock_id=stock_id,
-                    start_date=(start_date - pd.DateOffset(months=6)).strftime(
-                        "%Y-%m-%d"
-                    ),
-                    end_date=end_date.strftime("%Y-%m-%d"),
-                )
-                if not revenue.empty:
-                    revenue["date"] = pd.to_datetime(revenue["date"])
-                    # Shift date by 45 days (approx release date is 10th of next month)
-                    revenue["date"] = revenue["date"] + pd.DateOffset(days=45)
-                    revenue.set_index("date", inplace=True)
-
-                    # Reindex to daily (forward fill the last known revenue growth)
-                    rev_aligned = revenue.reindex(df.index).ffill()
-                    if "revenue_year_growth" in rev_aligned.columns:
-                        df["Revenue_YoY"] = rev_aligned["revenue_year_growth"]
-            except Exception as e:
-                logging.warning(f"FinMind Revenue failed: {e}")
-
-            # 4. GLOBAL CONTEXT (pandas_datareader)
-            # ^SOX (Semiconductor), ^IXIC (Nasdaq), USD/TWD exchange rate
-            try:
-                import pandas_datareader as pdr
-
-                g_start = start_date - pd.DateOffset(days=5)
-
-                # Fetch SOX (Semiconductor Index)
-                try:
-                    sox_data = pdr.get_data_stooq("^SOX", start=g_start, end=end_date)
-                    if not sox_data.empty:
-                        sox_data.index = pd.to_datetime(sox_data.index).tz_localize(
-                            None
-                        )
-                        sox_shifted = (
-                            sox_data["Close"].shift(1).reindex(df.index).ffill()
-                        )
-                        df["SOX_Index"] = sox_shifted
-                except Exception as e:
-                    logging.warning(f"SOX Index fetch failed: {e}")
-                    df["SOX_Index"] = 0
-
-                # Fetch NASDAQ Composite
-                try:
-                    nasdaq_data = pdr.get_data_stooq(
-                        "^IXIC", start=g_start, end=end_date
-                    )
-                    if not nasdaq_data.empty:
-                        nasdaq_data.index = pd.to_datetime(
-                            nasdaq_data.index
-                        ).tz_localize(None)
-                        nasdaq_shifted = (
-                            nasdaq_data["Close"].shift(1).reindex(df.index).ffill()
-                        )
-                        df["NASDAQ_Index"] = nasdaq_shifted
-                except Exception as e:
-                    logging.warning(f"NASDAQ Index fetch failed: {e}")
-                    df["NASDAQ_Index"] = 0
-
-                # Fetch USD/TWD exchange rate (try FRED first, fallback to Stooq)
-                try:
-                    try:
-                        # FRED: DEXCHUS (official Federal Reserve data)
-                        usd_twd_data = pdr.get_data_fred(
-                            "DEXCHUS", start=g_start, end=end_date
-                        )
-                        if not usd_twd_data.empty:
-                            usd_twd_data.index = pd.to_datetime(
-                                usd_twd_data.index
-                            ).tz_localize(None)
-                            usd_twd_shifted = (
-                                usd_twd_data.shift(1).reindex(df.index).ffill()
-                            )
-                            df["USD_TWD"] = usd_twd_shifted
-                    except Exception as fred_error:
-                        logging.warning(
-                            f"FRED USD/TWD failed: {fred_error}, trying Stooq..."
-                        )
-                        # Fallback: Stooq
-                        usd_twd_data = pdr.get_data_stooq(
-                            "USDTWD", start=g_start, end=end_date
-                        )
-                        if not usd_twd_data.empty:
-                            usd_twd_data.index = pd.to_datetime(
-                                usd_twd_data.index
-                            ).tz_localize(None)
-                            # Stooq returns DataFrame with OHLC columns
-                            close_col = (
-                                usd_twd_data["Close"]
-                                if "Close" in usd_twd_data.columns
-                                else usd_twd_data.iloc[:, -1]
-                            )
-                            usd_twd_shifted = (
-                                close_col.shift(1).reindex(df.index).ffill()
-                            )
-                            df["USD_TWD"] = usd_twd_shifted
-                except Exception as e:
-                    logging.warning(f"USD/TWD exchange rate fetch failed: {e}")
-                    df["USD_TWD"] = 0
-
-            except Exception as e:
-                logging.warning(f"Global Context (pandas_datareader) failed: {e}")
-        except Exception as e:
-            logging.warning(f"FinMind supplementary data failed: {e}")
-
-        # Final cleanup and cache
-        df.fillna(0, inplace=True)
-        self._data_cache[cache_key] = df
-        return df
+                if not data.empty:
+                    norm = self._normalize_df(data, ticker)
+                    self._data_cache[cache_key] = norm
+                    return norm
+                time.sleep(1)
+            except Exception:
+                pass
+        return pd.DataFrame()
 
     def prefetch_data_batch(self, tickers: List[str], years: int):
-        for ticker in tickers:
-            self.fetch_data(ticker, years)
+        if not tickers:
+            return
+        end_date = pd.Timestamp.now()
+        start_date = end_date - pd.DateOffset(years=years)
+        to_fetch = [t for t in tickers if f"{t}_{years}" not in self._data_cache]
+        if not to_fetch:
+            return
+
+        for i in range(0, len(to_fetch), 20):
+            batch = to_fetch[i : i + 20]
+            try:
+                data = yf.download(
+                    batch,
+                    start=start_date,
+                    end=end_date,
+                    auto_adjust=True,
+                    progress=False,
+                    threads=False,
+                    group_by="ticker",
+                )
+                if data.empty:
+                    continue
+                for t in batch:
+                    try:
+                        # Extract ticker data carefully
+                        if len(batch) == 1:
+                            t_df = data
+                        else:
+                            if isinstance(
+                                data.columns, pd.MultiIndex
+                            ) and t in data.columns.get_level_values(0):
+                                t_df = data[t]
+                            else:
+                                t_df = data
+                        norm = self._normalize_df(t_df, t)
+                        if not norm.empty:
+                            self._data_cache[f"{t}_{years}"] = norm
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+
+    def _ensure_market_data(self):
+        """Fetches and caches market/macro data if not already present."""
+        if self._market_data is not None:
+            return
+
+        logging.info("Fetching market and macro data...")
+        market_tickers = {
+            **self.config.market_indices,
+            **self.config.macro_indicators,
+        }
+
+        # Download 10 years of data to be safe (covers all reasonable backtests)
+        start_date = pd.Timestamp.now() - pd.DateOffset(years=10)
+
+        market_df = pd.DataFrame()
+
+        for name, ticker in market_tickers.items():
+            try:
+                # Use history for cleaner single-ticker fetch
+                # or download. we need daily close.
+                df = yf.download(
+                    ticker,
+                    start=start_date,
+                    progress=False,
+                    auto_adjust=True,
+                    threads=False,
+                )
+
+                if df.empty:
+                    continue
+
+                # Clean and normalize
+                df = self._normalize_df(df, ticker)
+
+                if "Close" in df.columns:
+                    # Rename to prevent collision and identify source
+                    col_name = f"MKT_{name}"
+                    market_df[col_name] = df["Close"]
+
+                    # Also add Returns for indices/macro (optional but useful)
+                    # market_df[f"{col_name}_Ret"] = df["Close"].pct_change()
+            except Exception as e:
+                logging.warning(f"Failed to fetch market data {name} ({ticker}): {e}")
+
+        # Forward fill to handle different trading calendars (e.g. US holidays vs AU)
+        self._market_data = market_df.ffill().fillna(0)
 
     def prepare_features(self, data: pd.DataFrame):
         df = data.copy()
-        
-        # Moving Averages
-        df["MA5"] = df["Close"].rolling(5).mean()
-        df["MA20"] = df["Close"].rolling(20).mean()
-        df["MA50"] = df["Close"].rolling(50).mean()
-        
-        # RSI (Relative Strength Index)
+
+        # Double check Close is a Series
+        if "Close" not in df.columns:
+            raise KeyError(f"Column 'Close' missing. Found: {list(df.columns)}")
+
+        # --- 1. Basic Moving Averages ---
+        df["MA5"] = df["Close"].rolling(window=5).mean()
+        df["MA20"] = df["Close"].rolling(window=20).mean()
+        df["MA50"] = df["Close"].rolling(window=50).mean()
+
+        # --- 2. RSI ---
         delta = df["Close"].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-        df["RSI"] = 100 - (100 / (1 + (gain / (loss + 1e-9))))
-        
-        # MACD (Moving Average Convergence Divergence)
-        df["MACD"] = (
-            df["Close"].ewm(span=12, adjust=False).mean()
-            - df["Close"].ewm(span=26, adjust=False).mean()
-        )
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / (loss + 1e-9)
+        df["RSI"] = 100 - (100 / (1 + rs))
+
+        # --- 3. MACD ---
+        exp1 = df["Close"].ewm(span=12, adjust=False).mean()
+        exp2 = df["Close"].ewm(span=26, adjust=False).mean()
+        df["MACD"] = exp1 - exp2
         df["Signal_Line"] = df["MACD"].ewm(span=9, adjust=False).mean()
-        
-        # Bollinger Bands
-        sma_20 = df["Close"].rolling(window=20).mean()
-        std_20 = df["Close"].rolling(window=20).std()
-        df["BB_Upper"] = sma_20 + (std_20 * 2)
-        df["BB_Lower"] = sma_20 - (std_20 * 2)
-        df["BB_Width"] = (df["BB_Upper"] - df["BB_Lower"]) / sma_20
-        
-        # ATR (Average True Range)
+
+        # --- 4. Bollinger Bands (New) ---
+        df["BB_Middle"] = df["Close"].rolling(window=20).mean()
+        df["BB_Std"] = df["Close"].rolling(window=20).std()
+        df["BB_Upper"] = df["BB_Middle"] + (2 * df["BB_Std"])
+        df["BB_Lower"] = df["BB_Middle"] - (2 * df["BB_Std"])
+        df["BB_Width"] = (df["BB_Upper"] - df["BB_Lower"]) / (df["BB_Middle"] + 1e-9)
+
+        # --- 5. ATR (New) ---
         high_low = df["High"] - df["Low"]
         high_close = np.abs(df["High"] - df["Close"].shift())
         low_close = np.abs(df["Low"] - df["Close"].shift())
-        true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-        df["ATR"] = true_range.rolling(window=14).mean()
-        
-        # Daily Return
+        tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+        df["ATR"] = tr.rolling(window=14).mean()
+
+        # --- 6. KD (Taiwan Specific) ---
+        low_9 = df["Low"].rolling(9).min()
+        high_9 = df["High"].rolling(9).max()
+        h_l_diff = high_9 - low_9
+        h_l_diff = h_l_diff.replace(0, np.nan)
+        rsv = ((df["Close"] - low_9) / (h_l_diff + 1e-9)) * 100
+        rsv = rsv.fillna(50)
+        df["K"] = rsv.ewm(com=2).mean()
+        df["D"] = df["K"].ewm(com=2).mean()
+
+        # --- 7. Market Context Integration (New) ---
+        self._ensure_market_data()
+        if self._market_data is not None and not self._market_data.empty:
+            # Align market data to stock dates
+            # CRITICAL: Shift market data by 1 day to prevent look-ahead bias.
+            # We must use T-1 market data for T calculations to ensure the AI
+            # only uses information available at the time of prediction.
+            market_subset = self._market_data.shift(1).reindex(df.index).ffill()
+            df = df.join(market_subset)
+
+            # Fill any remaining NaNs (e.g. start of history)
+            df = df.ffill().fillna(0)
+
         df["Daily_Return"] = df["Close"].pct_change(fill_method=None)
 
-        # Stochastic Oscillator (KD)
-        low_14 = df["Low"].rolling(14).min()
-        high_14 = df["High"].rolling(14).max()
-        h_l_diff = high_14 - low_14
-        h_l_diff = h_l_diff.replace(0, np.nan)  # Avoid division by zero
-        df["K"] = 100 * ((df["Close"] - low_14) / (h_l_diff + 1e-9))
-        df["D"] = df["K"].rolling(window=3).mean()
-
-        # Fill missing Taiwan-specific and global features if not present (e.g. from fallback)
-        for col in [
-            "Foreign_Net",
-            "Trust_Net",
-            "Dealer_Net",
-            "Margin_Balance",
-            "Short_Balance",
-            "Revenue_YoY",
-            "USD_TWD",
-            "SOX_Index",
-            "NASDAQ_Index",
-        ]:
-            if col not in df.columns:
-                df[col] = 0
-
         df["Target"] = df["Close"].shift(-1)
-
-        # CLEANUP: Handle Inf values created by division (e.g. RSI gain/loss)
-        df.replace([np.inf, -np.inf], np.nan, inplace=True)
-
         df = df.dropna()
 
-        if df.empty:
-            logging.error("Empty dataframe after feature engineering and dropna!")
-            return np.array([]), np.array([])
-
+        # Update features list
         features = [
-            # Base OHLCV (5)
             "Open",
             "High",
             "Low",
             "Close",
             "Volume",
-            # Moving Averages (3)
             "MA5",
             "MA20",
             "MA50",
-            # Momentum Indicators (3)
             "RSI",
             "MACD",
             "Signal_Line",
-            # Bollinger Bands (3)
             "BB_Upper",
             "BB_Lower",
             "BB_Width",
-            # Volatility (1)
             "ATR",
-            # Stochastic (2)
             "K",
             "D",
-            # Taiwan Institutional Flows (3)
-            "Foreign_Net",
-            "Trust_Net",
-            "Dealer_Net",
-            # Taiwan Margin Trading (2)
-            "Margin_Balance",
-            "Short_Balance",
-            # Taiwan Fundamentals (1)
-            "Revenue_YoY",
-            # Global Market Context (3)
-            "USD_TWD",
-            "SOX_Index",
-            "NASDAQ_Index",
-            # Returns (1)
             "Daily_Return",
         ]
 
+        # Add dynamic market features
+        if self._market_data is not None:
+            for col in self._market_data.columns:
+                if col in df.columns:
+                    features.append(col)
+
         X = df[features].values
         y = df["Target"].values
-
         return X, y
 
     def _create_sequences(self, data_scaled, target):
@@ -598,7 +454,13 @@ class ModelBuilder:
         data = self.fetch_data(ticker, self.config.backtest_years)
         if data.empty:
             raise ValueError(f"No data for {ticker}")
+
         X, y = self.prepare_features(data)
+        if len(X) < 1:
+            raise ValueError(
+                f"Insufficient data rows for {ticker} after feature engineering."
+            )
+
         self.scaler = self._init_scaler()
         X_scaled = self.scaler.fit_transform(X)
 
@@ -617,7 +479,7 @@ class ModelBuilder:
             try:
                 X_seq, y_seq = self._create_sequences(X_scaled, y_scaled)
                 self.model = self._init_model(input_dim=X.shape[1])
-                self.model.fit(X_seq, y_seq, batch_size=32, epochs=50, verbose=0)
+                self.model.fit(X_seq, y_seq, batch_size=32, epochs=10, verbose=0)
                 self.target_scaler = target_scaler  # Save for inverse transform
             except Exception:
                 self.model = self._init_model()
@@ -625,12 +487,13 @@ class ModelBuilder:
                 self.target_scaler = None
         elif m_type == "prophet":
             try:
-                p_df = pd.DataFrame(
+                prophet_df = pd.DataFrame(
                     {"ds": data.index, "y": data["Close"].values.flatten()}
                 )
-                p_df["ds"] = pd.to_datetime(p_df["ds"]).dt.tz_localize(None)
+                prophet_df["ds"] = pd.to_datetime(prophet_df["ds"]).dt.tz_localize(None)
+                prophet_df = prophet_df.dropna()
                 self.model = self._init_model()
-                self.model.fit(p_df.dropna())
+                self.model.fit(prophet_df)
             except Exception:
                 self.model = self._init_model()
                 self.model.fit(X_scaled, y)
@@ -639,33 +502,51 @@ class ModelBuilder:
             self.model.fit(X_scaled, y)
 
         os.makedirs(self.config.model_path, exist_ok=True)
-        joblib.dump(
-            {
-                "model": self.model,
-                "scaler": self.scaler,
-                "target_scaler": getattr(self, "target_scaler", None),
-            },
-            os.path.join(self.config.model_path, f"{ticker}_{m_type}_model.joblib"),
+        model_filename = os.path.join(
+            self.config.model_path, f"{ticker}_{m_type}_model.joblib"
         )
+        if m_type == "lstm" and hasattr(self.model, "save"):
+            keras_path = model_filename.replace(".joblib", ".keras")
+            self.model.save(keras_path)
+            joblib.dump(
+                {
+                    "scaler": self.scaler,
+                    "target_scaler": self.target_scaler,  # Save target scaler
+                    "keras_path": keras_path,
+                    "model_class": self.model.__class__.__name__,
+                },
+                model_filename,
+            )
+        else:
+            joblib.dump(
+                {
+                    "model": self.model,
+                    "scaler": self.scaler,
+                    "target_scaler": getattr(
+                        self, "target_scaler", None
+                    ),  # Include if exists
+                    "model_class": self.model.__class__.__name__,
+                },
+                model_filename,
+            )
 
     def load_or_build(self, ticker: str) -> str:
-        # Construct absolute path to avoid directory confusion
-        model_filename = os.path.abspath(
-            os.path.join(
-                self.config.model_path,
-                f"{ticker}_{self.config.model_type}_model.joblib",
-            )
+        model_filename = os.path.join(
+            self.config.model_path, f"{ticker}_{self.config.model_type}_model.joblib"
         )
 
+        # 1. Force train if requested or missing
         if self.config.rebuild_model or not os.path.exists(model_filename):
             self.train(ticker)
             return "trained"
 
         try:
-            bundle = joblib.load(model_filename)
-            loaded_scaler = bundle["scaler"]
+            # 2. Try loading bundle
+            data_bundle = joblib.load(model_filename)
+            loaded_scaler = data_bundle["scaler"]
 
             # 3. Check for feature mismatch
+            # We fetch a tiny slice of data to check current feature dimensions
             sample_data = self.fetch_data(ticker, self.config.backtest_years)
             if sample_data.empty:
                 self.train(ticker)
@@ -686,23 +567,28 @@ class ModelBuilder:
                 return "retrained"
 
             self.scaler = loaded_scaler
-            self.target_scaler = bundle.get(
+            self.target_scaler = data_bundle.get(
                 "target_scaler", None
             )  # Load target scaler for LSTM
-            self.model = bundle["model"]
 
-            # Validation check to ensure scaler is fitted
-            if not hasattr(self.scaler, "mean_") and not hasattr(
-                self.scaler, "center_"
-            ):
-                # If scaler looks unfitted, force retrain
-                self.train(ticker)
-                return "retrained_corrupt"
+            # 4. Load Model
+            if "keras_path" in data_bundle or "lstm_h5" in data_bundle:
+                from tensorflow.keras.models import load_model
+
+                path = data_bundle.get("keras_path") or data_bundle.get("lstm_h5")
+                # Final safety check: load_model might fail if architecture changed
+                try:
+                    self.model = load_model(path)
+                except Exception:
+                    self.train(ticker)
+                    return "retrained_keras_error"
+            else:
+                self.model = data_bundle.get("model")
 
             return "loaded"
+
         except Exception as e:
             logging.error(f"Failed to load model for {ticker}: {e}. Retraining...")
-            # If load fails, retrain immediately
             self.train(ticker)
             return "retrained_error"
 
@@ -712,19 +598,23 @@ class ModelBuilder:
         if self.model is None:
             raise ValueError("Model not loaded.")
         m_type = self.config.model_type
-        if m_type == "prophet":
+        if m_type == "prophet" and hasattr(self.model, "predict"):
             future = pd.DataFrame(
                 {"ds": [(date + pd.DateOffset(days=1)).tz_localize(None)]}
             )
             return float(self.model.predict(future)["yhat"].iloc[0])
-        if m_type == "lstm":
+        if m_type == "lstm" and hasattr(self.model, "predict"):
             if len(current_data.shape) == 2:
                 X = self.scaler.transform(current_data)
-                return float(
+                pred = float(
                     self.model.predict(
                         X.reshape(1, self.sequence_length, -1), verbose=0
                     )[0][0]
                 )
+                # Inverse transform if target was scaled
+                if self.target_scaler is not None:
+                    pred = float(self.target_scaler.inverse_transform([[pred]])[0][0])
+                return pred
             return 0.0
         X_input = (
             current_data[-1].reshape(1, -1)
@@ -733,3 +623,12 @@ class ModelBuilder:
         )
         X_scaled = self.scaler.transform(X_input)
         return float(self.model.predict(X_scaled)[0])
+
+    def get_latest_features(self, ticker: str) -> Optional[np.ndarray]:
+        data = self.fetch_data(ticker, 1)
+        if data.empty:
+            return None
+        X, y = self.prepare_features(data)
+        if len(X) < self.sequence_length:
+            return None
+        return X[-self.sequence_length :]

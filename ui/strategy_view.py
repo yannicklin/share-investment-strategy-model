@@ -2,7 +2,7 @@
 Taiwan Stock AI Trading System - Strategy Sensitivity View
 
 Purpose: Streamlit view for comparing trading strategies across different
-holding periods using consensus AI predictions for Taiwan market.
+holding periods using consensus AI predictions.
 
 Author: Yannick
 Copyright (c) 2026 Yannick
@@ -22,16 +22,7 @@ def render_strategy_sensitivity(ticker, ticker_res, models=None, tie_breaker=Non
         if st.session_state["active_builder"].is_etf(ticker):
             etf_label = " 🏷️ (ETF)"
 
-    # Fetch long name & ETF status
-    company_name = ""
-    etf_label = ""
-    if "active_builder" in st.session_state:
-        builder = st.session_state["active_builder"]
-        company_name = f"({builder.get_company_name(ticker)})"
-        if builder.is_etf(ticker):
-            etf_label = " 🛡️ [ETF]"
-
-    st.header(f"⏳ Time-Span Comparison: {ticker}{company_name}{etf_label}")
+    st.header(f"⏳ Time-Span Comparison: {ticker}{etf_label}")
 
     # Dynamic Decision Engine Description
     if models and len(models) > 1:
@@ -79,7 +70,7 @@ def render_strategy_sensitivity(ticker, ticker_res, models=None, tie_breaker=Non
         df_display["Net ROI"] = df["Net ROI"].apply(lambda x: f"{x * 100:.2f}%")
         df_display["Win Rate"] = df["Win Rate"].apply(lambda x: f"{x * 100:.2f}%")
         df_display["Final Portfolio"] = df["Final Portfolio"].apply(
-            lambda x: f"NT${x:,.2f}"
+            lambda x: f"${x:,.2f}"
         )
 
         # 1. ROI Comparison Chart

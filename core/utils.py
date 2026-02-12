@@ -2,7 +2,6 @@
 Taiwan Stock AI Trading System - Utility Functions
 
 Purpose: Date formatting, market calendar management, and helper utilities.
-Supports Taiwan (XTAI) and other markets via market calendar APIs.
 
 Author: Yannick
 Copyright (c) 2026 Yannick
@@ -17,69 +16,42 @@ from datetime import datetime
 def format_date_with_weekday(dt: pd.Timestamp) -> str:
     """
     Format pandas Timestamp as YYYY-MM-DD(DAY).
+
+    Args:
+        dt: Timestamp object (timezone-aware or naive)
+
+    Returns:
+        String like "2026-02-06(THU)"
+
+    Examples:
+        >>> format_date_with_weekday(pd.Timestamp("2026-02-06"))
+        '2026-02-06(THU)'
+        >>> format_date_with_weekday(pd.Timestamp("2026-12-25"))
+        '2026-12-25(FRI)'
     """
     weekday = dt.strftime("%a").upper()
     return f"{dt.strftime('%Y-%m-%d')}({weekday})"
 
 
-def get_taiwan_trading_days(
-    start_date: pd.Timestamp,
-    end_date: pd.Timestamp,
+def get_twn_trading_days(
+    start_date: pd.Timestamp, end_date: pd.Timestamp, use_cache: bool = True
 ) -> pd.DatetimeIndex:
     """
-    Fetch Taiwan Stock Exchange (XTAI) trading days for specified date range.
-    
-    Uses exchange_calendars/pandas_market_calendars to get official trading days
-    accounting for Taiwan holidays and market closures.
+    Fetch Taiwan trading days (TWSE) for specified date range.
     """
-    return get_trading_days(start_date, end_date, market="TWN")
-
-
-def get_trading_days(
-    start_date: pd.Timestamp,
-    end_date: pd.Timestamp,
-    market: str = "TWN",
-    use_cache: bool = True,
-) -> pd.DatetimeIndex:
-    """
-    Fetch trading days for specified date range and market.
-
-    Supported Markets:
-    - TWN: Taiwan Stock Exchange (XTAI)
-    - ASX: Australian Securities Exchange (XASX)
-
-    Requires 'exchange_calendars' or 'pandas_market_calendars' (older)
-    that supports 'XTAI'.
-    """
-    calendar_map = {
-        "ASX": "XASX",
-        "TWN": "XTAI",
-    }
-    cal_code = calendar_map.get(market, "XTAI")
-
     try:
-        # Prefer exchange_calendars if available (newer fork of trading_calendars)
-        # XTAI is supported in exchange_calendars
-        try:
-            import exchange_calendars as ecals
-
-            calendar = ecals.get_calendar(cal_code)
-        except ImportError:
-            # Fallback to pandas_market_calendars (might lack XTAI in very old versions)
-            calendar = mcal.get_calendar(cal_code)
-
-        schedule = calendar.schedule(start_date=start_date, end_date=end_date)
-        return pd.DatetimeIndex(schedule.index)
-    except Exception:
-        # Fallback: Business days (Mon-Fri)
-        all_dates = pd.date_range(start=start_date, end=end_date, freq="D")
-        trading_days = all_dates[all_dates.dayofweek < 5]
-        return pd.DatetimeIndex(trading_days)
-
+        if use_cache:
+            twse_calendar = mcal.get_calendar("XTAI")
+            schedule = twse_calendar.schedule(start_date=start_date, end_date=end_date)
+            trading_days = schedule.index
+        else:
+            all_dates = pd.date_range(start=start_date, end=end_date, freq="D")
+            trading_days = all_dates[all_dates.dayofweek < 5]
     except Exception:
         all_dates = pd.date_range(start=start_date, end=end_date, freq="D")
         trading_days = all_dates[all_dates.dayofweek < 5]
-        return pd.DatetimeIndex(trading_days)
+
+    return pd.DatetimeIndex(trading_days)
 
 
 def calculate_trading_days_ahead(
@@ -87,15 +59,36 @@ def calculate_trading_days_ahead(
 ) -> Optional[pd.Timestamp]:
     """
     Calculate the date that is `num_days` TRADING DAYS ahead from start_date.
+
+    Args:
+        start_date: Starting date (must be a valid trading day)
+        num_days: Number of trading days to count forward
+        trading_days: Pre-filtered DatetimeIndex of valid trading days
+
+    Returns:
+        Timestamp of the target date, or None if insufficient trading days available
+
+    Examples:
+        >>> trading_days = get_twn_trading_days(
+        ...     pd.Timestamp("2026-01-01"), pd.Timestamp("2026-12-31")
+        ... )
+        >>> calculate_trading_days_ahead(
+        ...     pd.Timestamp("2026-02-03"), 30, trading_days
+        ... )
+        Timestamp('2026-03-20 00:00:00')  # 30 trading days later
     """
+    # Find index of start_date in trading_days
     try:
         loc_result = trading_days.get_loc(start_date)
+        # get_loc can return int, slice, or boolean array - we want int
         if isinstance(loc_result, int):
             start_idx = loc_result
         else:
+            # If slice or array, get the first index
             start_idx = 0
     except KeyError:
-        # If start_date is not a trading day, find the next one
+        # start_date not in trading_days (e.g., weekend/holiday)
+        # Find next valid trading day
         future_days = trading_days[trading_days >= start_date]
         if len(future_days) == 0:
             return None
@@ -105,7 +98,7 @@ def calculate_trading_days_ahead(
     target_idx = int(start_idx) + num_days
 
     if target_idx >= len(trading_days):
-        return None
+        return None  # Not enough trading days available
 
     return pd.Timestamp(trading_days[target_idx])
 
@@ -113,6 +106,31 @@ def calculate_trading_days_ahead(
 def validate_buy_capacity(available_cash: float, price_dict: dict) -> dict:
     """
     Check if portfolio has sufficient cash to afford any tickers.
+
+    Args:
+        available_cash: Current portfolio cash balance
+        price_dict: {ticker: current_price} mapping
+
+    Returns:
+        {
+            "can_trade": bool,  # True if can afford at least one ticker
+            "affordable_tickers": dict,  # {ticker: max_units}
+            "reason": str  # Explanation if can_trade is False
+        }
+
+    Examples:
+        >>> validate_buy_capacity(10000, {"ABB.AX": 15.25, "SIG.AX": 55.0})
+        {
+            'can_trade': True,
+            'affordable_tickers': {'ABB.AX': 655, 'SIG.AX': 181},
+            'reason': ''
+        }
+        >>> validate_buy_capacity(50, {"ABB.AX": 55.0})
+        {
+            'can_trade': False,
+            'affordable_tickers': {},
+            'reason': 'Insufficient cash: $50.00 < minimum price $55.00'
+        }
     """
     if not price_dict:
         return {
@@ -127,7 +145,7 @@ def validate_buy_capacity(available_cash: float, price_dict: dict) -> dict:
         return {
             "can_trade": False,
             "affordable_tickers": {},
-            "reason": f"Insufficient cash: ${available_cash:,.2f} < minimum price ${min_price:,.2f}",
+            "reason": f"Insufficient cash: ${available_cash:.2f} < minimum price ${min_price:.2f}",
         }
 
     affordable = {}

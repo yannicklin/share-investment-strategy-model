@@ -2,7 +2,7 @@
 Taiwan Stock AI Trading System - Algorithm Comparison View
 
 Purpose: Streamlit view for comparing AI model performance metrics
-and visualizations for Taiwan market.
+and visualizations.
 
 Author: Yannick
 Copyright (c) 2026 Yannick
@@ -22,16 +22,7 @@ def render_algorithm_comparison(ticker, ticker_res):
         if st.session_state["active_builder"].is_etf(ticker):
             etf_label = " 🏷️ (ETF)"
 
-    # Fetch long name & ETF status
-    company_name = ""
-    etf_label = ""
-    if "active_builder" in st.session_state:
-        builder = st.session_state["active_builder"]
-        company_name = f"({builder.get_company_name(ticker)})"
-        if builder.is_etf(ticker):
-            etf_label = " 🛡️ [ETF]"
-
-    st.header(f"📊 Models Comparison: {ticker}{company_name}{etf_label}")
+    st.header(f"📊 Models Comparison: {ticker}{etf_label}")
 
     summary = []
     for m_name, res in ticker_res.items():
@@ -56,9 +47,7 @@ def render_algorithm_comparison(ticker, ticker_res):
         df_display = df.copy()
         df_display["Net ROI"] = df["Net ROI"].apply(lambda x: f"{x * 100:.2f}%")
         df_display["Win Rate"] = df["Win Rate"].apply(lambda x: f"{x * 100:.2f}%")
-        df_display["Final Capital"] = df["Final Capital"].apply(
-            lambda x: f"NT${x:,.2f}"
-        )
+        df_display["Final Capital"] = df["Final Capital"].apply(lambda x: f"${x:,.2f}")
 
         col_table, col_chart = st.columns([1, 1])
         with col_table:

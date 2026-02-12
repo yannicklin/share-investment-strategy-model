@@ -50,9 +50,22 @@ class Config:
         default_factory=lambda: ["random_forest", "catboost"]
     )
 
-    data_source: str = "yfinance"
-
-    # Cost & Tax Profiles
+    # Market & Macro Data Sources
+    market_indices: dict = field(
+        default_factory=lambda: {
+            "TAIEX": "^TWII",
+            "SP500": "^GSPC",
+            "SOX": "^SOX",
+            "NASDAQ": "^IXIC",
+        }
+    )
+    macro_indicators: dict = field(
+        default_factory=lambda: {
+            "TWD_USD": "TWD=X",
+            "Gold": "GC=F",
+            "VIX": "^VIX",
+        }
+    )
     cost_profile: str = "default"  # "default", "fubon_twn", or "first_twn"
     annual_income: float = 960000.0  # Annual income in TWD (Default for TW branch)
     hurdle_risk_buffer: float = (

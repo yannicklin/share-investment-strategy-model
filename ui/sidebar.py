@@ -2,7 +2,7 @@
 Taiwan Stock AI Trading System - Sidebar Component
 
 Purpose: Streamlit sidebar for mode selection, ticker input, and
-backtest parameters for Taiwan market.
+backtest parameters.
 
 Author: Yannick
 Copyright (c) 2026 Yannick
@@ -18,15 +18,10 @@ from core.model_builder import ModelBuilder
 def render_sidebar(config: Config):
     """Renders all sidebar inputs and returns the selected analysis mode."""
 
-    # Inject custom CSS for a friendlier Dark Mode sidebar with Green theme
+    # Inject custom CSS for a friendlier Dark Mode sidebar
     st.markdown(
         """
         <style>
-            /* Set Primary Color to Green */
-            :root {
-                --primary-color: #27ae60;
-            }
-            
             /* Sidebar background and borders */
             [data-testid="stSidebar"] {
                 border-right: 1px solid rgba(255, 255, 255, 0.1);
@@ -34,7 +29,7 @@ def render_sidebar(config: Config):
             
             /* Sidebar Headers */
             [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
-                color: #27ae60 !important;
+                color: #3d85c6 !important;
                 font-weight: 700 !important;
                 letter-spacing: -0.5px !important;
             }
@@ -47,9 +42,9 @@ def render_sidebar(config: Config):
             }
             
             [data-testid="stSidebar"] button:hover {
-                border-color: #27ae60 !important;
-                color: #27ae60 !important;
-                box-shadow: 0 0 10px rgba(39, 174, 96, 0.2) !important;
+                border-color: #3d85c6 !important;
+                color: #3d85c6 !important;
+                box-shadow: 0 0 10px rgba(61, 133, 198, 0.2) !important;
             }
 
             /* Horizontal dividers */
@@ -67,7 +62,7 @@ def render_sidebar(config: Config):
         unsafe_allow_html=True,
     )
 
-    st.sidebar.header("Taiwan Analysis Mode")
+    st.sidebar.header("Analysis Mode")
 
     # Selection mode
     analysis_mode_short = st.sidebar.segmented_control(
@@ -93,7 +88,7 @@ def render_sidebar(config: Config):
 
     # --- 1. SHARED GLOBAL SETTINGS ---
     st.sidebar.markdown("---")
-    st.sidebar.subheader("⚙️ Taiwan Strategy Parameters")
+    st.sidebar.subheader("⚙️ Strategy Parameters")
 
     if analysis_mode != "Find Super Stars":
         ticker_input = st.sidebar.text_input(
@@ -107,16 +102,16 @@ def render_sidebar(config: Config):
         ]
     else:
         # Super Star Index Choice
-        st.sidebar.subheader("Taiwan Index Selection")
+        st.sidebar.subheader("Index Selection")
         index_data = load_index_constituents()
         index_choice = st.sidebar.selectbox(
             "Select Index to Scan",
             list(index_data.keys()),
-            help="Taiwan indices for scanning.",
+            help="Taiwan Stock 50: Blue Chips. Taiwan Stock 200: Benchmark index.",
         )
 
         if st.sidebar.button("🔄 Update Index Constituents"):
-            with st.spinner("Fetching latest Taiwan market data..."):
+            with st.spinner("Fetching latest market data..."):
                 results = update_index_data()
                 st.sidebar.success("Updated!")
                 for idx, msg in results.items():
@@ -130,10 +125,7 @@ def render_sidebar(config: Config):
         "Backtest Years", 1, 10, config.backtest_years
     )
     config.init_capital = st.sidebar.number_input(
-        "Initial Capital (TWD)",
-        value=float(config.init_capital),
-        format="%.0f",
-        step=10000.0,
+        "Initial Capital", value=float(config.init_capital), format="%.2f", step=100.0
     )
 
     # Display as percentage but store as decimal
@@ -247,28 +239,19 @@ def render_sidebar(config: Config):
     )
 
     with st.sidebar.expander("Costs & Taxes"):
-        profile_options = {
-            "default": "一般券商 (Default)",
-            "fubon_twn": "富邦證券",
-            "first_twn": "第一證券",
-        }
-        selected_label = st.selectbox(
+        profile_options = ["default", "cmc_markets", "tiger_au"]
+        config.cost_profile = st.selectbox(
             "Broker Profile",
-            list(profile_options.values()),
-            index=list(profile_options.keys()).index(config.cost_profile)
+            profile_options,
+            index=profile_options.index(config.cost_profile)
             if config.cost_profile in profile_options
             else 0,
         )
-        # Map label back to profile key
-        config.cost_profile = [
-            k for k, v in profile_options.items() if v == selected_label
-        ][0]
         config.annual_income = st.number_input(
-            "Annual Income (NTD)",
+            "Annual Income (for Tax)",
             value=float(config.annual_income),
-            format="%.0f",
-            step=50000.0,
-            help="For context in dashboard reporting.",
+            format="%.2f",
+            step=5000.0,
         )
         # Display as percentage (0-5%) but store as decimal (0-0.05)
         buffer_val = st.slider(
@@ -278,7 +261,7 @@ def render_sidebar(config: Config):
             float(config.hurdle_risk_buffer * 100),
             step=0.1,
             format="%.1f%%",
-            help="Extra profit margin required after fees to trigger a BUY.",
+            help="Extra profit margin required after fees and tax to trigger a BUY.",
         )
         config.hurdle_risk_buffer = buffer_val / 100.0
 
@@ -287,7 +270,7 @@ def render_sidebar(config: Config):
     )
 
     st.sidebar.markdown("---")
-    run_analysis = st.sidebar.button("🚀 Run Taiwan Analysis", width="stretch")
+    run_analysis = st.sidebar.button("🚀 Run Analysis", width="stretch")
 
     return (
         analysis_mode,

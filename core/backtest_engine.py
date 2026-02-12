@@ -18,7 +18,7 @@ from core.config import Config
 from core.model_builder import ModelBuilder
 from core.utils import (
     format_date_with_weekday,
-    get_taiwan_trading_days,
+    get_twn_trading_days,
     calculate_trading_days_ahead,
     validate_buy_capacity,
 )
@@ -38,17 +38,16 @@ class BacktestEngine:
         """
         Taiwan Fee Structure:
         - Brokerage: 0.1425% (standard online discount applied per profile)
-        - STT: 0.3% (sell side only, grouped with fees per user preference)
+        - STT: 0.3% (sell side only)
         - Minimum Brokerage: NT$20
         """
         # 1. Brokerage Fee
-        # Default is standard rate (0.1425%) with no discount
         broker_rate = 0.001425
 
         if self.config.cost_profile == "fubon_twn":
-            broker_rate = 0.001425 * 0.4  # ~1.8-2.8折, using conservative 0.057%
+            broker_rate = 0.001425 * 0.4
         elif self.config.cost_profile == "first_twn":
-            broker_rate = 0.001425 * 0.6  # ~2.8-3.8折, using conservative 0.0855%
+            broker_rate = 0.001425 * 0.6
 
         brokerage = max(20.0, trade_value * broker_rate)
 
@@ -56,178 +55,134 @@ class BacktestEngine:
         stt = trade_value * 0.003 if is_sell else 0.0
         return brokerage + stt
 
-    def calculate_income_tax(self, income: float) -> float:
-        """
-        Taiwan Individual Income Tax (2024 Brackets).
-
-        Note: Domestic stock capital gains are technically 0%, but we implement
-        the logic for hurdle-aware income context as requested.
-        """
-        if income <= 560000:
-            return income * 0.05
-        if income <= 1260000:
-            return income * 0.12 - 39200
-        if income <= 2520000:
-            return income * 0.20 - 140000
-        if income <= 4720000:
-            return income * 0.30 - 392000
-        return income * 0.40 - 864000
-
-    def get_marginal_tax_rate(self, income: float) -> float:
-        """Determines the marginal tax rate based on 2024 Taiwan brackets."""
-        if income <= 560000:
-            return 0.05
-        if income <= 1260000:
-            return 0.12
-        if income <= 2520000:
-            return 0.20
-        if income <= 4720000:
-            return 0.30
-        return 0.40
-
     def get_hurdle_rate(self, current_capital: float) -> float:
         """Calculates the minimum return % required to break even in Taiwan."""
         if current_capital <= 0:
             return 0.0
 
-        # 1. Transactional Friction (Grouped Brokerage + STT)
         entry_fee = self.calculate_fees(current_capital, is_sell=False)
         exit_fee = self.calculate_fees(current_capital, is_sell=True)
         fees_pct = (entry_fee + exit_fee) / current_capital
 
-        # 2. Risk Buffer (No Income Tax gross-up for Taiwan domestic stocks)
-        # As per current regulation, CGT is 0%, so we do not apply the tax multiplier.
-        # This keeps the hurdle rate focused on fees + pure risk buffer.
         return fees_pct + self.config.hurdle_risk_buffer
-
-    def _get_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
-        if data is None or data.empty:
-            return pd.DataFrame()
-        df = data.copy()
-
-        # Standard indicators
-        df["MA5"] = df["Close"].rolling(5).mean()
-        df["MA20"] = df["Close"].rolling(20).mean()
-        delta = df["Close"].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-        df["RSI"] = 100 - (100 / (1 + (gain / (loss + 1e-9))))
-        df["MACD"] = (
-            df["Close"].ewm(span=12, adjust=False).mean()
-            - df["Close"].ewm(span=26, adjust=False).mean()
-        )
-        df["Signal_Line"] = df["MACD"].ewm(span=9, adjust=False).mean()
-        df["Daily_Return"] = df["Close"].pct_change(fill_method=None)
-
-        # KD
-        low_9 = df["Low"].rolling(9).min()
-        high_9 = df["High"].rolling(9).max()
-        # Safeguard against empty rolling windows
-        h_l_diff = high_9 - low_9
-        h_l_diff = h_l_diff.replace(0, np.nan)  # Avoid division by zero
-        rsv = ((df["Close"] - low_9) / (h_l_diff + 1e-9)) * 100
-        rsv = rsv.fillna(50)  # Default RSV to 50 when undefined
-        df["K"] = rsv.ewm(com=2).mean()
-        df["D"] = df["K"].ewm(com=2).mean()
-
-        # Fill missing new features if not present
-        for col in [
-            "Foreign_Net",
-            "Trust_Net",
-            "Dealer_Net",
-            "Margin_Balance",
-            "Short_Balance",
-            "Revenue_YoY",
-            "USD_TWD",
-            "SOX_Index",
-            "NASDAQ_Index",
-        ]:
-            if col not in df.columns:
-                df[col] = 0.0
-
-        # CLEANUP: Handle Inf values created by division (e.g. RSI gain/loss)
-        df.replace([np.inf, -np.inf], np.nan, inplace=True)
-        df.ffill(inplace=True)
-        result = df.dropna()
-
-        if result.empty:
-            logging.warning(
-                f"_get_indicators returned empty dataframe after dropna. Original size: {len(data)}"
-            )
-
-        return result
 
     def _prepare_data(
         self, ticker: str
     ) -> Tuple[Optional[pd.DataFrame], Optional[List[str]], Optional[Dict[str, str]]]:
+        """Prepare and filter dataframe for backtesting."""
         raw_data = self.model_builder.fetch_data(ticker, self.config.backtest_years)
         if raw_data.empty:
             return None, None, {"error": f"No data for {ticker}"}
-        df = self._get_indicators(raw_data)
-        if df.empty:
-            return None, None, {"error": f"Insufficient data for {ticker}"}
 
-        official_start = pd.Timestamp.now() - pd.DateOffset(
+        df = raw_data.copy()
+
+        # 1. Basic Moving Averages
+        df["MA5"] = df["Close"].rolling(window=5).mean()
+        df["MA20"] = df["Close"].rolling(window=20).mean()
+        df["MA50"] = df["Close"].rolling(window=50).mean()
+
+        # 2. RSI
+        delta = df["Close"].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / (loss + 1e-9)
+        df["RSI"] = 100 - (100 / (1 + rs))
+
+        # 3. MACD
+        exp1 = df["Close"].ewm(span=12, adjust=False).mean()
+        exp2 = df["Close"].ewm(span=26, adjust=False).mean()
+        df["MACD"] = exp1 - exp2
+        df["Signal_Line"] = df["MACD"].ewm(span=9, adjust=False).mean()
+
+        # 4. Bollinger Bands
+        df["BB_Middle"] = df["Close"].rolling(window=20).mean()
+        df["BB_Std"] = df["Close"].rolling(window=20).std()
+        df["BB_Upper"] = df["BB_Middle"] + (2 * df["BB_Std"])
+        df["BB_Lower"] = df["BB_Middle"] - (2 * df["BB_Std"])
+        df["BB_Width"] = (df["BB_Upper"] - df["BB_Lower"]) / (df["BB_Middle"] + 1e-9)
+
+        # 5. ATR
+        high_low = df["High"] - df["Low"]
+        high_close = np.abs(df["High"] - df["Close"].shift())
+        low_close = np.abs(df["Low"] - df["Close"].shift())
+        tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+        df["ATR"] = tr.rolling(window=14).mean()
+
+        # 6. KD (Taiwan Specific)
+        low_9 = df["Low"].rolling(9).min()
+        high_9 = df["High"].rolling(9).max()
+        h_l_diff = high_9 - low_9
+        h_l_diff = h_l_diff.replace(0, np.nan)
+        rsv = ((df["Close"] - low_9) / (h_l_diff + 1e-9)) * 100
+        rsv = rsv.fillna(50)
+        df["K"] = rsv.ewm(com=2).mean()
+        df["D"] = df["K"].ewm(com=2).mean()
+
+        # 7. Market Context Integration
+        self.model_builder._ensure_market_data()
+        m_data = self.model_builder._market_data
+        if m_data is not None and not m_data.empty:
+            market_subset = m_data.shift(1).reindex(df.index).ffill()
+            df = df.join(market_subset)
+
+        df["Daily_Return"] = df["Close"].pct_change(fill_method=None)
+
+        # Clean up
+        df.replace([np.inf, -np.inf], np.nan, inplace=True)
+        df.ffill(inplace=True)
+        df.fillna(0, inplace=True)
+
+        # Determine the official start/end dates for trading
+        official_start = pd.Timestamp.now().normalize() - pd.DateOffset(
             years=self.config.backtest_years
         )
         official_end = pd.Timestamp(df.index[-1])
-        # Use official Taiwan Stock Exchange (XTAI) calendar for trading days
-        self.trading_days = get_taiwan_trading_days(official_start, official_end)
+        self.trading_days = get_twn_trading_days(official_start, official_end)
 
         # Normalize both to UTC-naive midnight for robust comparison
-        df.index = pd.to_datetime(df.index).tz_localize(None).normalize()
+        df.index = pd.DatetimeIndex(df.index).tz_localize(None).normalize()
         trading_days_normalized = (
-            pd.to_datetime(self.trading_days).tz_localize(None).normalize()
+            pd.DatetimeIndex(self.trading_days).tz_localize(None).normalize()
+            if self.trading_days is not None
+            else pd.DatetimeIndex([])
         )
 
+        # Filter dataframe to only include valid trading days
         df = df[df.index.isin(trading_days_normalized)]
-
         if df.empty:
             logging.warning(
-                f"Dataframe empty for {ticker} after applying market calendar filter. Index: {raw_data.index[:1]} to {raw_data.index[-1:]}. Calendar: {self.trading_days[:1]} to {self.trading_days[-1:]}"
+                f"Dataframe empty for {ticker} after applying market calendar filter."
             )
-            return None, None, {"error": f"Calendar mismatch for {ticker}"}
+            return None, None, {"error": f"No valid trading days for {ticker}"}
 
+        # Synchronized Features List
         features = [
-            # Base OHLCV (5)
             "Open",
             "High",
             "Low",
             "Close",
             "Volume",
-            # Moving Averages (3)
             "MA5",
             "MA20",
             "MA50",
-            # Momentum Indicators (3)
             "RSI",
             "MACD",
             "Signal_Line",
-            # Bollinger Bands (3)
             "BB_Upper",
             "BB_Lower",
             "BB_Width",
-            # Volatility (1)
             "ATR",
-            # Stochastic (2)
             "K",
             "D",
-            # Taiwan Institutional Flows (3)
-            "Foreign_Net",
-            "Trust_Net",
-            "Dealer_Net",
-            # Taiwan Margin Trading (2)
-            "Margin_Balance",
-            "Short_Balance",
-            # Taiwan Fundamentals (1)
-            "Revenue_YoY",
-            # Global Market Context (3)
-            "USD_TWD",
-            "SOX_Index",
-            "NASDAQ_Index",
-            # Returns (1)
             "Daily_Return",
         ]
+
+        # Add dynamic market features (Institutional flows, etc. for TWN)
+        if m_data is not None:
+            for col in m_data.columns:
+                if col in df.columns:
+                    features.append(col)
+
         return df, features, None
 
     def _core_run(
@@ -269,7 +224,7 @@ class BacktestEngine:
                 capital if position == 0 else (position * current_price),
             )
 
-            # Execution Logic with ±10% Price Limits
+            # Execution Logic with ±10% Price Limits (Taiwan Specific)
             limit_up = prev_close * 1.10
             limit_down = prev_close * 0.90
 
@@ -292,13 +247,13 @@ class BacktestEngine:
                     positions_after={ticker: new_position},
                     notes=f"Initial purchase. {'(Cap @ 10%)' if current_price > limit_up else ''}",
                 )
-                position, buy_price, buy_date, buy_fees, capital = (
+                position, buy_price, buy_date, buy_fees = (
                     new_position,
                     exec_price,
                     date,
                     fees,
-                    0,
                 )
+                capital = 0
 
             elif position > 0:
                 min_hold_passed = False
@@ -348,13 +303,16 @@ class BacktestEngine:
                     total_friction = self.calculate_fees(val, is_sell=True)
                     new_capital = val - total_friction
 
-                    settlement_date = (
-                        calculate_trading_days_ahead(date, 2, self.trading_days)
-                        if self.trading_days is not None
-                        else (date + pd.DateOffset(days=2))
-                    )
+                    # T+2 Settlement for Taiwan
+                    settlement_date = None
+                    if self.trading_days is not None:
+                        settlement_date = calculate_trading_days_ahead(
+                            date, 2, self.trading_days
+                        )
+
                     if settlement_date is None:
-                        settlement_date = date + pd.DateOffset(days=1)
+                        settlement_date = date + pd.DateOffset(days=2)
+
                     settlement_queue.append((settlement_date, new_capital))
 
                     self.ledger.add_entry(
@@ -369,7 +327,7 @@ class BacktestEngine:
                         cash_after=new_capital,
                         positions_before={ticker: position},
                         positions_after={},
-                        notes=f"{reason} triggered. Funds available {settlement_date.strftime('%Y-%m-%d')}. {'(Floor @ -10%)' if sell_price == limit_down else ''}",
+                        notes=f"{reason} triggered. Funds available {settlement_date.strftime('%Y-%m-%d') if hasattr(settlement_date, 'strftime') else settlement_date}. {'(Floor @ -10%)' if sell_price == limit_down else ''}",
                     )
 
                     trades.append(
@@ -415,15 +373,14 @@ class BacktestEngine:
         df_tuple = self._prepare_data(ticker)
         df, features, error = df_tuple
         if error or df is None or features is None:
-            return error or {"error": "Failed to prepare data"}
+            return error if error else {"error": "Failed to prepare data"}
         all_preds = self._get_bulk_predictions(df, features, model_type)
 
         def signal(i, df_inner, features_inner, current_cap):
-            hurdle = self.get_hurdle_rate(current_cap)
             current_price = float(df_inner.iloc[i]["Close"])
-            if current_price <= 1e-9:
-                return False
-            pred_return = (all_preds[i] - current_price) / current_price
+            hurdle = self.get_hurdle_rate(current_cap)
+            pred = all_preds[i]
+            pred_return = (pred - current_price) / current_price
             return pred_return > hurdle
 
         result = self._core_run(ticker, signal, df, features)
@@ -444,45 +401,35 @@ class BacktestEngine:
         df_tuple = self._prepare_data(ticker)
         df, features, error = df_tuple
         if error or df is None or features is None:
-            return error or {"error": "Failed to prepare data"}
+            return error if error else {"error": "Failed to prepare data"}
         committee_preds = {}
         for m_type in models:
             self.config.model_type = m_type
             self.model_builder.load_or_build(ticker)
-            # Force 1D array to prevent indexing errors on scalar returns
-            preds = self._get_bulk_predictions(df, features, m_type)
-            committee_preds[m_type] = np.atleast_1d(preds)
+            committee_preds[m_type] = self._get_bulk_predictions(df, features, m_type)
 
         def signal(i, df_inner, features_inner, current_cap):
-            # Ensure index is integer
-            idx = int(i)
-            votes, hurdle = 0, self.get_hurdle_rate(current_cap)
-            current_price = float(df_inner.iloc[idx]["Close"])
-            tb_model = tie_breaker or models[0]
-            tb_bullish = False
+            votes = 0
+            current_price = float(df_inner.iloc[i]["Close"])
+            hurdle = self.get_hurdle_rate(current_cap)
+            tie_breaker_bullish = False
+            tb_model = tie_breaker if tie_breaker else models[0]
 
-            for m in models:
-                # Safe access with bounds checking
-                preds_arr = committee_preds[m]
-                if idx >= len(preds_arr):
-                    continue
+            for m_type in models:
+                pred = committee_preds[m_type][i]
+                pred_return = (pred - current_price) / current_price
+                is_m_bullish = pred_return > hurdle
 
-                pred_price = float(preds_arr[idx])
-
-                # Safety check for zero price
-                if current_price <= 1e-9:
-                    bullish = False
-                else:
-                    bullish = (pred_price - current_price) / current_price > hurdle
-
-                if bullish:
+                if is_m_bullish:
                     votes += 1
-                if m == tb_model:
-                    tb_bullish = bullish
+                if m_type == tb_model:
+                    tie_breaker_bullish = is_m_bullish
 
-            return votes > (len(models) / 2) or (
-                votes == len(models) / 2 and tb_bullish
-            )
+            if votes > (len(models) / 2):
+                return True
+            if votes == (len(models) / 2):
+                return tie_breaker_bullish
+            return False
 
         result = self._core_run(ticker, signal, df, features)
         if "error" not in result:
@@ -494,64 +441,48 @@ class BacktestEngine:
     def _get_bulk_predictions(
         self, df: pd.DataFrame, features: List[str], model_type: str
     ) -> np.ndarray:
-        # Validate Input Shape
-        if df.empty or len(features) == 0:
-            logging.warning(f"Empty df or features for {model_type}")
-            return np.zeros(len(df), dtype=np.float32)
-
         X_all = df[features].values.astype(np.float32)
 
-        # Guard against single-feature mismatch
-        if X_all.ndim == 1:
-            X_all = X_all.reshape(-1, 1)
-
-        # Ensure model is ready
-        if self.model_builder.model is None:
-            logging.warning(f"Model is None for {model_type}")
-            return np.zeros(len(df), dtype=np.float32)
-
-        if model_type == "lstm" and self.model_builder.scaler:
-            # Use sequence_length from model_builder for consistency
+        if (
+            model_type == "lstm"
+            and self.model_builder.model is not None
+            and self.model_builder.scaler is not None
+        ):
             seq_len = self.model_builder.sequence_length
             X_scaled = self.model_builder.scaler.transform(X_all).astype(np.float32)
-
-            # Create sequences: at time i, use [i-seq_len:i] to predict i+1
-            # This matches training where [i:i+seq_len] predicts target[i+seq_len]=Close[i+seq_len+1]
             valid_indices = np.arange(seq_len, len(df))
             X_seq = np.array(
                 [X_scaled[i - seq_len : i] for i in valid_indices], dtype=np.float32
             )
 
             if len(X_seq) == 0:
-                logging.warning(
-                    f"Not enough data for LSTM sequences (need >{seq_len} days)"
-                )
                 return np.zeros(len(df), dtype=np.float32)
 
             raw_preds = self.model_builder.model.predict(
                 X_seq, batch_size=64, verbose=0
             ).flatten()
 
-            # Inverse transform LSTM predictions if target was scaled
             if self.model_builder.target_scaler is not None:
                 raw_preds = self.model_builder.target_scaler.inverse_transform(
                     raw_preds.reshape(-1, 1)
                 ).flatten()
 
-            all_preds = np.full(len(df), raw_preds[0], dtype=np.float32)
+            all_preds = np.zeros(len(df), dtype=np.float32)
             all_preds[seq_len:] = raw_preds
             return all_preds
 
-        elif model_type == "prophet":
-            p_df = pd.DataFrame({"ds": df.index}).copy()
-            p_df["ds"] = p_df["ds"].dt.tz_localize(None) + pd.DateOffset(days=1)
-            return self.model_builder.model.predict(p_df)["yhat"].values.astype(
-                np.float32
-            )
+        elif model_type == "prophet" and self.model_builder.model is not None:
+            prophet_df = pd.DataFrame({"ds": df.index}).copy()
+            prophet_df["ds"] = prophet_df["ds"].dt.tz_localize(None)
+            prophet_df["ds"] = prophet_df["ds"] + pd.DateOffset(days=1)
+            forecast = self.model_builder.model.predict(prophet_df)
+            return forecast["yhat"].values.astype(np.float32)
 
-        elif self.model_builder.scaler:
-            return self.model_builder.model.predict(
-                self.model_builder.scaler.transform(X_all)
-            ).astype(np.float32)
+        elif (
+            self.model_builder.model is not None
+            and self.model_builder.scaler is not None
+        ):
+            X_scaled = self.model_builder.scaler.transform(X_all).astype(np.float32)
+            return self.model_builder.model.predict(X_scaled).astype(np.float32)
 
         return np.zeros(len(df), dtype=np.float32)
