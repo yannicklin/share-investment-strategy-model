@@ -18,13 +18,13 @@ make setup || { echo "⚠️  make setup had issues, continuing..."; }
 
 # 3. Upgrade curl-cffi AFTER setup (to override UV's resolved version)
 echo "⬆️  Upgrading curl-cffi to >=0.7.2 for Chrome 142 support..."
-.venv/bin/pip install --upgrade 'curl-cffi>=0.7.2' || {
+uv run pip install --upgrade 'curl-cffi>=0.7.2' || {
     echo "⚠️  curl-cffi upgrade failed, relying on CURL_IMPERSONATE=chrome131"
 }
 
 # 4. Verify final state (with error handling for older curl-cffi versions)
 echo "🔍 Verifying curl-cffi installation..."
-.venv/bin/python -c "
+uv run python -c "
 import curl_cffi
 print(f'✅ curl-cffi: {curl_cffi.__version__}')
 
