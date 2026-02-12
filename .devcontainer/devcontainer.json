@@ -2,10 +2,13 @@
   "name": "USA AI Trading System",
   "image": "mcr.microsoft.com/devcontainers/base:debian",
 
+  "containerEnv": {
+    "CURL_IMPERSONATE": "chrome131"
+  },
+
   "features": {
     "ghcr.io/devcontainers/features/python:1": {
-      "version": "3.12",
-      "installTools": "false"
+      "version": "3.12", "installTools": "false"
     },
     "ghcr.io/devcontainers-extra/features/uv:1": {},
     "ghcr.io/devcontainers/features/sshd:1": {}
@@ -26,6 +29,9 @@
         },
         "[python]": {
           "editor.defaultFormatter": "charliermarsh.ruff"
+        },
+        "terminal.integrated.env.linux": {
+          "CURL_IMPERSONATE": "chrome131"
         }
       }
     }
@@ -39,7 +45,7 @@
     }
   },
   
-  "postCreateCommand": "make setup",
+  "postCreateCommand": "bash .devcontainer/setup_chrome_fix.sh",
   "postStartCommand": "git pull",
   
   "remoteUser": "vscode"
