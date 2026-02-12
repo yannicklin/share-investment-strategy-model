@@ -312,6 +312,8 @@ class ModelBuilder:
         start_date = pd.Timestamp.now() - pd.DateOffset(years=10)
 
         market_df = pd.DataFrame()
+        successful_tickers = []
+        failed_tickers = []
 
         for name, ticker in market_tickers.items():
             try:
@@ -326,6 +328,8 @@ class ModelBuilder:
                 )
 
                 if df.empty:
+                    logging.warning(f"No data returned for {name} ({ticker})")
+                    failed_tickers.append(f"{name}({ticker})")
                     continue
 
                 # Clean and normalize
@@ -335,11 +339,21 @@ class ModelBuilder:
                     # Rename to prevent collision and identify source
                     col_name = f"MKT_{name}"
                     market_df[col_name] = df["Close"]
+                    successful_tickers.append(f"{name}({ticker})")
 
                     # Also add Returns for indices/macro (optional but useful)
                     # market_df[f"{col_name}_Ret"] = df["Close"].pct_change()
+                else:
+                    logging.warning(f"No 'Close' column for {name} ({ticker})")
+                    failed_tickers.append(f"{name}({ticker})")
             except Exception as e:
                 logging.warning(f"Failed to fetch market data {name} ({ticker}): {e}")
+                failed_tickers.append(f"{name}({ticker})")
+
+        # Log summary
+        logging.info(f"✅ Successfully fetched {len(successful_tickers)} market features: {', '.join(successful_tickers)}")
+        if failed_tickers:
+            logging.warning(f"❌ Failed to fetch {len(failed_tickers)} market features: {', '.join(failed_tickers)}")
 
         # Forward fill to handle different trading calendars (e.g. US holidays vs AU)
         self._market_data = market_df.ffill().fillna(0)
