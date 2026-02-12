@@ -12,18 +12,17 @@ else
     echo "ℹ️  CURL_IMPERSONATE already in ~/.bashrc"
 fi
 
-# 2. Pre-install latest curl-cffi BEFORE dependencies get locked
-echo "📦 Pre-installing curl-cffi>=0.7.2 for Chrome 142 support..."
-uv pip install --no-deps 'curl-cffi>=0.7.2' --index-url https://pypi.org/simple || {
-    echo "⚠️  curl-cffi pre-install failed, continuing..."
-}
-
-# 3. Run project setup (will preserve curl-cffi if already installed)
+# 2. Run project setup first
 echo "📦 Running make setup..."
 make setup || { echo "⚠️  make setup had issues, continuing..."; }
 
-# 4. Verify final state
-echo "" (with error handling for older curl-cffi versions)
+# 3. Upgrade curl-cffi AFTER setup (to override UV's resolved version)
+echo "⬆️  Upgrading curl-cffi to >=0.7.2 for Chrome 142 support..."
+uv pip install --upgrade 'curl-cffi>=0.7.2' --index-url https://pypi.org/simple || {
+    echo "⚠️  curl-cffi upgrade failed, relying on CURL_IMPERSONATE=chrome131"
+}
+
+# 4. Verify final state (with error handling for older curl-cffi versions)
 echo "🔍 Verifying curl-cffi installation..."
 python3 -c "
 import curl_cffi
