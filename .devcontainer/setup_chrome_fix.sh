@@ -45,12 +45,7 @@ if command -v uv >/dev/null 2>&1; then
     echo "ℹ️  curl-cffi>=0.7.2 upgraded in Codespaces (adds chrome142 support)"
 fi
 echo ""
-echo "🚀 Starting application..."
+echo "ℹ️  Application will auto-start via postStartCommand"
 echo "   Access the dashboard at: http://localhost:8502"
-echo ""
-
-# Start Streamlit in background
-cd /workspaces/share-investment-strategy-model
-nohup make run > /tmp/streamlit.log 2>&1 &
 echo "   View logs: tail -f /tmp/streamlit.log"
 
