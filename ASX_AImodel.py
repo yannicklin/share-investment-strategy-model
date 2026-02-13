@@ -20,10 +20,11 @@ logging.basicConfig(level=logging.WARNING)
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 try:
     import tensorflow as tf
-    # TensorFlow 2.x compatible logging suppression
-    tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
-    import logging as tf_logger
-    tf_logger.getLogger('tensorflow').setLevel(logging.ERROR)
+
+    # TensorFlow 2.x logging suppression (modern API)
+    tf.get_logger().setLevel('ERROR')
+    # Suppress autograph retracing warnings
+    tf.autograph.set_verbosity(0)
 except (ImportError, AttributeError):
     pass
 from core.config import load_config
