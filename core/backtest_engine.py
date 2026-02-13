@@ -118,7 +118,15 @@ class BacktestEngine:
         df["K"] = rsv.ewm(com=2).mean()
         df["D"] = df["K"].ewm(com=2).mean()
 
-        # 7. Market Context Integration
+        # 7. FinMind Institutional Data (Taiwan Only)
+        if ticker.endswith('.TW'):
+            self.model_builder._ensure_finmind_data(ticker)
+            fm_data = self.model_builder._finmind_data
+            if fm_data is not None and not fm_data.empty:
+                finmind_subset = fm_data.shift(1).reindex(df.index).ffill()
+                df = df.join(finmind_subset)
+
+        # 8. Market Context Integration
         self.model_builder._ensure_market_data()
         m_data = self.model_builder._market_data
         if m_data is not None and not m_data.empty:
@@ -177,7 +185,14 @@ class BacktestEngine:
             "Daily_Return",
         ]
 
-        # Add dynamic market features (Institutional flows, etc. for TWN)
+        # Add dynamic FinMind features (Taiwan institutional data)
+        fm_data = self.model_builder._finmind_data
+        if fm_data is not None and not fm_data.empty:
+            for col in fm_data.columns:
+                if col in df.columns:
+                    features.append(col)
+
+        # Add dynamic market features
         if m_data is not None:
             for col in m_data.columns:
                 if col in df.columns:
