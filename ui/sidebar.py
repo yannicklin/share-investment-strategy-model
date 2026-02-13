@@ -239,7 +239,7 @@ def render_sidebar(config: Config):
     )
 
     with st.sidebar.expander("Costs & Taxes"):
-        profile_options = ["default", "cmc_markets", "tiger_au"]
+        profile_options = ["default", "fubon_twn", "first_twn"]
         config.cost_profile = st.selectbox(
             "Broker Profile",
             profile_options,
