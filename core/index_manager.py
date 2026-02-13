@@ -179,59 +179,71 @@ def load_index_constituents() -> Dict[str, List[str]]:
     return DEFAULT_INDEX_DATA
 
 
+from io import StringIO
+
+
 def update_index_data() -> Dict[str, str]:
     """Fetches latest constituents from Wikipedia tables and updates cache."""
     updated_counts = {}
     new_data = {}
 
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+
     for name, url in SOURCE_URLS.items():
         try:
-            # For US indices on Wikipedia, pandas read_html is very effective
-            tables = pd.read_html(url)
+            # Use requests with headers to avoid 403 Forbidden from Wikipedia
+            response = requests.get(url, headers=headers, timeout=15)
+            if response.status_code != 200:
+                raise ConnectionError(f"HTTP {response.status_code}")
 
-            if name == "Dow 30":
-                df = tables[1]  # Usually the second table
-                tickers = df.iloc[:, 1].tolist()  # Symbol column
-            elif name == "Nasdaq 100":
-                df = tables[4]  # Usually the components table
-                tickers = df.iloc[:, 1].tolist()
-            elif name == "S&P 500":
-                df = tables[0]
-                tickers = df.iloc[:, 0].tolist()
+            tables = pd.read_html(StringIO(response.text))
+
+            tickers = []
+            # Robustly find the table with symbols
+            for df in tables:
+                cols = [str(c).lower() for c in df.columns]
+                # Look for standard symbol columns
+                symbol_col = None
+                for i, col in enumerate(cols):
+                    if col in ["symbol", "ticker", "ticker symbol"]:
+                        symbol_col = i
+                        break
+
+                if symbol_col is not None:
+                    # Dow 30/Nasdaq/S&P usually have symbols in these columns
+                    raw_list = df.iloc[:, symbol_col].dropna().astype(str).tolist()
+                    # Filter out header-like strings or junk
+                    tickers = [
+                        t.strip().upper().replace(".", "-")
+                        for t in raw_list
+                        if 1 <= len(t.strip()) <= 6
+                        and any(c.isalpha() for c in t)  # Must contain letters
+                    ]
+
+                    # Verification: Dow 30 (~30), Nasdaq (~100), S&P (~500)
+                    min_expected = {"Dow 30": 25, "Nasdaq 100": 95, "S&P 500": 490}
+                    if len(tickers) >= min_expected.get(name, 5):
+                        break  # Found the right table
+                    else:
+                        tickers = []  # Keep looking
+
+            if tickers:
+                new_data[name] = sorted(list(set(tickers)))
+                updated_counts[name] = f"Updated {len(tickers)} tickers"
             else:
-                tickers = []
-
-            # Clean tickers
-            clean_tickers = sorted(
-                list(
-                    set(
-                        [
-                            str(t)
-                            .strip()
-                            .replace(
-                                ".", "-"
-                            )  # Wikipedia uses . for classes, yfinance uses -
-                            for t in tickers
-                            if isinstance(t, str) and len(t) > 0 and len(t) < 10
-                        ]
-                    )
-                )
-            )
-
-            if len(clean_tickers) > 5:
-                new_data[name] = clean_tickers
-                updated_counts[name] = f"Updated {len(clean_tickers)} tickers"
-            else:
-                updated_counts[name] = "Failed: No tickers found"
+                updated_counts[name] = "Failed: No valid table found"
                 new_data[name] = DEFAULT_INDEX_DATA.get(name, [])
 
         except Exception as e:
             updated_counts[name] = f"Failed: {str(e)}"
             new_data[name] = DEFAULT_INDEX_DATA.get(name, [])
 
-    # Save to cache
-    os.makedirs("data/models", exist_ok=True)
-    with open(CACHE_FILE, "w") as f:
-        json.dump(new_data, f)
+    # Save to cache if any sync was successful
+    if any("Updated" in v for v in updated_counts.values()):
+        os.makedirs("data/models", exist_ok=True)
+        with open(CACHE_FILE, "w") as f:
+            json.dump(new_data, f)
 
     return updated_counts

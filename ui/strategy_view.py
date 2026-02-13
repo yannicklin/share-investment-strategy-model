@@ -24,6 +24,12 @@ def render_strategy_sensitivity(ticker, ticker_res, models=None, tie_breaker=Non
 
     st.header(f"⏳ Time-Span Comparison: {ticker}{etf_label}")
 
+    # Display company name if available
+    metadata = ticker_res.get("_metadata", {})
+    company_name = metadata.get("company_name", "")
+    if company_name:
+        st.subheader(f"{company_name}")
+
     # Dynamic Decision Engine Description
     if models and len(models) > 1:
         m_count = len(models)

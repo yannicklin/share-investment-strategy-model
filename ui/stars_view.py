@@ -107,16 +107,20 @@ def render_super_stars(index_name, all_ticker_res, models=None, tie_breaker=None
         fig.update_layout(yaxis_tickformat=".2%")
         st.plotly_chart(fig, width="stretch")
 
-        # 3. Drill-down for winners
+        # Drill-down for winners
         st.subheader("Detailed Look at Winners")
-        # Creating a safe list of labels for tabs
-        tab_labels = [row["Ticker"] for _, row in df_top10.iterrows()]
+        # Ensure labels are strings for Streamlit tabs
+        tab_labels = [str(t["Ticker"]) for t in summary[:10]]
 
         tabs = st.tabs(tab_labels)
         for i in range(len(tab_labels)):
             with tabs[i]:
                 ticker_symbol = tab_labels[i]
-                render_trade_details(ticker_symbol, all_ticker_res[ticker_symbol])
+                res = all_ticker_res[ticker_symbol]
+                company_name = res.get("company_name", "")
+                if company_name:
+                    st.subheader(f"{company_name}")
+                render_trade_details(ticker_symbol, res)
 
     # Show errors in an expander at the bottom
     if errors:
