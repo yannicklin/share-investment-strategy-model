@@ -29,7 +29,7 @@ def render_sidebar(config: Config):
             
             /* Sidebar Headers */
             [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
-                color: #3d85c6 !important;
+                color: #B22234 !important;
                 font-weight: 700 !important;
                 letter-spacing: -0.5px !important;
             }
@@ -42,9 +42,9 @@ def render_sidebar(config: Config):
             }
             
             [data-testid="stSidebar"] button:hover {
-                border-color: #3d85c6 !important;
-                color: #3d85c6 !important;
-                box-shadow: 0 0 10px rgba(61, 133, 198, 0.2) !important;
+                border-color: #B22234 !important;
+                color: #B22234 !important;
+                box-shadow: 0 0 10px rgba(178, 34, 52, 0.2) !important;
             }
 
             /* Horizontal dividers */
