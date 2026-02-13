@@ -38,15 +38,6 @@ class BacktestEngine:
         self, trade_value: float, shares: float = 0, is_sell: bool = False
     ) -> float:
         """USA Fee Structure including SEC/FINRA for sells."""
-        # Safety check for invalid cost profile
-        if self.config.cost_profile not in BROKERS:
-            logging.error(
-                f"❌ Invalid cost_profile '{self.config.cost_profile}'. Available: {list(BROKERS.keys())}"
-            )
-            # Fallback to first available broker
-            self.config.cost_profile = list(BROKERS.keys())[0]
-            logging.warning(f"⚠️ Falling back to {self.config.cost_profile}")
-        
         broker = BROKERS[self.config.cost_profile]
 
         # 1. Brokerage Fee
@@ -457,25 +448,16 @@ class BacktestEngine:
         self.ledger.clear()
 
         self.config.model_type = model_type
-        try:
-            load_status = self.model_builder.load_or_build(ticker)  # Load once
-        except Exception as e:
-            logging.error(f"❌ Model loading failed for {ticker}: {e}", exc_info=True)
-            return {"error": f"Model loading failed: {str(e)}"}
+        self.model_builder.load_or_build(ticker)  # Load once
 
         # Prepare filtered data (trading days only)
-        logging.info(f"📊 Preparing data for {ticker}...")
+        df_tuple = self._prepare_data(ticker)
         df, features, error = df_tuple
         if error or df is None or features is None:
-            logging.error(f"❌ Data preparation failed for {ticker}: {error}")
             return error if error else {"error": "Failed to prepare data"}
-        
-        logging.info(f"✅ Data prepared: {len(df)} rows, {len(features)} features")
 
         # Bulk pre-calculate predictions on FILTERED data
-        try:
-            all_preds = self._get_bulk_predictions(df, features, model_typeer}: {e}", exc_info=True)
-            return {"error": f"Prediction failed: {str(e)}"}
+        all_preds = self._get_bulk_predictions(df, features, model_type)
 
         def signal(i, df_inner, features_inner, current_cap):
             current_price = float(df_inner.iloc[i]["Close"])
@@ -484,14 +466,10 @@ class BacktestEngine:
             pred_return = (pred - current_price) / current_price
             return pred_return > hurdle
 
-        logging.info(f"▶️ Running core backtest loop for {ticker}...")
-        try:
-            result = self._core_run(ticker, signal, df, features)
-            logging.info(f"✅ Backtest completed: ROI={result.get('roi', 0):.2%}, Trades={result.get('total_trades', 0)}")
-        except Exception as e:
-            logging.error(f"❌ Core backtest failed for {ticker}: {e}", exc_info=True)
-        try:
-            result = self._core_run(ticker, signal, df, features
+        result = self._core_run(ticker, signal, df, features)
+
+        # Save ledger to file and clear from memory
+        if "error" not in result:
             ledger_filename = f"{ticker}_algorithm_{model_type}_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
             ledger_path = self.ledger.save_to_file(filename=ledger_filename)
             result["ledger_path"] = ledger_path
