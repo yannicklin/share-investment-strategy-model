@@ -13,8 +13,11 @@ import pandas as pd
 import os
 import logging
 
-# Set logging level to WARNING to reduce terminal noise
-logging.basicConfig(level=logging.WARNING)
+# Set logging level to INFO for detailed diagnostics
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 # Suppress TensorFlow noise early
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"

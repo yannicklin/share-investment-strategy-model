@@ -354,6 +354,8 @@ class ModelBuilder:
         logging.info(f"✅ Successfully fetched {len(successful_tickers)} market features: {', '.join(successful_tickers)}")
         if failed_tickers:
             logging.warning(f"❌ Failed to fetch {len(failed_tickers)} market features: {', '.join(failed_tickers)}")
+        
+        logging.info(f"📈 Total market data columns: {len(market_df.columns)} - {list(market_df.columns)}")
 
         # Forward fill to handle different trading calendars (e.g. US holidays vs AU)
         self._market_data = market_df.ffill().fillna(0)
@@ -441,6 +443,10 @@ class ModelBuilder:
                 if col in df.columns:
                     features.append(col)
 
+        # Log feature details for debugging
+        logging.debug(f"Total features prepared: {len(features)} - {features}")
+        logging.debug(f"Market features included: {[f for f in features if f.startswith('MKT_')]}")
+
         X = df[features].values
         y = df["Target"].values
         return X, y
@@ -453,15 +459,20 @@ class ModelBuilder:
         return np.array(X_seq), np.array(y_seq)
 
     def train(self, ticker: str):
+        logging.info(f"🎓 Starting training for {ticker} (model: {self.config.model_type})...")
         data = self.fetch_data(ticker, self.config.backtest_years)
         if data.empty:
+            logging.error(f"❌ No data fetched for {ticker}")
             raise ValueError(f"No data for {ticker}")
 
         X, y = self.prepare_features(data)
         if len(X) < 1:
+            logging.error(f"❌ Insufficient data after feature engineering for {ticker}: X shape={X.shape}")
             raise ValueError(
                 f"Insufficient data rows for {ticker} after feature engineering."
             )
+        
+        logging.info(f"📊 Training data prepared for {ticker}: X shape={X.shape}, y shape={y.shape}")
 
         self.scaler = self._init_scaler()
         X_scaled = self.scaler.fit_transform(X)
@@ -531,6 +542,8 @@ class ModelBuilder:
                 },
                 model_filename,
             )
+        
+        logging.info(f"✅ Training completed successfully for {ticker}, model saved to {model_filename}")
 
     def load_or_build(self, ticker: str) -> str:
         model_filename = os.path.join(
@@ -539,11 +552,13 @@ class ModelBuilder:
 
         # 1. Force train if requested or missing
         if self.config.rebuild_model or not os.path.exists(model_filename):
+            logging.info(f"🔧 Training new model for {ticker} (rebuild={self.config.rebuild_model}, exists={os.path.exists(model_filename)})")
             self.train(ticker)
             return "trained"
 
         try:
             # 2. Try loading bundle
+            logging.info(f"📂 Loading existing model for {ticker} from {model_filename}")
             data_bundle = joblib.load(model_filename)
             loaded_scaler = data_bundle["scaler"]
 
@@ -556,6 +571,7 @@ class ModelBuilder:
 
             X_sample, _ = self.prepare_features(sample_data)
             current_dim = X_sample.shape[1]
+            logging.info(f"📊 Feature dimensions for {ticker}: current={current_dim}, cached={loaded_scaler.n_features_in_ if hasattr(loaded_scaler, 'n_features_in_') else 'unknown'}")
 
             # Scaler feature count check
             if (
@@ -563,7 +579,7 @@ class ModelBuilder:
                 and loaded_scaler.n_features_in_ != current_dim
             ):
                 logging.warning(
-                    f"Feature mismatch for {ticker}: expected {current_dim}, found {loaded_scaler.n_features_in_}. Retraining..."
+                    f"⚠️ Feature mismatch for {ticker}: current={current_dim}, cached={loaded_scaler.n_features_in_}. Retraining..."
                 )
                 self.train(ticker)
                 return "retrained"
@@ -598,33 +614,39 @@ class ModelBuilder:
         self, current_data: np.ndarray, date: Optional[pd.Timestamp] = None
     ) -> float:
         if self.model is None:
+            logging.error("❌ Prediction failed: Model not loaded")
             raise ValueError("Model not loaded.")
-        m_type = self.config.model_type
-        if m_type == "prophet" and hasattr(self.model, "predict"):
-            future = pd.DataFrame(
-                {"ds": [(date + pd.DateOffset(days=1)).tz_localize(None)]}
-            )
-            return float(self.model.predict(future)["yhat"].iloc[0])
-        if m_type == "lstm" and hasattr(self.model, "predict"):
-            if len(current_data.shape) == 2:
-                X = self.scaler.transform(current_data)
-                pred = float(
-                    self.model.predict(
-                        X.reshape(1, self.sequence_length, -1), verbose=0
-                    )[0][0]
+        
+        try:
+            m_type = self.config.model_type
+            if m_type == "prophet" and hasattr(self.model, "predict"):
+                future = pd.DataFrame(
+                    {"ds": [(date + pd.DateOffset(days=1)).tz_localize(None)]}
                 )
-                # Inverse transform if target was scaled
-                if self.target_scaler is not None:
-                    pred = float(self.target_scaler.inverse_transform([[pred]])[0][0])
-                return pred
-            return 0.0
-        X_input = (
-            current_data[-1].reshape(1, -1)
-            if len(current_data.shape) == 2
-            else current_data.reshape(1, -1)
-        )
-        X_scaled = self.scaler.transform(X_input)
-        return float(self.model.predict(X_scaled)[0])
+                return float(self.model.predict(future)["yhat"].iloc[0])
+            if m_type == "lstm" and hasattr(self.model, "predict"):
+                if len(current_data.shape) == 2:
+                    X = self.scaler.transform(current_data)
+                    pred = float(
+                        self.model.predict(
+                            X.reshape(1, self.sequence_length, -1), verbose=0
+                        )[0][0]
+                    )
+                    # Inverse transform if target was scaled
+                    if self.target_scaler is not None:
+                        pred = float(self.target_scaler.inverse_transform([[pred]])[0][0])
+                    return pred
+                return 0.0
+            X_input = (
+                current_data[-1].reshape(1, -1)
+                if len(current_data.shape) == 2
+                else current_data.reshape(1, -1)
+            )
+            X_scaled = self.scaler.transform(X_input)
+            return float(self.model.predict(X_scaled)[0])
+        except Exception as e:
+            logging.error(f"❌ Prediction error: {e}", exc_info=True)
+            raise
 
     def get_latest_features(self, ticker: str) -> Optional[np.ndarray]:
         data = self.fetch_data(ticker, 1)
