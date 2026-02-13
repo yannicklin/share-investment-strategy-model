@@ -12,7 +12,7 @@ import json
 import os
 from typing import List, Dict
 
-CACHE_FILE = "data/models/index_cache.json"
+CACHE_FILE = "data/models/index_cache_twn.json"
 
 DEFAULT_INDEX_DATA = {
     "台股50 (Taiwan 50)": [
