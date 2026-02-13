@@ -133,8 +133,12 @@ class Config:
         default_factory=lambda: {
             "SP500": "^GSPC",
             "Nasdaq100": "^NDX",
+            "Russell2000": "^RUT",  # Small-cap sentiment, leading indicator
             "VIX": "^VIX",
             "Yield10Y": "^TNX",
+            "Yield2Y": "^FVX",  # Yield curve inversion analysis (2Y vs 10Y)
+            "SOX": "^SOX",  # Semiconductor index, tech leading indicator
+            "HYG": "HYG",  # High-yield bonds, credit risk spreads
         }
     )
     macro_indicators: dict = field(
@@ -142,6 +146,7 @@ class Config:
             "Gold": "GC=F",
             "Oil": "CL=F",
             "USD/JPY": "JPY=X",
+            "DXY": "DX-Y.NYB",  # USD Index, overall dollar strength
         }
     )
 
