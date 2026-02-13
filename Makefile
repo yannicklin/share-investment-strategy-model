@@ -9,24 +9,37 @@ setup:
 # Architecture Detection for macOS
 IS_APPLE_SILICON := $(shell sysctl -n machdep.cpu.brand_string 2>/dev/null | grep -q "Apple" && echo "true" || echo "false")
 
+# Environment Detection (UV in Codespaces vs traditional venv)
+HAS_UV := $(shell command -v uv >/dev/null 2>&1 && echo "true" || echo "false")
+
+# Auto-detect entry point file (USA_AImodel.py, TWN_AImodel.py, ASX_AImodel.py)
+ENTRY_POINT := $(shell ls *_AImodel.py 2>/dev/null | head -n 1)
+
 run:
-ifeq ($(IS_APPLE_SILICON),true)
+ifeq ($(HAS_UV),true)
 	@lsof -ti:8502 | xargs kill -9 2>/dev/null || true
-	@arch -arm64 .venv/bin/python3 -m streamlit run USA_AImodel.py
+	@uv run streamlit run $(ENTRY_POINT)
+else ifeq ($(IS_APPLE_SILICON),true)
+	@lsof -ti:8502 | xargs kill -9 2>/dev/null || true
+	@arch -arm64 .venv/bin/python3 -m streamlit run $(ENTRY_POINT)
 else
 	@lsof -ti:8502 | xargs kill -9 2>/dev/null || true
-	@.venv/bin/python3 -m streamlit run USA_AImodel.py
+	@.venv/bin/python3 -m streamlit run $(ENTRY_POINT)
 endif
 
 test:
-ifeq ($(IS_APPLE_SILICON),true)
+ifeq ($(HAS_UV),true)
+	@uv run pytest tests/
+else ifeq ($(IS_APPLE_SILICON),true)
 	@arch -arm64 .venv/bin/python3 -m pytest tests/
 else
 	@.venv/bin/python3 -m pytest tests/
 endif
 
 lint:
-ifeq ($(IS_APPLE_SILICON),true)
+ifeq ($(HAS_UV),true)
+	@uv run ruff check .
+else ifeq ($(IS_APPLE_SILICON),true)
 	@arch -arm64 .venv/bin/ruff check .
 else
 	@.venv/bin/ruff check .
