@@ -15,7 +15,7 @@ import re
 import requests
 from typing import List, Dict
 
-CACHE_FILE = "data/models/index_cache.json"
+CACHE_FILE = "data/models/index_cache_usa.json"
 
 # Reliable sources for US Indices (Wikipedia often has the most stable table structures)
 SOURCE_URLS = {
