@@ -15,12 +15,12 @@ import re
 import requests
 from typing import List, Dict
 
-CACHE_FILE = "data/models/index_cache.json"
+CACHE_FILE = "data/models/index_cache_asx.json"
 
 # Reliable sources for ASX Indices
 SOURCE_URLS = {
-    "ASX 50": "https://www.asx50list.com/",
-    "ASX 200": "https://www.asx200list.com/",
+    "ASX 50": "https://en.wikipedia.org/wiki/S%26P/ASX_50",
+    "ASX 200": "https://en.wikipedia.org/wiki/S%26P/ASX_200",
 }
 
 DEFAULT_INDEX_DATA = {
@@ -292,48 +292,67 @@ def load_index_constituents() -> Dict[str, List[str]]:
     return DEFAULT_INDEX_DATA
 
 
+from io import StringIO
+
+
 def update_index_data() -> Dict[str, str]:
-    """Fetches latest constituents from HTML tables and updates cache."""
+    """Fetches latest constituents from Wikipedia and updates cache."""
     updated_counts = {}
     new_data = {}
 
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+
     for name, url in SOURCE_URLS.items():
         try:
-            headers = {"User-Agent": "Mozilla/5.0"}
             response = requests.get(url, headers=headers, timeout=15)
-            response.raise_for_status()
-            html = response.text
+            if response.status_code != 200:
+                raise ConnectionError(f"HTTP {response.status_code}")
 
-            # Look for patterns like <td>ABC</td> or <tr><td>ABC</td>
-            # Most ASX list sites use simple tables
-            potential_tickers = re.findall(r"<td>([A-Z0-9]{3,6})</td>", html)
+            tables = pd.read_html(StringIO(response.text))
 
-            # Filter and append .AX
-            tickers = sorted(
-                list(
-                    set(
-                        [
-                            f"{t.strip()}.AX"
-                            for t in potential_tickers
-                            if len(t.strip()) >= 3 and len(t.strip()) <= 6
-                        ]
-                    )
-                )
-            )
+            tickers = []
+            # Find the table containing stock symbols
+            for df in tables:
+                cols = [str(c).lower() for c in df.columns]
+                # Common ASX table headers
+                symbol_col = None
+                for i, col in enumerate(cols):
+                    if col in ["ticker", "code", "symbol", "asx code"]:
+                        symbol_col = i
+                        break
 
-            if len(tickers) > 5:  # Sanity check
-                new_data[name] = tickers
+                if symbol_col is not None:
+                    raw_list = df.iloc[:, symbol_col].dropna().astype(str).tolist()
+                    tickers = [
+                        f"{t.strip().upper()}.AX"
+                        for t in raw_list
+                        if 1 <= len(t.strip()) <= 6 and any(c.isalpha() for c in t)
+                    ]
+
+                    # Validation: ASX 50 (~50), ASX 200 (~200)
+                    min_expected = {"ASX 50": 45, "ASX 200": 190}
+                    if len(tickers) >= min_expected.get(name, 5):
+                        break
+                    else:
+                        tickers = []
+
+            if tickers:
+                new_data[name] = sorted(list(set(tickers)))
                 updated_counts[name] = f"Updated {len(tickers)} tickers"
             else:
-                updated_counts[name] = "Failed: No tickers found in HTML"
+                updated_counts[name] = "Failed: No valid table found"
                 new_data[name] = DEFAULT_INDEX_DATA.get(name, [])
+
         except Exception as e:
             updated_counts[name] = f"Failed: {str(e)}"
             new_data[name] = DEFAULT_INDEX_DATA.get(name, [])
 
-    # Save to cache
-    os.makedirs("data/models", exist_ok=True)
-    with open(CACHE_FILE, "w") as f:
-        json.dump(new_data, f)
+    # Save to cache if any sync was successful
+    if any("Updated" in v for v in updated_counts.values()):
+        os.makedirs("data/models", exist_ok=True)
+        with open(CACHE_FILE, "w") as f:
+            json.dump(new_data, f)
 
     return updated_counts

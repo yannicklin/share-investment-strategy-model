@@ -22,7 +22,7 @@ try:
     import tensorflow as tf
 
     # TensorFlow 2.x logging suppression (modern API)
-    tf.get_logger().setLevel('ERROR')
+    tf.get_logger().setLevel("ERROR")
     # Suppress autograph retracing warnings
     tf.autograph.set_verbosity(0)
 except (ImportError, AttributeError):
@@ -156,12 +156,21 @@ def render_app():
                                 )
                                 if "error" in res:
                                     st.error(f"Ranking Error: {res['error']}")
-                                # Include company name for Super Stars mode
+                                # Include metadata for Super Stars UI
                                 res["company_name"] = builder.get_company_name(ticker)
                                 ticker_results = res
                             except Exception as e:
                                 st.error(f"Ranking Exception: {e}")
                                 ticker_results = {"error": str(e)}
+
+                        # Add metadata to ticker_results for all modes
+                        if (
+                            isinstance(ticker_results, dict)
+                            and "error" not in ticker_results
+                        ):
+                            ticker_results["_metadata"] = {
+                                "company_name": builder.get_company_name(ticker),
+                            }
                     except Exception as ticker_e:
                         st.error(f"Critical Ticker Error ({ticker}): {ticker_e}")
                         ticker_results = {"error": str(ticker_e)}

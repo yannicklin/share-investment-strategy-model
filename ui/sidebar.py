@@ -29,7 +29,7 @@ def render_sidebar(config: Config):
             
             /* Sidebar Headers */
             [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
-                color: #3d85c6 !important;
+                color: #FFD700 !important;
                 font-weight: 700 !important;
                 letter-spacing: -0.5px !important;
             }
@@ -42,9 +42,9 @@ def render_sidebar(config: Config):
             }
             
             [data-testid="stSidebar"] button:hover {
-                border-color: #3d85c6 !important;
-                color: #3d85c6 !important;
-                box-shadow: 0 0 10px rgba(61, 133, 198, 0.2) !important;
+                border-color: #FFD700 !important;
+                color: #FFD700 !important;
+                box-shadow: 0 0 10px rgba(255, 215, 0, 0.2) !important;
             }
 
             /* Horizontal dividers */
@@ -107,7 +107,7 @@ def render_sidebar(config: Config):
         index_choice = st.sidebar.selectbox(
             "Select Index to Scan",
             list(index_data.keys()),
-            help="ASX 50: Blue Chips. ASX 200: Benchmark index.",
+            help="ASX 50: Blue Chips (Top 50). ASX 200: Benchmark Index.",
         )
 
         if st.sidebar.button("🔄 Update Index Constituents"):

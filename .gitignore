@@ -41,7 +41,7 @@ data/models/*.pkl
 data/models/*.h5
 data/models/*.keras
 data/models/*.joblib
-data/models/index_cache.json
+data/models/index_cache*.json
 data/downloads/
 data/ledgers/*.csv
 *.log
