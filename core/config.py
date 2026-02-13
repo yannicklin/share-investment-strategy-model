@@ -60,9 +60,17 @@ class Config:
     # Market & Macro Data Sources
     market_indices: dict = field(
         default_factory=lambda: {
+            # Broad Market
             "ASX200": "^AXJO",
             "SP500": "^GSPC",
             "VIX": "^VIX",
+            # ASX Sector Indices (Materials/Mining + Financials + Resources)
+            "ASX_Metals": "^AXMM",
+            "ASX_Financials": "^AXFJ",
+            "ASX_Resources": "^AXAR",
+            # Regional Context (China trade correlation + Japan)
+            "China_SSE": "000001.SS",
+            "Nikkei225": "^N225",
         }
     )
     macro_indicators: dict = field(
