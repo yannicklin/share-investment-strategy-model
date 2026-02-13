@@ -24,7 +24,8 @@ os.environ["CMDSTANPY_LOG_LEVEL"] = "ERROR"
 try:
     import tensorflow as tf
 
-    tf.get_logger().setLevel("ERROR")
+    # TensorFlow 2.x compatible logging suppression
+    logging.getLogger('tensorflow').setLevel(logging.ERROR)
     # Suppress retracing warnings
     tf.autograph.set_verbosity(0)
 except ImportError:
