@@ -38,6 +38,15 @@ class BacktestEngine:
         self, trade_value: float, shares: float = 0, is_sell: bool = False
     ) -> float:
         """USA Fee Structure including SEC/FINRA for sells."""
+        # Safety check for invalid cost profile
+        if self.config.cost_profile not in BROKERS:
+            logging.error(
+                f"❌ Invalid cost_profile '{self.config.cost_profile}'. Available: {list(BROKERS.keys())}"
+            )
+            # Fallback to first available broker
+            self.config.cost_profile = list(BROKERS.keys())[0]
+            logging.warning(f"⚠️ Falling back to {self.config.cost_profile}")
+        
         broker = BROKERS[self.config.cost_profile]
 
         # 1. Brokerage Fee

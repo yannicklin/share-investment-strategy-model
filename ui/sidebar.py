@@ -239,7 +239,12 @@ def render_sidebar(config: Config):
     )
 
     with st.sidebar.expander("Costs & Taxes"):
-        profile_options = ["default", "cmc_markets", "tiger_au"]
+        # USA Market Broker Profiles
+        profile_options = [
+            "Saxo / Global Prime (Classic)",
+            "Stake (Standard)",
+            "Interactive Brokers (Pro Fixed)",
+        ]
         config.cost_profile = st.selectbox(
             "Broker Profile",
             profile_options,
