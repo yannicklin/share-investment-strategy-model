@@ -46,7 +46,7 @@
   },
   
   "postCreateCommand": "bash .devcontainer/setup_chrome_fix.sh",
-  "postStartCommand": "git pull && nohup make run > /tmp/streamlit.log 2>&1 &",
+  "postStartCommand": "git pull && cd /workspaces/share-investment-strategy-model && nohup make run > /tmp/streamlit.log 2>&1 & sleep 2 && echo 'App starting, check: tail -f /tmp/streamlit.log'",
   
   "remoteUser": "vscode"
 }
