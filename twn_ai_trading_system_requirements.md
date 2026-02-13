@@ -27,6 +27,8 @@ The model may buy even if projected returns do not meet take-profit thresholds, 
     - **Mode 2 (Time-Span Comparison)**: Evaluates holding period efficiency using a **Multi-Model Consensus** (majority vote).
         - **Tie-Breaker Rule**: In the event of a 50/50 vote split, a user-selected Tie-Breaker model makes the final decision.
     - **Mode 3 (Find Super Stars)**: Scans Taiwan market indices to identify the **Top 10** performers for a chosen timeframe.
+    - **Indices Supported**: 台股50 (Taiwan 50), 台股中型100 (Mid 100), MSCI台股指數 (MSCI Taiwan).
+    - **Current Limitation**: Due to formal API stabilization issues, online constituent synchronization is currently disabled. Constituents are managed via a localized static cache (`core/index_manager.py`) until robust sources are verified.
 
 #### 2.2 Decision Layer & Hurdle Rate
 To ensure realism and profitability, the system employs a **Fee-Aware Dynamic Hurdle Rate** in the decision layer for all analysis modes:

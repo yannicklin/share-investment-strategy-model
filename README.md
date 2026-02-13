@@ -27,6 +27,18 @@ This repository serves as the fundamental DNA of the project:
 
 This framework is for educational and research purposes only. It is a research tool, not financial advice. All financial research carries the risk of total capital loss.
 
+## 🇹🇼 Taiwan Market Infrastructure (TWN Branch Only)
+
+This branch includes specialized logic for the Taiwan (TWSE/TPEx) market:
+
+- **Real-Time Index Synchronization**: The "Find Super Stars" mode supports live constituent synchronization from authoritative sources via the sidebar sync button:
+    - **台股50 (Taiwan 50)**: (Online sync pending formal API stabilization).
+    - **台股中型100 (Mid 100)**: (Online sync pending formal API stabilization).
+    - **MSCI台股指數 (MSCI Taiwan)**: (Online sync pending formal API stabilization).
+- **Broker Profiles**: Localized fee structures with realistic online trading discounts for **富邦證券 (Fubon)** and **第一金證券 (First Securities)**.
+- **Realistic Friction**: Automatic enforcement of the 0.3% Securities Transaction Tax (STT), T+2 settlement delays, and the daily ±10% price limit.
+- **Institutional Metadata**: Integrated support for FinMind data (Institutional flows, Margin trading, and Revenue) alongside Yahoo Finance price data.
+
 ---
 
 **Copyright**: (c) 2026 Yannick  

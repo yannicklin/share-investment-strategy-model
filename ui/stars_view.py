@@ -45,12 +45,15 @@ def render_super_stars(index_name, all_ticker_res, models=None, tie_breaker=None
             # Ensure win_rate is present and valid
             win_rate = float(res.get("win_rate", 0.0))
             company_name = res.get("company_name", ticker)
+            chinese_name = res.get("chinese_name", "")
             yfinance_url = f"https://finance.yahoo.com/quote/{ticker}"
 
             summary.append(
                 {
                     "Ticker": ticker,
-                    "Company": company_name,
+                    "Name": f"{chinese_name} ({company_name})"
+                    if chinese_name
+                    else company_name,
                     "Net ROI": float(res["roi"]),
                     "Win Rate": win_rate,
                     "Total Trades": int(res["total_trades"]),
@@ -95,7 +98,7 @@ def render_super_stars(index_name, all_ticker_res, models=None, tie_breaker=None
             df_top10,
             x="Ticker",
             y="Net ROI",
-            hover_data=["Company"],
+            hover_data=["Name"],
             color="Net ROI",
             title="Top 10 Stocks by Profitability",
             color_continuous_scale="RdYlGn",
@@ -116,7 +119,11 @@ def render_super_stars(index_name, all_ticker_res, models=None, tie_breaker=None
         for i in range(len(tab_labels)):
             with tabs[i]:
                 ticker_symbol = tab_labels[i]
-                render_trade_details(ticker_symbol, all_ticker_res[ticker_symbol])
+                res = all_ticker_res[ticker_symbol]
+                chinese_name = res.get("chinese_name", "")
+                if chinese_name:
+                    st.subheader(f"{chinese_name}")
+                render_trade_details(ticker_symbol, res)
 
     # Show errors in an expander at the bottom
     if errors:

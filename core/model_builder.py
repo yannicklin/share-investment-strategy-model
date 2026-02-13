@@ -20,6 +20,7 @@ from typing import Optional, Any, Dict, List
 # Try to use curl-cffi for rate limit bypass
 try:
     from curl_cffi import requests as cf_requests
+
     CURL_CFFI_AVAILABLE = True
 except ImportError:
     CURL_CFFI_AVAILABLE = False
@@ -27,6 +28,7 @@ except ImportError:
 # Try to import FinMind for Taiwan institutional data
 try:
     from FinMind.data import DataLoader
+
     FINMIND_AVAILABLE = True
 except ImportError:
     FINMIND_AVAILABLE = False
@@ -66,6 +68,7 @@ class ModelBuilder:
         self._data_cache: Dict[str, pd.DataFrame] = {}
         self._market_data: Optional[pd.DataFrame] = None
         self._finmind_data: Optional[pd.DataFrame] = None  # Taiwan institutional data
+        self._stock_info_cache: Optional[pd.DataFrame] = None  # Taiwan stock metadata
 
     def _init_scaler(self) -> Any:
         if self.config.scaler_type == "robust":
@@ -76,7 +79,7 @@ class ModelBuilder:
         self, ticker: str, start_date, max_retries: int = 3, base_delay: float = 2.0
     ) -> pd.DataFrame:
         """Download data with exponential backoff retry and curl-cffi session support."""
-        
+
         # Create curl-cffi session if available
         session = None
         if CURL_CFFI_AVAILABLE:
@@ -86,15 +89,19 @@ class ModelBuilder:
                 session = cf_requests.Session(impersonate=impersonate)
             except Exception as e:
                 logging.warning(f"Failed to create curl-cffi session: {e}")
-        
+
         for attempt in range(max_retries):
             try:
                 # Add small delay between attempts to avoid rate limits
                 if attempt > 0:
-                    delay = base_delay * (2 ** attempt) + (0.5 * attempt)  # Exponential backoff
-                    logging.info(f"Retry {attempt + 1}/{max_retries} for {ticker} after {delay:.1f}s delay...")
+                    delay = base_delay * (2**attempt) + (
+                        0.5 * attempt
+                    )  # Exponential backoff
+                    logging.info(
+                        f"Retry {attempt + 1}/{max_retries} for {ticker} after {delay:.1f}s delay..."
+                    )
                     time.sleep(delay)
-                
+
                 # Download with optional curl-cffi session
                 df = yf.download(
                     ticker,
@@ -104,10 +111,10 @@ class ModelBuilder:
                     threads=False,
                     session=session if session else None,
                 )
-                
+
                 if not df.empty:
                     return df
-                    
+
             except Exception as e:
                 error_msg = str(e)
                 if "Rate limit" in error_msg or "Too Many Requests" in error_msg:
@@ -115,11 +122,13 @@ class ModelBuilder:
                         logging.warning(f"Rate limit hit for {ticker}, will retry...")
                         continue
                     else:
-                        logging.error(f"Rate limit exceeded for {ticker} after {max_retries} attempts")
+                        logging.error(
+                            f"Rate limit exceeded for {ticker} after {max_retries} attempts"
+                        )
                 else:
                     logging.error(f"Download failed for {ticker}: {e}")
                     break
-        
+
         return pd.DataFrame()
 
     @classmethod
@@ -280,6 +289,34 @@ class ModelBuilder:
         except Exception:
             return ticker
 
+    def get_chinese_name(self, ticker: str) -> str:
+        """Fetches the Chinese name of the Taiwan stock from FinMind."""
+        if not ticker.endswith(".TW"):
+            return ""
+
+        stock_id = ticker.replace(".TW", "")
+
+        try:
+            if self._stock_info_cache is None:
+                if FINMIND_AVAILABLE:
+                    dl = DataLoader()
+                    self._stock_info_cache = dl.taiwan_stock_info()
+                else:
+                    return ""
+
+            if self._stock_info_cache is not None and not self._stock_info_cache.empty:
+                # Filter by stock_id
+                match = self._stock_info_cache[
+                    self._stock_info_cache["stock_id"] == stock_id
+                ]
+                if not match.empty:
+                    return str(match["stock_name"].iloc[0])
+
+        except Exception as e:
+            logging.warning(f"Failed to fetch Chinese name for {ticker}: {e}")
+
+        return ""
+
     def is_etf(self, ticker: str) -> bool:
         """Determines if a ticker is an ETF using yfinance info."""
         try:
@@ -306,7 +343,7 @@ class ModelBuilder:
             norm = self._normalize_df(data, ticker)
             self._data_cache[cache_key] = norm
             return norm
-        
+
         return pd.DataFrame()
 
     def prefetch_data_batch(self, tickers: List[str], years: int):
@@ -325,7 +362,7 @@ class ModelBuilder:
                 # Note: batch download doesn't support custom session, so use delay between batches
                 if i > 0:
                     time.sleep(2)  # Delay between batches to avoid rate limit
-                
+
                 data = yf.download(
                     batch,
                     start=start_date,
@@ -404,9 +441,13 @@ class ModelBuilder:
                 failed_tickers.append(f"{name}({ticker})")
 
         # Log summary
-        logging.info(f"✅ Successfully fetched {len(successful_tickers)} market features: {', '.join(successful_tickers)}")
+        logging.info(
+            f"✅ Successfully fetched {len(successful_tickers)} market features: {', '.join(successful_tickers)}"
+        )
         if failed_tickers:
-            logging.warning(f"❌ Failed to fetch {len(failed_tickers)} market features: {', '.join(failed_tickers)}")
+            logging.warning(
+                f"❌ Failed to fetch {len(failed_tickers)} market features: {', '.join(failed_tickers)}"
+            )
 
         # Forward fill to handle different trading calendars (e.g. US holidays vs AU)
         self._market_data = market_df.ffill().fillna(0)
@@ -415,110 +456,120 @@ class ModelBuilder:
         """Fetch Taiwan institutional data from FinMind with fallback handling."""
         if self._finmind_data is not None:
             return
-        
+
         if not FINMIND_AVAILABLE:
-            logging.warning("FinMind not installed. Skipping Taiwan institutional features.")
+            logging.warning(
+                "FinMind not installed. Skipping Taiwan institutional features."
+            )
             self._finmind_data = pd.DataFrame()
             return
-        
+
         # Only fetch for Taiwan stocks (*.TW format)
-        if not ticker.endswith('.TW'):
+        if not ticker.endswith(".TW"):
             self._finmind_data = pd.DataFrame()
             return
-        
+
         # Extract stock ID (remove .TW suffix)
-        stock_id = ticker.replace('.TW', '')
-        
+        stock_id = ticker.replace(".TW", "")
+
         # Calculate date range (10 years to cover all backtests)
         end_date = pd.Timestamp.now()
         start_date = end_date - pd.DateOffset(years=10)
-        start_str = start_date.strftime('%Y-%m-%d')
-        end_str = end_date.strftime('%Y-%m-%d')
-        
+        start_str = start_date.strftime("%Y-%m-%d")
+        end_str = end_date.strftime("%Y-%m-%d")
+
         finmind_df = pd.DataFrame()
         successful_features = []
         failed_features = []
-        
+
         try:
             dl = DataLoader()
-            
+
             # 1. Foreign/Trust/Dealer Flows (三大法人)
             try:
                 institutional = dl.taiwan_stock_institutional_investors(
-                    stock_id=stock_id,
-                    start_date=start_str,
-                    end_date=end_str
+                    stock_id=stock_id, start_date=start_str, end_date=end_str
                 )
                 if institutional is not None and not institutional.empty:
-                    institutional['date'] = pd.to_datetime(institutional['date'])
-                    institutional.set_index('date', inplace=True)
-                    
+                    institutional["date"] = pd.to_datetime(institutional["date"])
+                    institutional.set_index("date", inplace=True)
+
                     # Net buy amounts (positive = buying, negative = selling)
-                    if 'Foreign_Investor_Diff' in institutional.columns:
-                        finmind_df['FM_Foreign_NetBuy'] = institutional['Foreign_Investor_Diff']
-                        successful_features.append('Foreign_NetBuy')
-                    if 'Investment_Trust_Diff' in institutional.columns:
-                        finmind_df['FM_Trust_NetBuy'] = institutional['Investment_Trust_Diff']
-                        successful_features.append('Trust_NetBuy')
-                    if 'Dealer_Diff' in institutional.columns:
-                        finmind_df['FM_Dealer_NetBuy'] = institutional['Dealer_Diff']
-                        successful_features.append('Dealer_NetBuy')
+                    if "Foreign_Investor_Diff" in institutional.columns:
+                        finmind_df["FM_Foreign_NetBuy"] = institutional[
+                            "Foreign_Investor_Diff"
+                        ]
+                        successful_features.append("Foreign_NetBuy")
+                    if "Investment_Trust_Diff" in institutional.columns:
+                        finmind_df["FM_Trust_NetBuy"] = institutional[
+                            "Investment_Trust_Diff"
+                        ]
+                        successful_features.append("Trust_NetBuy")
+                    if "Dealer_Diff" in institutional.columns:
+                        finmind_df["FM_Dealer_NetBuy"] = institutional["Dealer_Diff"]
+                        successful_features.append("Dealer_NetBuy")
             except Exception as e:
-                logging.warning(f"Failed to fetch institutional data for {stock_id}: {e}")
-                failed_features.append('Institutional')
-            
+                logging.warning(
+                    f"Failed to fetch institutional data for {stock_id}: {e}"
+                )
+                failed_features.append("Institutional")
+
             # 2. Margin Trading & Short Selling (融資融券)
             try:
                 margin = dl.taiwan_stock_margin_purchase_short_sale(
-                    stock_id=stock_id,
-                    start_date=start_str,
-                    end_date=end_str
+                    stock_id=stock_id, start_date=start_str, end_date=end_str
                 )
                 if margin is not None and not margin.empty:
-                    margin['date'] = pd.to_datetime(margin['date'])
-                    margin.set_index('date', inplace=True)
-                    
+                    margin["date"] = pd.to_datetime(margin["date"])
+                    margin.set_index("date", inplace=True)
+
                     # Margin balance and short balance
-                    if 'MarginPurchaseBuy' in margin.columns:
-                        finmind_df['FM_Margin_Balance'] = margin['MarginPurchaseBuy']
-                        successful_features.append('Margin_Balance')
-                    if 'ShortSaleBuy' in margin.columns:
-                        finmind_df['FM_Short_Balance'] = margin['ShortSaleBuy']
-                        successful_features.append('Short_Balance')
+                    if "MarginPurchaseBuy" in margin.columns:
+                        finmind_df["FM_Margin_Balance"] = margin["MarginPurchaseBuy"]
+                        successful_features.append("Margin_Balance")
+                    if "ShortSaleBuy" in margin.columns:
+                        finmind_df["FM_Short_Balance"] = margin["ShortSaleBuy"]
+                        successful_features.append("Short_Balance")
             except Exception as e:
                 logging.warning(f"Failed to fetch margin data for {stock_id}: {e}")
-                failed_features.append('Margin')
-            
+                failed_features.append("Margin")
+
             # 3. Monthly Revenue (月營收) - requires different date handling
             try:
                 revenue = dl.taiwan_stock_month_revenue(
-                    stock_id=stock_id,
-                    start_date=start_str,
-                    end_date=end_str
+                    stock_id=stock_id, start_date=start_str, end_date=end_str
                 )
                 if revenue is not None and not revenue.empty:
                     # Revenue is monthly, need to forward fill to daily
-                    revenue['date'] = pd.to_datetime(revenue['date'])
-                    revenue.set_index('date', inplace=True)
-                    
-                    if 'revenue_year_over_year' in revenue.columns:
+                    revenue["date"] = pd.to_datetime(revenue["date"])
+                    revenue.set_index("date", inplace=True)
+
+                    if "revenue_year_over_year" in revenue.columns:
                         # Resample to daily and forward fill
-                        revenue_daily = revenue[['revenue_year_over_year']].resample('D').ffill()
-                        finmind_df['FM_Revenue_YoY'] = revenue_daily['revenue_year_over_year']
-                        successful_features.append('Revenue_YoY')
+                        revenue_daily = (
+                            revenue[["revenue_year_over_year"]].resample("D").ffill()
+                        )
+                        finmind_df["FM_Revenue_YoY"] = revenue_daily[
+                            "revenue_year_over_year"
+                        ]
+                        successful_features.append("Revenue_YoY")
             except Exception as e:
                 logging.warning(f"Failed to fetch revenue data for {stock_id}: {e}")
-                failed_features.append('Revenue')
-            
+                failed_features.append("Revenue")
+
             # Log summary
             if successful_features:
-                logging.info(f"✅ FinMind: Fetched {len(successful_features)} features for {stock_id}: {', '.join(successful_features)}")
+                logging.info(
+                    f"✅ FinMind: Fetched {len(successful_features)} features for {stock_id}: {', '.join(successful_features)}"
+                )
             if failed_features:
-                logging.warning(f"⚠️ FinMind: Failed features for {stock_id}: {', '.join(failed_features)}")
-            
+                logging.warning(
+                    f"⚠️ FinMind: Failed features for {stock_id}: {', '.join(failed_features)}"
+                )
+
         except Exception as e:
             logging.error(f"FinMind initialization failed for {stock_id}: {e}")
-        
+
         # Forward fill and handle NaN
         if not finmind_df.empty:
             self._finmind_data = finmind_df.ffill().fillna(0)
@@ -575,7 +626,7 @@ class ModelBuilder:
         df["D"] = df["K"].ewm(com=2).mean()
 
         # --- 7. FinMind Institutional Data (Taiwan Only) ---
-        if ticker and ticker.endswith('.TW'):
+        if ticker and ticker.endswith(".TW"):
             self._ensure_finmind_data(ticker)
             if self._finmind_data is not None and not self._finmind_data.empty:
                 # Align FinMind data to stock dates with T-1 lag to prevent look-ahead bias
@@ -628,7 +679,7 @@ class ModelBuilder:
             for col in self._market_data.columns:
                 if col in df.columns:
                     features.append(col)
-        
+
         # Add FinMind institutional features (Taiwan only)
         if self._finmind_data is not None:
             for col in self._finmind_data.columns:

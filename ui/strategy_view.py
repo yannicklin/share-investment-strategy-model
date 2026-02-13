@@ -24,6 +24,12 @@ def render_strategy_sensitivity(ticker, ticker_res, models=None, tie_breaker=Non
 
     st.header(f"⏳ Time-Span Comparison: {ticker}{etf_label}")
 
+    # Display Chinese name if available
+    metadata = ticker_res.get("_metadata", {})
+    chinese_name = metadata.get("chinese_name", "")
+    if chinese_name:
+        st.subheader(f"{chinese_name}")
+
     # Dynamic Decision Engine Description
     if models and len(models) > 1:
         m_count = len(models)

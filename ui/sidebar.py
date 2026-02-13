@@ -107,17 +107,15 @@ def render_sidebar(config: Config):
         index_choice = st.sidebar.selectbox(
             "Select Index to Scan",
             list(index_data.keys()),
-            help="Taiwan Stock 50: Blue Chips. Taiwan Stock 200: Benchmark index.",
+            help="台股50: Blue Chips. 台股中型100: Growth & Value. MSCI: Global Standard.",
         )
 
-        if st.sidebar.button("🔄 Update Index Constituents"):
-            with st.spinner("Fetching latest market data..."):
-                results = update_index_data()
-                st.sidebar.success("Updated!")
-                for idx, msg in results.items():
-                    st.sidebar.caption(f"{idx}: {msg}")
-                # Reload data immediately after update
-                index_data = load_index_constituents()
+        if st.sidebar.button(
+            "🔄 Update Index Constituents",
+            disabled=True,
+            help="Online sync is currently undergoing maintenance.",
+        ):
+            pass  # Disabled logic
 
         config.target_stock_codes = index_data.get(index_choice, [])
 
@@ -240,9 +238,15 @@ def render_sidebar(config: Config):
 
     with st.sidebar.expander("Costs & Taxes"):
         profile_options = ["default", "fubon_twn", "first_twn"]
+        profile_names = {
+            "default": "無折扣 (Default)",
+            "fubon_twn": "富邦證券 (Fubon)",
+            "first_twn": "第一金證券 (First)",
+        }
         config.cost_profile = st.selectbox(
             "Broker Profile",
             profile_options,
+            format_func=lambda x: str(profile_names.get(x, x)),
             index=profile_options.index(config.cost_profile)
             if config.cost_profile in profile_options
             else 0,

@@ -24,9 +24,17 @@ def render_algorithm_comparison(ticker, ticker_res):
 
     st.header(f"📊 Models Comparison: {ticker}{etf_label}")
 
+    # Display Chinese name if available
+    metadata = ticker_res.get("_metadata", {})
+    chinese_name = metadata.get("chinese_name", "")
+    if chinese_name:
+        st.subheader(f"{chinese_name}")
+
     summary = []
     for m_name, res in ticker_res.items():
-        # Skip error entries for the summary leaderboard
+        # Skip metadata and error entries
+        if m_name == "_metadata":
+            continue
         if isinstance(res, dict) and "error" not in res:
             display_name = m_name
             summary.append(
