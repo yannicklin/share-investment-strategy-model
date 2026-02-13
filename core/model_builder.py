@@ -302,7 +302,6 @@ class ModelBuilder:
         if self._market_data is not None:
             return
 
-        logging.info("Fetching market and macro data...")
         market_tickers = {
             **self.config.market_indices,
             **self.config.macro_indicators,
@@ -542,8 +541,6 @@ class ModelBuilder:
                 },
                 model_filename,
             )
-        
-        logging.info(f"✅ Training completed successfully for {ticker}, model saved to {model_filename}")
 
     def load_or_build(self, ticker: str) -> str:
         model_filename = os.path.join(

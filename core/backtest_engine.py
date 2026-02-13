@@ -453,22 +453,18 @@ class BacktestEngine:
 
     def run_model_mode(self, ticker: str, model_type: str) -> Dict[str, Any]:
         """Mode 1: Evaluate a single specific model."""
-        logging.info(f"🎯 Starting model mode backtest: {ticker} with {model_type}")
         # Clear ledger from previous run (no archiving)
         self.ledger.clear()
 
         self.config.model_type = model_type
-        logging.info(f"📂 Loading model for {ticker}...")
         try:
             load_status = self.model_builder.load_or_build(ticker)  # Load once
-            logging.info(f"✅ Model loaded: {load_status}")
         except Exception as e:
             logging.error(f"❌ Model loading failed for {ticker}: {e}", exc_info=True)
             return {"error": f"Model loading failed: {str(e)}"}
 
         # Prepare filtered data (trading days only)
         logging.info(f"📊 Preparing data for {ticker}...")
-        df_tuple = self._prepare_data(ticker)
         df, features, error = df_tuple
         if error or df is None or features is None:
             logging.error(f"❌ Data preparation failed for {ticker}: {error}")
@@ -477,12 +473,8 @@ class BacktestEngine:
         logging.info(f"✅ Data prepared: {len(df)} rows, {len(features)} features")
 
         # Bulk pre-calculate predictions on FILTERED data
-        logging.info(f"🔮 Generating bulk predictions for {ticker}...")
         try:
-            all_preds = self._get_bulk_predictions(df, features, model_type)
-            logging.info(f"✅ Generated {len(all_preds)} predictions")
-        except Exception as e:
-            logging.error(f"❌ Prediction generation failed for {ticker}: {e}", exc_info=True)
+            all_preds = self._get_bulk_predictions(df, features, model_typeer}: {e}", exc_info=True)
             return {"error": f"Prediction failed: {str(e)}"}
 
         def signal(i, df_inner, features_inner, current_cap):
@@ -498,10 +490,8 @@ class BacktestEngine:
             logging.info(f"✅ Backtest completed: ROI={result.get('roi', 0):.2%}, Trades={result.get('total_trades', 0)}")
         except Exception as e:
             logging.error(f"❌ Core backtest failed for {ticker}: {e}", exc_info=True)
-            return {"error": f"Backtest execution failed: {str(e)}"}
-
-        # Save ledger to file and clear from memory
-        if "error" not in result:
+        try:
+            result = self._core_run(ticker, signal, df, features
             ledger_filename = f"{ticker}_algorithm_{model_type}_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
             ledger_path = self.ledger.save_to_file(filename=ledger_filename)
             result["ledger_path"] = ledger_path
