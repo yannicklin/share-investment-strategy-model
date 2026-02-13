@@ -67,7 +67,7 @@ class Config:
             # ASX Sector Indices (Materials/Mining + Financials + Resources)
             "ASX_Metals": "^AXMM",
             "ASX_Financials": "^AXFJ",
-            "ASX_Resources": "^AXAR",
+            "ASX_Resources": "^AXJR",
             # Regional Context (China trade correlation + Japan)
             "China_SSE": "000001.SS",
             "Nikkei225": "^N225",
