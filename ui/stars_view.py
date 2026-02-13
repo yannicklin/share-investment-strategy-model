@@ -109,8 +109,8 @@ def render_super_stars(index_name, all_ticker_res, models=None, tie_breaker=None
 
         # Drill-down for winners
         st.subheader("Detailed Look at Winners")
-        # Ensure labels are strings for Streamlit tabs
-        tab_labels = [str(t["Ticker"]) for t in summary[:10]]
+        # Ensure labels are strings for Streamlit tabs and match the sorted top 10
+        tab_labels = [str(ticker) for ticker in df_top10["Ticker"]]
 
         tabs = st.tabs(tab_labels)
         for i in range(len(tab_labels)):
