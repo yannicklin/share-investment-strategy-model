@@ -537,16 +537,24 @@ class BacktestEngine:
         self, df: pd.DataFrame, features: List[str], model_type: str
     ) -> np.ndarray:
         """Helper to get predictions for all rows in one go with memory safety."""
-        X_all = df[features].values.astype(np.float32)
+        # Ensure data is clean and use float64 to prevent overflow/inf during cast
+        X_all = (
+            df[features]
+            .replace([np.inf, -np.inf], np.nan)
+            .fillna(0)
+            .values.astype(np.float64)
+        )
 
         if (
             model_type == "lstm"
             and self.model_builder.model is not None
             and self.model_builder.scaler is not None
         ):
+            # LSTM still needs float32 for most backends
+            X_all_f32 = X_all.astype(np.float32)
             # Use sequence_length from model_builder for consistency
             seq_len = self.model_builder.sequence_length
-            X_scaled = self.model_builder.scaler.transform(X_all).astype(np.float32)
+            X_scaled = self.model_builder.scaler.transform(X_all_f32).astype(np.float32)
 
             # Create sequences: at time i, use [i-seq_len:i] to predict i+1
             # This matches training where [i:i+seq_len] predicts target[i+seq_len]=Close[i+seq_len+1]

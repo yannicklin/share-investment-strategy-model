@@ -416,11 +416,13 @@ class ModelBuilder:
                 f"❌ Failed to fetch {len(failed_tickers)} market features: {', '.join(failed_tickers)}"
             )
 
-        logging.info(
-            f"📈 Total market data columns: {len(market_df.columns)} - {list(market_df.columns)}"
-        )
-
+        # Clean up market data (handle inf/nan)
+        market_df.replace([np.inf, -np.inf], np.nan, inplace=True)
         self._market_data = market_df.ffill().fillna(0)
+
+        logging.info(
+            f"📈 Total market data columns: {len(self._market_data.columns)} - {list(self._market_data.columns)}"
+        )
 
     def prepare_features(self, data: pd.DataFrame, ticker: str = None):
         df = data.copy()
@@ -478,6 +480,11 @@ class ModelBuilder:
 
         df["Target"] = df["Close"].shift(-1)
         df = df.dropna()
+
+        # Final safety cleanup for all features (including indicators and market data)
+        df.replace([np.inf, -np.inf], np.nan, inplace=True)
+        df.ffill(inplace=True)
+        df.fillna(0, inplace=True)
 
         # Update features list
         features = [
