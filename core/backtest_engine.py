@@ -217,6 +217,10 @@ class BacktestEngine:
             current_price = float(df.iloc[i]["Close"])
             prev_close = float(df.iloc[i - 1]["Close"]) if i > 0 else current_price
 
+            # Safety check: avoid division by zero or negative prices
+            if current_price <= 0 or prev_close <= 0:
+                continue
+
             # Process Settlement Queue: T+2
             new_settlement_queue = []
             for avail_date, amount in settlement_queue:
@@ -246,6 +250,8 @@ class BacktestEngine:
             if position == 0 and is_bullish:
                 exec_price = min(current_price, limit_up)
                 fees = self.calculate_fees(capital, is_sell=False)
+                if capital <= fees:
+                    continue
                 new_position = (capital - fees) / exec_price
 
                 self.ledger.add_entry(
