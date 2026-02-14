@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  # ----------------------------------------------------------------------------
+  # 1. ASX Lab (Streamlit Dashboard)
+  # ----------------------------------------------------------------------------
+  lab-asx:
+    build: 
+      context: ./asx
+    container_name: trading-lab-asx
+    restart: unless-stopped
+    command: streamlit run ASX_AImodel.py --server.port 8501 --server.address 0.0.0.0 --server.headless true
+    env_file: .env
+    volumes:
+      - ./asx/models:/app/models
+      - ./asx/logs:/app/logs
+      - ./asx/data:/app/data
+    mem_limit: 2500m
+    mem_reservation: 1000m
+    networks:
+      - platform-net
+
+  # ----------------------------------------------------------------------------
+  # 2. USA Lab (Streamlit Dashboard)
+  # ----------------------------------------------------------------------------
+  lab-usa:
+    build: 
+      context: ./usa
+    container_name: trading-lab-usa
+    restart: unless-stopped
+    command: streamlit run USA_AImodel.py --server.port 8502 --server.address 0.0.0.0 --server.headless true
+    env_file: .env
+    volumes:
+      - ./usa/models:/app/models
+      - ./usa/logs:/app/logs
+      - ./usa/data:/app/data
+    mem_limit: 2500m
+    mem_reservation: 1000m
+    networks:
+      - platform-net
+
+  # ----------------------------------------------------------------------------
+  # 3. Taiwan Lab (Streamlit Dashboard)
+  # ----------------------------------------------------------------------------
+  lab-twn:
+    build: 
+      context: ./twn
+    container_name: trading-lab-twn
+    restart: unless-stopped
+    command: streamlit run TWN_AImodel.py --server.port 8503 --server.address 0.0.0.0 --server.headless true
+    env_file: .env
+    volumes:
+      - ./twn/models:/app/models
+      - ./twn/logs:/app/logs
+      - ./twn/data:/app/data
+    mem_limit: 2500m
+    mem_reservation: 1000m
+    networks:
+      - platform-net
+
+  # ----------------------------------------------------------------------------
+  # 4. Cloudflare Tunnel (Secure Access without Open Ports)
+  # ----------------------------------------------------------------------------
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: trading-tunnel
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    networks:
+      - platform-net
+
+networks:
+  platform-net:
+    driver: bridge
