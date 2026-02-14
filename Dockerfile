@@ -25,10 +25,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Expose port (Streamlit default)
-EXPOSE 8501
+EXPOSE 8502
 
 # Healthcheck
-HEALTHCHECK CMD curl --fail http://localhost:8501/_stcore/health || exit 1
+HEALTHCHECK CMD curl --fail http://localhost:8502/_stcore/health || exit 1
 
 # Command is overridden by docker-compose
 CMD ["streamlit", "run", "USA_AImodel.py", "--server.port=8502", "--server.address=0.0.0.0"]
