@@ -25,7 +25,7 @@ try:
     import tensorflow as tf
 
     # TensorFlow 2.x compatible logging suppression
-    logging.getLogger('tensorflow').setLevel(logging.ERROR)
+    logging.getLogger("tensorflow").setLevel(logging.ERROR)
     # Suppress retracing warnings
     tf.autograph.set_verbosity(0)
 except ImportError:
@@ -35,6 +35,15 @@ logging.getLogger("cmdstanpy").setLevel(logging.ERROR)
 logging.getLogger("prophet").setLevel(logging.ERROR)
 
 from typing import Optional, Any, Dict, List
+
+# Try to use curl-cffi for rate limit bypass
+try:
+    from curl_cffi import requests as cf_requests
+
+    CURL_CFFI_AVAILABLE = True
+except ImportError:
+    CURL_CFFI_AVAILABLE = False
+
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.preprocessing import StandardScaler, RobustScaler
 from core.config import Config
@@ -56,6 +65,77 @@ class ModelBuilder:
         if self.config.scaler_type == "robust":
             return RobustScaler()
         return StandardScaler()
+
+    def _download_with_retry(
+        self, ticker: str, start_date, max_retries: int = 3, base_delay: float = 2.0
+    ) -> pd.DataFrame:
+        """Download data with exponential backoff retry and curl-cffi session support."""
+
+        # Create curl-cffi session if available
+        session = None
+        if CURL_CFFI_AVAILABLE:
+            try:
+                # Use environment CURL_IMPERSONATE or default to chrome131
+                impersonate = os.environ.get("CURL_IMPERSONATE", "chrome131")
+                session = cf_requests.Session(impersonate=impersonate)
+            except Exception as e:
+                logging.warning(f"Failed to create curl-cffi session: {e}")
+
+        for attempt in range(max_retries):
+            try:
+                # Add small delay between attempts to avoid rate limits
+                if attempt > 0:
+                    delay = base_delay * (2**attempt) + (
+                        0.5 * attempt
+                    )  # Exponential backoff
+                    logging.info(
+                        f"Retry {attempt + 1}/{max_retries} for {ticker} after {delay:.1f}s delay..."
+                    )
+                    time.sleep(delay)
+
+                # Download with optional curl-cffi session
+                df = yf.download(
+                    ticker,
+                    start=start_date,
+                    progress=False,
+                    auto_adjust=True,
+                    threads=False,
+                    session=session if session else None,
+                )
+
+                if not df.empty:
+                    logging.info(
+                        f"✅ Successfully downloaded data for {ticker} (Attempt {attempt + 1}/{max_retries})"
+                    )
+                    return df
+                else:
+                    logging.warning(
+                        f"Downloaded empty DataFrame for {ticker} (Attempt {attempt + 1}/{max_retries})"
+                    )
+
+            except Exception as e:
+                error_msg = str(e)
+                logging.error(
+                    f"Download attempt {attempt + 1}/{max_retries} failed for {ticker}: {e}"
+                )
+                if "Rate limit" in error_msg or "Too Many Requests" in error_msg:
+                    if attempt < max_retries - 1:
+                        logging.warning(f"Rate limit hit for {ticker}, will retry...")
+                        continue
+                    else:
+                        logging.error(
+                            f"Rate limit exceeded for {ticker} after {max_retries} attempts"
+                        )
+                else:
+                    logging.error(
+                        f"Download failed for {ticker} non-rate-limit reason: {e}"
+                    )
+                    break
+
+        logging.error(
+            f"❌ Failed to download data for {ticker} after {max_retries} attempts."
+        )
+        return pd.DataFrame()
 
     @classmethod
     def get_available_models(cls) -> List[str]:
@@ -236,23 +316,15 @@ class ModelBuilder:
         # so that indicators and LSTM sequences are ready on the actual start date.
         start_date = end_date - pd.DateOffset(years=years) - pd.DateOffset(days=90)
 
-        for attempt in range(3):
-            try:
-                data = yf.download(
-                    ticker,
-                    start=start_date,
-                    end=end_date,
-                    auto_adjust=True,
-                    progress=False,
-                    threads=False,
-                )
-                if not data.empty:
-                    norm = self._normalize_df(data, ticker)
-                    self._data_cache[cache_key] = norm
-                    return norm
-                time.sleep(1)
-            except Exception:
-                pass
+        data = self._download_with_retry(ticker, start_date)
+        if not data.empty:
+            logging.info(f"✅ Successfully fetched yfinance data for {ticker}.")
+            norm = self._normalize_df(data, ticker)
+            self._data_cache[cache_key] = norm
+            return norm
+        else:
+            logging.error(f"❌ yfinance returned empty data for {ticker}.")
+
         return pd.DataFrame()
 
     def prefetch_data_batch(self, tickers: List[str], years: int):
@@ -313,39 +385,42 @@ class ModelBuilder:
         start_date = pd.Timestamp.now() - pd.DateOffset(years=10)
 
         market_df = pd.DataFrame()
+        successful_tickers = []
+        failed_tickers = []
 
         for name, ticker in market_tickers.items():
             try:
-                # Use history for cleaner single-ticker fetch
-                # or download. we need daily close.
-                df = yf.download(
-                    ticker,
-                    start=start_date,
-                    progress=False,
-                    auto_adjust=True,
-                    threads=False,
-                )
+                df = self._download_with_retry(ticker, start_date)
 
                 if df.empty:
+                    logging.warning(f"No data returned for {name} ({ticker})")
+                    failed_tickers.append(f"{name}({ticker})")
                     continue
 
-                # Clean and normalize
                 df = self._normalize_df(df, ticker)
 
                 if "Close" in df.columns:
-                    # Rename to prevent collision and identify source
                     col_name = f"MKT_{name}"
                     market_df[col_name] = df["Close"]
-
-                    # Also add Returns for indices/macro (optional but useful)
-                    # market_df[f"{col_name}_Ret"] = df["Close"].pct_change()
+                    successful_tickers.append(f"{name}({ticker})")
+                else:
+                    logging.warning(f"No 'Close' column for {name} ({ticker})")
+                    failed_tickers.append(f"{name}({ticker})")
             except Exception as e:
                 logging.warning(f"Failed to fetch market data {name} ({ticker}): {e}")
+                failed_tickers.append(f"{name}({ticker})")
 
-        # Forward fill to handle different trading calendars (e.g. US holidays vs AU)
+        logging.info(
+            f"✅ Successfully fetched {len(successful_tickers)} market features: {', '.join(successful_tickers)}"
+        )
+        if failed_tickers:
+            logging.warning(
+                f"❌ Failed to fetch {len(failed_tickers)} market features: {', '.join(failed_tickers)}"
+            )
+
         self._market_data = market_df.ffill().fillna(0)
 
-    def prepare_features(self, data: pd.DataFrame):
+    def prepare_features(self, data: pd.DataFrame, ticker: str = None):
         df = data.copy()
 
         # Double check Close is a Series
@@ -444,7 +519,7 @@ class ModelBuilder:
         if data.empty:
             raise ValueError(f"No data for {ticker}")
 
-        X, y = self.prepare_features(data)
+        X, y = self.prepare_features(data, ticker)
         if len(X) < 1:
             raise ValueError(
                 f"Insufficient data rows for {ticker} after feature engineering."
@@ -530,18 +605,16 @@ class ModelBuilder:
             return "trained"
 
         try:
-            # 2. Try loading bundle
             data_bundle = joblib.load(model_filename)
             loaded_scaler = data_bundle["scaler"]
 
-            # 3. Check for feature mismatch
             # We fetch a tiny slice of data to check current feature dimensions
             sample_data = self.fetch_data(ticker, self.config.backtest_years)
             if sample_data.empty:
                 self.train(ticker)
                 return "trained_fallback"
 
-            X_sample, _ = self.prepare_features(sample_data)
+            X_sample, _ = self.prepare_features(sample_data, ticker)
             current_dim = X_sample.shape[1]
 
             # Scaler feature count check
@@ -617,7 +690,7 @@ class ModelBuilder:
         data = self.fetch_data(ticker, 1)
         if data.empty:
             return None
-        X, y = self.prepare_features(data)
+        X, y = self.prepare_features(data, ticker)
         if len(X) < self.sequence_length:
             return None
         return X[-self.sequence_length :]

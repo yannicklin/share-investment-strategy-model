@@ -1,6 +1,7 @@
 # Core AI and Data
 # Synchronized with pyproject.toml
 yfinance>=0.2.38
+curl-cffi>=0.5.9  # For rate limit bypass (yfinance workaround)
 pandas>=2.0.0
 pandas_market_calendars>=4.3.0
 numpy>=1.24.0
