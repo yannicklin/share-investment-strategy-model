@@ -132,7 +132,8 @@ class BacktestEngine:
         delta = df["Close"].diff()
         gain = (delta.where(delta > 0, 0)).rolling(14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-        df["RSI"] = 100 - (100 / (1 + (gain / loss)))
+        rs = gain / (loss + 1e-9)
+        df["RSI"] = 100 - (100 / (1 + rs))
         df["MA5"], df["MA20"] = (
             df["Close"].rolling(5).mean(),
             df["Close"].rolling(20).mean(),
@@ -277,6 +278,10 @@ class BacktestEngine:
             date = pd.Timestamp(df.index[i])
             current_price = float(df.iloc[i]["Close"])
 
+            # Safety check: avoid division by zero or negative prices
+            if current_price <= 0:
+                continue
+
             # Process Settlement Queue: Check if any cash has cleared today
             new_settlement_queue = []
             for avail_date, amount in settlement_queue:
@@ -303,6 +308,8 @@ class BacktestEngine:
 
             if position == 0 and is_bullish:
                 fees = self.calculate_fees(capital)
+                if capital <= fees:
+                    continue
                 new_position = (capital - fees) / current_price
                 positions_before = {}
                 positions_after = {ticker: new_position}
