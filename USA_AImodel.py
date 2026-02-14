@@ -8,6 +8,14 @@ Author: Yannick
 Copyright (c) 2026 Yannick
 """
 
+# 1. Core Network/Data Libraries (MUST be before TensorFlow)
+import yfinance as yf
+
+try:
+    from curl_cffi import requests as cf_requests
+except ImportError:
+    pass
+
 import streamlit as st
 import pandas as pd
 import os
@@ -15,7 +23,7 @@ import logging
 
 logging.basicConfig(level=logging.WARNING)
 
-# Suppress TensorFlow noise early
+# 2. Suppress TensorFlow noise and load
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 try:
     import tensorflow as tf

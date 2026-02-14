@@ -1,5 +1,6 @@
 # Core AI and Data
 yfinance>=0.2.38  # threads=False prevents chrome impersonation errors
+curl-cffi>=0.5.9  # For rate limit bypass (yfinance workaround)
 pandas
 pandas_market_calendars
 numpy
