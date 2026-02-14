@@ -77,7 +77,7 @@ mkdir -p twn/models twn/logs twn/data
 
 # 5. Launch Docker Compose
 echo "🐳 Launching Docker containers..."
-docker-compose up -d --build
+docker compose up -d --build
 
 echo "✅ Deployment Complete!"
 echo "   - ASX Lab:        asx.twoudia.top"

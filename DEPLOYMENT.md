@@ -91,8 +91,8 @@ Run the following commands to install Git, Docker, and Docker Compose:
 # Update package list
 sudo apt-get update && sudo apt-get upgrade -y
 
-# Install Git and essential tools
-sudo apt-get install -y git curl build-essential
+# Install Git, Nano, and essential tools
+sudo apt-get install -y git nano curl build-essential
 
 # Install Docker
 curl -fsSL https://get.docker.com -o get-docker.sh
@@ -118,11 +118,11 @@ ssh ...
 
 ## 🏗️ Phase 2: Deploying the Application
 
-### 1. Clone the Repository
-Clone the main repository to your server.
+### 1. Clone the Repository (Playground Branch)
+Clone the `playground` branch to your server (this branch contains the deployment scripts).
 
 ```bash
-git clone https://github.com/YourUsername/share-investment-strategy-model.git
+git clone -b playground https://github.com/YourUsername/share-investment-strategy-model.git
 cd share-investment-strategy-model
 ```
 
@@ -136,7 +136,6 @@ nano .env
 
 **Key Variables to Set:**
 - `OCI_REGION`, `OCI_COMPARTMENT_ID`: Your Oracle Cloud details.
-- `DOMAIN_ASX`, `DOMAIN_USA`, `DOMAIN_TWN`: The domains pointing to this server.
 
 ### 3. Run the Automated Setup Script
 This script handles the heavy lifting:
@@ -167,7 +166,12 @@ We are using **Cloudflare Tunnel** instead of opening ports. This is safer becau
    - Save the tunnel.
 3. Choose **Docker** as the environment.
 4. **Copy the token** from the command shown (it looks like `eyJhIjoi...`).
+   - **CRITICAL**: The token must be copied exactly. An incorrect token will cause an "Error 1003" or "Invalid Tunnel token" error.
    - Do NOT run the command. Just copy the long token string.
+
+
+
+
 5. Paste this token into your `.env` file:
    ```bash
    CLOUDFLARE_TUNNEL_TOKEN=eyJhIjoi...
@@ -178,9 +182,9 @@ In the Cloudflare Tunnel configuration screen (Public Hostname tab), add three r
 
 | Domain | Service Type | URL |
 | :--- | :--- | :--- |
-| `asx.twoudia.top` | HTTP | `lab-asx:8501` |
-| `usa.twoudia.top` | HTTP | `lab-usa:8502` |
-| `twn.twoudia.top` | HTTP | `lab-twn:8503` |
+| `asx-lab.twoudia.top` | HTTP | `lab-asx:8501` |
+| `usa-lab.twoudia.top` | HTTP | `lab-usa:8502` |
+| `twn-lab.twoudia.top` | HTTP | `lab-twn:8503` |
 
 > **Note**: We use the container names (`lab-asx`) as the hostname because Cloudflare is running inside the Docker network.
 
