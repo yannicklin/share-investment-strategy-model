@@ -119,7 +119,7 @@ class BacktestEngine:
         df["D"] = df["K"].ewm(com=2).mean()
 
         # 7. FinMind Institutional Data (Taiwan Only)
-        if ticker.endswith('.TW'):
+        if ticker.endswith(".TW"):
             self.model_builder._ensure_finmind_data(ticker)
             fm_data = self.model_builder._finmind_data
             if fm_data is not None and not fm_data.empty:
@@ -456,15 +456,24 @@ class BacktestEngine:
     def _get_bulk_predictions(
         self, df: pd.DataFrame, features: List[str], model_type: str
     ) -> np.ndarray:
-        X_all = df[features].values.astype(np.float32)
+        """Helper to get predictions for all rows in one go with memory safety."""
+        # Ensure data is clean and use float64 to prevent overflow/inf during cast
+        X_all = (
+            df[features]
+            .replace([np.inf, -np.inf], np.nan)
+            .fillna(0)
+            .values.astype(np.float64)
+        )
 
         if (
             model_type == "lstm"
             and self.model_builder.model is not None
             and self.model_builder.scaler is not None
         ):
+            # LSTM still needs float32 for most backends
+            X_all_f32 = X_all.astype(np.float32)
             seq_len = self.model_builder.sequence_length
-            X_scaled = self.model_builder.scaler.transform(X_all).astype(np.float32)
+            X_scaled = self.model_builder.scaler.transform(X_all_f32).astype(np.float32)
             valid_indices = np.arange(seq_len, len(df))
             X_seq = np.array(
                 [X_scaled[i - seq_len : i] for i in valid_indices], dtype=np.float32
