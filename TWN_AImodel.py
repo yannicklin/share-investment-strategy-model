@@ -58,6 +58,28 @@ def main():
         st.exception(e)
 
 
+def categorize_error(error_msg: str) -> str:
+    """Categorize error messages into simple issue types."""
+    error_lower = error_msg.lower()
+    
+    if "no data" in error_lower or "empty" in error_lower or "insufficient data" in error_lower:
+        return "📊 Data Missing"
+    elif "rate limit" in error_lower or "too many requests" in error_lower:
+        return "⏱️ Rate Limited"
+    elif "division by zero" in error_lower or "divide" in error_lower:
+        return "🔢 Math Error"
+    elif "import" in error_lower or "module" in error_lower or "not installed" in error_lower:
+        return "📦 Library Missing"
+    elif "feature mismatch" in error_lower or "dimension" in error_lower:
+        return "⚙️ Config Changed"
+    elif "memory" in error_lower or "cuda" in error_lower:
+        return "💾 Resource Issue"
+    elif "timeout" in error_lower or "connection" in error_lower:
+        return "🌐 Network Error"
+    else:
+        return "⚠️ Technical Error"
+
+
 def render_app():
     st.title("📈 Taiwan Stock AI Trading Strategy Dashboard")
 
@@ -94,6 +116,9 @@ def render_app():
         ):
             builder.prefetch_data_batch(tickers, config.backtest_years)
 
+        # Simple failure tracking for Super Stars mode
+        ticker_failures = {}  # {ticker: {"issue": "...", "models": [...]}}
+        
         prog_placeholder = st.empty()
 
         for idx, ticker in enumerate(tickers):
@@ -102,17 +127,50 @@ def render_app():
                 st.write(f"### 🔍 Analyzing {ticker} ({idx + 1}/{len(tickers)})")
                 st.progress((idx) / len(tickers))
 
-                with st.status(f"Processing {ticker}...", expanded=True) as status:
+                with st.status(
+                    f"Processing {ticker}...",
+                    expanded=(mode != "Find Super Stars"),
+                ) as status:
                     try:
                         st.write("Preparing AI Models...")
                         for m_type in config.model_types:
                             config.model_type = m_type
                             try:
-                                if builder.load_or_build(ticker) == "trained":
-                                    st.write(f"✅ Trained {m_type}")
+                                result = builder.load_or_build(ticker)
+                                status_emoji = (
+                                    "🆕" if "train" in result else "💾"
+                                )  # New trained vs Cached
+                                st.write(
+                                    f"{status_emoji} **{m_type.upper()}**: {result.replace('_', ' ').title()}"
+                                )
                             except Exception as e:
-                                st.error(f"Model Error ({m_type}): {e}")
-                                ticker_results[f"{m_type}_error"] = str(e)
+                                error_msg = str(e)
+                                st.error(f"❌ Model Error ({m_type}): {error_msg}")
+                                ticker_results[f"{m_type}_error"] = error_msg
+                                
+                                # Track failure for Super Stars summary
+                                if mode == "Find Super Stars":
+                                    if ticker not in ticker_failures:
+                                        ticker_failures[ticker] = []
+                                    
+                                    # Check if this error type already exists for this ticker
+                                    issue_type = categorize_error(error_msg)
+                                    existing = next(
+                                        (item for item in ticker_failures[ticker] 
+                                         if item["issue"] == issue_type), 
+                                        None
+                                    )
+                                    
+                                    if existing:
+                                        # Same error type, just add model to list
+                                        existing["models"].append(m_type)
+                                    else:
+                                        # New error type for this ticker
+                                        ticker_failures[ticker].append({
+                                            "issue": issue_type,
+                                            "details": error_msg,
+                                            "models": [m_type]
+                                        })
 
                         if mode == "Models Comparison":
                             for m_type in config.model_types:
@@ -204,6 +262,38 @@ def render_app():
                     tf.keras.backend.clear_session()
                 except ImportError:
                     pass
+
+        # Show simple failure report for Super Stars mode
+        if mode == "Find Super Stars" and ticker_failures:
+            total_issues = sum(len(errors) for errors in ticker_failures.values())
+            st.warning(
+                f"⚠️ {len(ticker_failures)} tickers had issues ({total_issues} unique error types)"
+            )
+            
+            with st.expander("📋 Problem Tickers Report", expanded=True):
+                # Create clean table (one row per ticker+error type combination)
+                report_data = []
+                for ticker, error_list in ticker_failures.items():
+                    for error_info in error_list:
+                        report_data.append({
+                            "Ticker": ticker,
+                            "Issue Type": error_info["issue"],
+                            "Failed Models": ", ".join([m.upper() for m in error_info["models"]]),
+                            "Details": error_info["details"][:100] + "..." if len(error_info["details"]) > 100 else error_info["details"]
+                        })
+                
+                df = pd.DataFrame(report_data)
+                st.dataframe(
+                    df,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Ticker": st.column_config.TextColumn("Ticker", width="small"),
+                        "Issue Type": st.column_config.TextColumn("Issue Type", width="medium"),
+                        "Failed Models": st.column_config.TextColumn("Failed Models", width="medium"),
+                        "Details": st.column_config.TextColumn("Error Details", width="large"),
+                    }
+                )
 
         st.session_state["results"] = all_results
         st.session_state["active_mode"] = mode
