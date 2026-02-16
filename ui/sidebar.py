@@ -107,7 +107,7 @@ def render_sidebar(config: Config):
         index_choice = st.sidebar.selectbox(
             "Select Index to Scan",
             list(index_data.keys()),
-            help="Dow 30: Industrial Giants. Nasdaq 100: Tech & Growth. S&P 500: Market Standard.",
+            help="Dow 30: Industrial Giants. Nasdaq 100: Tech & Growth. S&P 100: Top 100 Blue Chips.",
         )
 
         if st.sidebar.button("🔄 Update Index Constituents"):

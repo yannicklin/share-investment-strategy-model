@@ -21,7 +21,7 @@ CACHE_FILE = "data/models/index_cache_usa.json"
 SOURCE_URLS = {
     "Dow 30": "https://en.wikipedia.org/wiki/Dow_Jones_Industrial_Average",
     "Nasdaq 100": "https://en.wikipedia.org/wiki/Nasdaq-100",
-    "S&P 500": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+    "S&P 100": "https://en.wikipedia.org/wiki/S%26P_100",
 }
 
 DEFAULT_INDEX_DATA = {
@@ -153,17 +153,106 @@ DEFAULT_INDEX_DATA = {
         "ZM",
         "ZS",
     ],
-    "S&P 500": [
+    "S&P 100": [
         "AAPL",
         "MSFT",
-        "AMZN",
         "NVDA",
+        "AMZN",
         "GOOGL",
-        "META",
         "GOOG",
+        "META",
         "BRK.B",
         "TSLA",
+        "LLY",
+        "AVGO",
+        "JPM",
+        "V",
         "UNH",
+        "WMT",
+        "MA",
+        "XOM",
+        "PG",
+        "COST",
+        "JNJ",
+        "HD",
+        "ABBV",
+        "BAC",
+        "KO",
+        "CRM",
+        "NFLX",
+        "CVX",
+        "MRK",
+        "AMD",
+        "PEP",
+        "TMUS",
+        "ACN",
+        "LIN",
+        "MCD",
+        "CSCO",
+        "ADBE",
+        "ABT",
+        "WFC",
+        "DIS",
+        "INTU",
+        "QCOM",
+        "DHR",
+        "CAT",
+        "VZ",
+        "TXN",
+        "IBM",
+        "CMCSA",
+        "PM",
+        "GE",
+        "AMGN",
+        "NOW",
+        "PFE",
+        "UNP",
+        "UBER",
+        "SPGI",
+        "ISRG",
+        "AXP",
+        "HON",
+        "COP",
+        "RTX",
+        "LOW",
+        "BKNG",
+        "GS",
+        "SYK",
+        "PLD",
+        "ELV",
+        "BLK",
+        "ETN",
+        "TJX",
+        "PGR",
+        "LMT",
+        "MS",
+        "MDT",
+        "BA",
+        "CB",
+        "MMC",
+        "VRTX",
+        "ADP",
+        "ADI",
+        "REGN",
+        "CI",
+        "C",
+        "GILD",
+        "BSX",
+        "KLAC",
+        "BMY",
+        "MDLZ",
+        "FI",
+        "PANW",
+        "DE",
+        "SCHW",
+        "SNPS",
+        "SHW",
+        "MU",
+        "T",
+        "LRCX",
+        "ZTS",
+        "CDNS",
+        "SO",
     ],
 }
 
@@ -202,36 +291,57 @@ def update_index_data() -> Dict[str, str]:
 
             tickers = []
             # Robustly find the table with symbols
+            found_table = False
             for df in tables:
                 cols = [str(c).lower() for c in df.columns]
-                # Look for standard symbol columns
-                symbol_col = None
+
+                # Try to find symbol column
+                symbol_col_idx = None
                 for i, col in enumerate(cols):
-                    if col in ["symbol", "ticker", "ticker symbol"]:
-                        symbol_col = i
+                    if any(key in col for key in ["symbol", "ticker"]):
+                        symbol_col_idx = i
                         break
 
-                if symbol_col is not None:
-                    # Dow 30/Nasdaq/S&P usually have symbols in these columns
-                    raw_list = df.iloc[:, symbol_col].dropna().astype(str).tolist()
-                    # Filter out header-like strings or junk
-                    tickers = [
-                        t.strip().upper().replace(".", "-")
-                        for t in raw_list
-                        if 1 <= len(t.strip()) <= 6
-                        and any(c.isalpha() for c in t)  # Must contain letters
-                    ]
+                if symbol_col_idx is not None:
+                    # Potential table found
+                    try:
+                        raw_list = (
+                            df.iloc[:, symbol_col_idx].dropna().astype(str).tolist()
+                        )
+                        # Basic validation
+                        potential_tickers = [
+                            t.strip().upper().replace(".", "-")
+                            for t in raw_list
+                            if 1 <= len(t.strip()) <= 6
+                            and not "Symbol" in t  # Skip header rows inside body
+                        ]
 
-                    # Verification: Dow 30 (~30), Nasdaq (~100), S&P (~500)
-                    min_expected = {"Dow 30": 25, "Nasdaq 100": 95, "S&P 500": 490}
-                    if len(tickers) >= min_expected.get(name, 5):
-                        break  # Found the right table
-                    else:
-                        tickers = []  # Keep looking
+                        # Validate count based on index name
+                        count = len(potential_tickers)
+                        if name == "Dow 30" and 28 <= count <= 32:
+                            tickers = potential_tickers
+                            found_table = True
+                        elif name == "Nasdaq 100" and 90 <= count <= 110:
+                            tickers = potential_tickers
+                            found_table = True
+                        elif name == "S&P 100" and 95 <= count <= 105:
+                            tickers = potential_tickers
+                            found_table = True
+                        elif (
+                            name == "S&P 500" and count > 480
+                        ):  # Fallback if user asks for 500 again
+                            tickers = potential_tickers
+                            found_table = True
 
-            if tickers:
+                        if found_table:
+                            break
+                    except Exception:
+                        continue
+
+            if found_table and tickers:
+                # Remove duplicates and sort
                 new_data[name] = sorted(list(set(tickers)))
-                updated_counts[name] = f"Updated {len(tickers)} tickers"
+                updated_counts[name] = f"Updated {len(new_data[name])} tickers"
             else:
                 updated_counts[name] = "Failed: No valid table found"
                 new_data[name] = DEFAULT_INDEX_DATA.get(name, [])
