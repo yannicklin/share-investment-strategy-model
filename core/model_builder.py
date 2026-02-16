@@ -552,7 +552,10 @@ class ModelBuilder:
                 self.model = self._init_model(input_dim=X.shape[1])
                 self.model.fit(X_seq, y_seq, batch_size=32, epochs=10, verbose=0)
                 self.target_scaler = target_scaler  # Save for inverse transform
-            except Exception:
+            except Exception as e:
+                logging.warning(
+                    f"⚠️ LSTM sequence training failed for {ticker}: {e}. Falling back to standard training."
+                )
                 self.model = self._init_model()
                 self.model.fit(X_scaled, y)
                 self.target_scaler = None
@@ -565,7 +568,10 @@ class ModelBuilder:
                 prophet_df = prophet_df.dropna()
                 self.model = self._init_model()
                 self.model.fit(prophet_df)
-            except Exception:
+            except Exception as e:
+                logging.warning(
+                    f"⚠️ Prophet time-series training failed for {ticker}: {e}. Falling back to standard training."
+                )
                 self.model = self._init_model()
                 self.model.fit(X_scaled, y)
         else:
