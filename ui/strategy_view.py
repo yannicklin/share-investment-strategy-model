@@ -51,6 +51,9 @@ def render_strategy_sensitivity(ticker, ticker_res, models=None, tie_breaker=Non
     errors = []
 
     for p_name, res in ticker_res.items():
+        # Skip metadata entry
+        if p_name == "_metadata":
+            continue
         if res and "error" not in res:
             summary.append(
                 {
