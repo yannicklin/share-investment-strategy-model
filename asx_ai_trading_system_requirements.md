@@ -72,6 +72,29 @@ Exclusively uses **Yahoo Finance (`yfinance`)**.
 - **Bollinger Bands (20, 2)**: Adds `Upper`, `Lower`, and `Width` (Squeeze) to detect mean reversion and volatility breakouts.
 - **ATR (14)**: Average True Range added to measure pure price volatility for risk sizing.
 
+### 3.3 Sample Weighting Strategy
+
+The model builder supports two distinct sample weighting modes during training:
+
+#### 3.3.1 Normal Weighting (Uniform)
+- **Default**: All training samples assigned equal weight (w = 1.0).
+- **Use Case**: Traditional machine learning approach; all historical periods equally important.
+- **File Naming**: `{ticker}_{algorithm}_normal_model.joblib`
+
+#### 3.3.2 Recency Weighting (Exponential Decay)
+- **Formula**: $ w_i = e^{-\lambda \cdot (t_{max} - t_i)} $ where $ \lambda = \frac{\ln(2)}{\text{half-life}} $
+- **Half-life**: Dynamically calculated as `backtest_years / 2`
+  - Example: 5-year backtest → half-life = 2.5 years
+  - 2-year backtest → half-life = 1 year
+  - Supports fractional values (e.g., 3-year backtest → half-life = 1.5 years)
+- **Weight Distribution**:
+  - Oldest data: ~13.5% of maximum weight
+  - At half-life point: 50% of maximum weight
+  - Most recent data: 100% of maximum weight
+- **Use Case**: Emphasize recent market regime; reduce impact of stale historical patterns.
+- **File Naming**: `{ticker}_{algorithm}_recency_model.joblib`
+- **Mathematical Properties**: Continuous function; stable and numerically sound across integer and fractional half-lives.
+
 ---
 ## 4. Trading Constraints & Realism
 
