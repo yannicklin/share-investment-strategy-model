@@ -8,6 +8,7 @@ Author: Yannick
 Copyright (c) 2026 Yannick
 """
 
+import os
 import streamlit as st
 import yfinance as yf
 from core.config import Config
@@ -15,7 +16,46 @@ from core.index_manager import load_index_constituents, update_index_data
 from core.model_builder import ModelBuilder
 
 
+def clean_all_models(model_path: str) -> bool:
+    """
+    Remove all model files and ledger data.
+
+    Args:
+        model_path: Path to model directory
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        # Clean model files
+        if os.path.exists(model_path):
+            for filename in os.listdir(model_path):
+                if filename.endswith((".joblib", ".h5", ".keras", ".json", ".pkl")):
+                    file_path = os.path.join(model_path, filename)
+                    if os.path.isfile(file_path):
+                        os.remove(file_path)
+
+        # Clean ledger data
+        ledger_path = "data/ledgers"
+        if os.path.exists(ledger_path):
+            for filename in os.listdir(ledger_path):
+                if filename.endswith(".csv"):
+                    file_path = os.path.join(ledger_path, filename)
+                    if os.path.isfile(file_path):
+                        os.remove(file_path)
+
+        return True
+    except Exception as e:
+        st.error(f"Error cleaning models and ledgers: {str(e)}")
+        return False
+
+
 def render_sidebar(config: Config):
+    """Renders all sidebar inputs and returns the selected analysis mode."""
+
+    # Initialize session state
+    if "show_model_cleanup_confirm" not in st.session_state:
+        st.session_state.show_model_cleanup_confirm = False
     """Renders all sidebar inputs and returns the selected analysis mode."""
 
     # Inject custom CSS for a friendlier Dark Mode sidebar
@@ -294,8 +334,42 @@ def render_sidebar(config: Config):
         "Force Rebuild AI Models", value=config.rebuild_model
     )
 
+    # --- 4. MODEL MANAGEMENT ---
     st.sidebar.markdown("---")
-    run_analysis = st.sidebar.button("🚀 Run Analysis", width="stretch")
+    st.sidebar.subheader("🧹 Model & Ledger Management")
+
+    # Clean models and ledgers button
+    if st.sidebar.button(
+        "🗑️ Clean out all models & ledgers",
+        key="clean_models_btn",
+        help="Remove all trained model files and transaction ledgers (force retraining on next run)",
+        use_container_width=True,
+    ):
+        st.session_state.show_model_cleanup_confirm = True
+
+    # Show confirmation dialog if user clicked clean button
+    if st.session_state.get("show_model_cleanup_confirm", False):
+        st.sidebar.warning("⚠️ This will delete all model files and ledger data!")
+
+        confirm_clicked = st.sidebar.button(
+            "✅ Confirm Delete", key="confirm_cleanup", use_container_width=True
+        )
+        cancel_clicked = st.sidebar.button(
+            "❌ Cancel", key="cancel_cleanup", use_container_width=True
+        )
+
+        if confirm_clicked:
+            if clean_all_models(config.model_path):
+                st.session_state.show_model_cleanup_confirm = False
+                st.sidebar.success("✅ Models & ledgers cleaned!")
+                st.rerun()
+
+        if cancel_clicked:
+            st.session_state.show_model_cleanup_confirm = False
+            st.rerun()
+
+    st.sidebar.markdown("---")
+    run_analysis = st.sidebar.button("🚀 Run Analysis", use_container_width=True)
 
     return (
         analysis_mode,
