@@ -81,7 +81,6 @@ def get_tax_profile(w8ben_filed: bool = True) -> TaxProfile:
 class Config:
     """Central configuration class aligned with USA market API."""
 
-    rebuild_model: bool = False
     target_stock_codes: List[str] = field(
         default_factory=lambda: [
             "SPY",
