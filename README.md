@@ -20,7 +20,7 @@ A Python-based automated trading strategy system designed specifically for the *
 -   **Global Market Intelligence**: Incorporates **S&P 500**, **VIX**, **Gold**, **Oil**, and **AUD/USD** data to understand market sentiment and macro drivers (with strict T-1 shifting to prevent look-ahead bias).
 -   **Sample Weighting Strategies**: Two sample weighting modes for model training:
     -   **Normal (Uniform)**: All historical samples weighted equally (default, matches traditional ML approach).
-    -   **Recency Weighted**: Exponential decay favoring recent data with dynamic half-life = backtest_years / 2. Recent market conditions influence model more heavily.
+    - **Recency Weighted**: Exponential decay favoring recent data with configurable half-life = backtest_years × multiplier (0.5×–3.0×, adjustable via UI). Recent market conditions influence model more heavily; multiplier allows fine-tuning decay aggressiveness.
 -   **Data Integration**: Seamlessly fetches historical and real-time data from Yahoo Finance (`yfinance`).
 -   **Interactive Dashboard**: A built-in Streamlit UI featuring a **Segmented Selection Switch** for:
 -   **Models Comparison**: Benchmark 5 AI models for a specific fixed strategy.

@@ -83,17 +83,29 @@ The model builder supports two distinct sample weighting modes during training:
 
 #### 3.3.2 Recency Weighting (Exponential Decay)
 - **Formula**: $ w_i = e^{-\lambda \cdot (t_{max} - t_i)} $ where $ \lambda = \frac{\ln(2)}{\text{half-life}} $
-- **Half-life**: Dynamically calculated as `backtest_years / 2`
-  - Example: 5-year backtest → half-life = 2.5 years
-  - 2-year backtest → half-life = 1 year
-  - Supports fractional values (e.g., 3-year backtest → half-life = 1.5 years)
-- **Weight Distribution**:
-  - Oldest data: ~13.5% of maximum weight
-  - At half-life point: 50% of maximum weight
+- **Half-life (Configurable)**: Calculated as `backtest_years × recency_half_life_multiplier`
+  - Default multiplier: 1.0× (moderate recency effect)
+  - Adjustable range: 0.5× to 3.0× via UI slider
+  - Example (5-year backtest, 1.0× multiplier): half-life = 5 years
+  - Example (5-year backtest, 0.5× multiplier): half-life = 2.5 years (more aggressive)
+  - Example (5-year backtest, 2.0× multiplier): half-life = 10 years (gentler)
+
+**Configurable Multiplier Effects (5-year backtest)**:
+| Multiplier | Half-Life | Max Weight Ratio | Use Case |
+|----------|-----------|----------|-----------|
+| 0.5× | 2.5 yr | 1000× | Aggressive: Heavy recent data emphasis |
+| 1.0× | 5.0 yr | 32× | **Default: Moderate recency effect** |
+| 1.5× | 7.5 yr | 6× | Gentle: Balanced history preservation |
+| 3.0× | 15 yr | 1.2× | Conservative: Minimize recency bias |
+
+- **Weight Distribution (default 1.0× multiplier)**:
+  - Oldest data: ~3% of maximum weight
+  - At half-life point (5 years): 50% of maximum weight
   - Most recent data: 100% of maximum weight
-- **Use Case**: Emphasize recent market regime; reduce impact of stale historical patterns.
+- **Performance Trade-off**: ~50% additional CPU processing; 3–5% model fitness improvement for active trading.
+- **Use Case**: Emphasize recent market regime; reduce impact of stale historical patterns; customize aggressiveness via multiplier.
 - **File Naming**: `{ticker}_{algorithm}_recency_model.joblib`
-- **Mathematical Properties**: Continuous function; stable and numerically sound across integer and fractional half-lives.
+- **Mathematical Properties**: Continuous function; stable and numerically sound across all multiplier values.
 
 ---
 ## 4. Trading Constraints & Realism

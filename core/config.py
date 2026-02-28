@@ -44,6 +44,9 @@ class Config:
     tax_rate: float = 0.25  # 25% tax
     scaler_type: str = "robust"  # "standard" or "robust"
     weighting_type: str = "normal"  # "normal" or "recency"
+    recency_half_life_multiplier: float = (
+        1.0  # Configurable multiplier for recency decay (0.5 - 3.0)
+    )
     model_type: str = "random_forest"
     # Available: ["random_forest", "ngboost", "catboost", "prophet", "lstm"]
     model_types: List[str] = field(
