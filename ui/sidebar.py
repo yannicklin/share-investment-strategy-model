@@ -325,10 +325,6 @@ def render_sidebar(config: Config):
         )
         config.hurdle_risk_buffer = buffer_val / 100.0
 
-    config.rebuild_model = st.sidebar.checkbox(
-        "Force Rebuild AI Models", value=config.rebuild_model
-    )
-
     # --- 4. MODEL MANAGEMENT ---
     st.sidebar.markdown("---")
     st.sidebar.subheader("🧹 Model & Ledger Management")
