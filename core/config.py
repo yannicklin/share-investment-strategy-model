@@ -43,6 +43,7 @@ class Config:
     settlement_fee: float = 1.5  # $1.5 fixed
     tax_rate: float = 0.25  # 25% tax
     scaler_type: str = "robust"  # "standard" or "robust"
+    weighting_type: str = "normal"  # "normal" or "recency"
     model_type: str = "random_forest"
     # Available: ["random_forest", "ngboost", "catboost", "prophet", "lstm"]
     model_types: List[str] = field(
