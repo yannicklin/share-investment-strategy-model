@@ -38,7 +38,7 @@ streamlit run main.py
 - **Auditability**: Every decision, fee, and tax calculation is transparent and auditable.
 - **Sample Weighting Strategies**: Two sample weighting modes for model training:
     - **Normal (Uniform)**: All historical samples weighted equally (default, matches traditional ML approach).
-    - **Recency Weighted**: Exponential decay favoring recent data with dynamic half-life = backtest_years / 2. Recent market conditions influence model more heavily.
+    - **Recency Weighted**: Exponential decay favoring recent data with configurable half-life = backtest_years × multiplier (0.5×–3.0×, adjustable via UI). Recent market conditions influence model more heavily; multiplier allows fine-tuning decay aggressiveness.
 
 ## 📂 Structural Identity
 

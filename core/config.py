@@ -120,6 +120,7 @@ class Config:
     )
     scaler_type: str = "robust"
     weighting_type: str = "normal"  # "normal" or "recency"
+    recency_half_life_multiplier: float = 1.0  # Multiplier for half-life calculation: half_life = backtest_years * multiplier
 
     # Market & Cost Settings
     cost_profile: str = "Saxo / Global Prime (Classic)"
