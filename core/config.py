@@ -43,9 +43,14 @@ class Config:
     tax_rate: float = 0.25  # 25% tax
     scaler_type: str = "robust"  # "standard" or "robust"
     weighting_type: str = "normal"  # "normal" or "recency"
-    recency_half_life_multiplier: float = (
-        1.0  # Configurable multiplier for recency decay (0.5 - 3.0)
-    )
+    # Recency weighting multiplier: half_life = backtest_years * multiplier
+    # Controls decay aggressiveness in exponential weighting for recent data emphasis:
+    #   0.5x = Fast decay (extreme recent bias, ~25% CPU overhead)
+    #   1.0x = Moderate recency (balanced, ~50% CPU overhead) - DEFAULT
+    #   1.5x = Gentle recency (less extreme, ~75% CPU overhead)
+    #   2.0x = Softer recency (~100% CPU overhead)
+    #   3.0x = Slowest decay (minimal recent bias, ~150% CPU overhead)
+    recency_half_life_multiplier: float = 1.0
     model_type: str = "random_forest"
     # Available: ["random_forest", "ngboost", "catboost", "prophet", "lstm"]
     model_types: List[str] = field(
