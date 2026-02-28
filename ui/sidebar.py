@@ -238,6 +238,13 @@ def render_sidebar(config: Config):
         index=0 if config.scaler_type == "standard" else 1,
     )
 
+    config.weighting_type = st.sidebar.radio(
+        "Sample Weighting",
+        ["normal", "recency"],
+        index=0 if config.weighting_type == "normal" else 1,
+        help="Normal: Uniform weights. Recency: Exponential decay favoring recent data (half-life = backtest_years / 2).",
+    )
+
     with st.sidebar.expander("Costs & Taxes"):
         # USA Market Broker Profiles
         profile_options = [

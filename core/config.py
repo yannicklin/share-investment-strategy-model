@@ -119,6 +119,7 @@ class Config:
         ]
     )
     scaler_type: str = "robust"
+    weighting_type: str = "normal"  # "normal" or "recency"
 
     # Market & Cost Settings
     cost_profile: str = "Saxo / Global Prime (Classic)"
