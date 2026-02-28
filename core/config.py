@@ -44,6 +44,7 @@ class Config:
     stt_rate: float = 0.003  # 0.3% STT (Sell-side only)
 
     scaler_type: str = "robust"
+    weighting_type: str = "normal"  # "normal" or "recency"
     model_type: str = "random_forest"
     # Available: ["random_forest", "ngboost", "catboost", "prophet", "lstm"]
     model_types: List[str] = field(

@@ -75,6 +75,31 @@ class ModelBuilder:
             return RobustScaler()
         return StandardScaler()
 
+    def _calculate_sample_weights(self, n_samples: int) -> np.ndarray:
+        """
+        Calculate sample weights based on weighting type.
+        For recency weighting: exponential decay with half-life = backtest_years / 2
+        """
+        if self.config.weighting_type == "normal":
+            # Uniform weights
+            return np.ones(n_samples)
+
+        # Recency weighting with exponential decay
+        half_life = self.config.backtest_years / 2.0
+        lambda_decay = np.log(2) / half_life  # Decay constant
+
+        # Time indices: 0 (oldest) to n_samples-1 (newest)
+        time_indices = np.arange(n_samples)
+        max_time = n_samples - 1
+
+        # Exponential decay: w_i = exp(-lambda * (t_max - t_i))
+        weights = np.exp(-lambda_decay * (max_time - time_indices))
+
+        # Normalize to [0, 1] range with max weight = 1
+        weights = weights / np.max(weights)
+
+        return weights
+
     def _download_with_retry(
         self, ticker: str, start_date, max_retries: int = 3, base_delay: float = 2.0
     ) -> pd.DataFrame:
@@ -719,6 +744,9 @@ class ModelBuilder:
 
         m_type = self.config.model_type
 
+        # Calculate sample weights based on weighting strategy
+        sample_weights = self._calculate_sample_weights(len(X_scaled))
+
         # For LSTM, also scale the target
         target_scaler = None
         y_scaled = y
@@ -731,15 +759,24 @@ class ModelBuilder:
         if m_type == "lstm":
             try:
                 X_seq, y_seq = self._create_sequences(X_scaled, y_scaled)
+                # For LSTM sequences, we need to align weights with sequences
+                seq_sample_weights = self._calculate_sample_weights(len(X_seq))
                 self.model = self._init_model(input_dim=X.shape[1])
-                self.model.fit(X_seq, y_seq, batch_size=32, epochs=10, verbose=0)
+                self.model.fit(
+                    X_seq,
+                    y_seq,
+                    sample_weight=seq_sample_weights,
+                    batch_size=32,
+                    epochs=10,
+                    verbose=0,
+                )
                 self.target_scaler = target_scaler  # Save for inverse transform
             except Exception as e:
                 logging.warning(
                     f"⚠️ LSTM sequence training failed for {ticker}: {e}. Falling back to standard training."
                 )
                 self.model = self._init_model()
-                self.model.fit(X_scaled, y)
+                self.model.fit(X_scaled, y, sample_weight=sample_weights)
                 self.target_scaler = None
         elif m_type == "prophet":
             try:
@@ -755,14 +792,16 @@ class ModelBuilder:
                     f"⚠️ Prophet time-series training failed for {ticker}: {e}. Falling back to standard training."
                 )
                 self.model = self._init_model()
-                self.model.fit(X_scaled, y)
+                self.model.fit(X_scaled, y, sample_weight=sample_weights)
         else:
             self.model = self._init_model()
-            self.model.fit(X_scaled, y)
+            self.model.fit(X_scaled, y, sample_weight=sample_weights)
 
         os.makedirs(self.config.model_path, exist_ok=True)
+        # Add weighting suffix to model filename
+        weighting_suffix = self.config.weighting_type
         model_filename = os.path.join(
-            self.config.model_path, f"{ticker}_{m_type}_model.joblib"
+            self.config.model_path, f"{ticker}_{m_type}_{weighting_suffix}_model.joblib"
         )
         if m_type == "lstm" and hasattr(self.model, "save"):
             keras_path = model_filename.replace(".joblib", ".keras")
@@ -773,6 +812,7 @@ class ModelBuilder:
                     "target_scaler": self.target_scaler,  # Save target scaler
                     "keras_path": keras_path,
                     "model_class": self.model.__class__.__name__,
+                    "weighting_type": self.config.weighting_type,
                 },
                 model_filename,
             )
@@ -785,13 +825,17 @@ class ModelBuilder:
                         self, "target_scaler", None
                     ),  # Include if exists
                     "model_class": self.model.__class__.__name__,
+                    "weighting_type": self.config.weighting_type,
                 },
                 model_filename,
             )
 
     def load_or_build(self, ticker: str) -> str:
+        # Build filename with weighting suffix
+        weighting_suffix = self.config.weighting_type
         model_filename = os.path.join(
-            self.config.model_path, f"{ticker}_{self.config.model_type}_model.joblib"
+            self.config.model_path,
+            f"{ticker}_{self.config.model_type}_{weighting_suffix}_model.joblib",
         )
 
         # 1. Force train if requested or missing

@@ -38,6 +38,9 @@ This branch includes specialized logic for the Taiwan (TWSE/TPEx) market:
 - **Broker Profiles**: Localized fee structures with realistic online trading discounts for **富邦證券 (Fubon)** and **第一金證券 (First Securities)**.
 - **Realistic Friction**: Automatic enforcement of the 0.3% Securities Transaction Tax (STT), T+2 settlement delays, and the daily ±10% price limit.
 - **Institutional Metadata**: Integrated support for FinMind data (Institutional flows, Margin trading, and Revenue) alongside Yahoo Finance price data.
+- **Sample Weighting Strategies**: Two sample weighting modes for model training:
+    - **Normal (Uniform)**: All historical samples weighted equally (default, matches traditional ML approach).
+    - **Recency Weighted**: Exponential decay favoring recent data with dynamic half-life = backtest_years / 2. Recent market conditions influence model more heavily.
 
 ---
 
