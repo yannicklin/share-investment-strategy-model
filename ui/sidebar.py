@@ -46,6 +46,10 @@ def clean_all_models(model_path: str) -> bool:
 def render_sidebar(config: Config):
     """Renders all sidebar inputs and returns the selected analysis mode."""
 
+    # Initialize session state
+    if "show_model_cleanup_confirm" not in st.session_state:
+        st.session_state.show_model_cleanup_confirm = False
+
     # Inject custom CSS for a friendlier Dark Mode sidebar
     st.markdown(
         """
@@ -308,32 +312,38 @@ def render_sidebar(config: Config):
     st.sidebar.markdown("---")
     st.sidebar.subheader("🧹 Model Management")
 
-    col1, col2 = st.sidebar.columns([2, 1])
-    with col1:
-        clean_btn = st.button(
-            "🗑️ Clean out all existing models",
-            key="clean_models_btn",
-            help="Remove all trained model files and force retraining on next run",
-            use_container_width=True,
+    # Clean models button
+    if st.sidebar.button(
+        "🗑️ Clean out all existing models",
+        key="clean_models_btn",
+        help="Remove all trained model files and force retraining on next run",
+        use_container_width=True,
+    ):
+        st.session_state.show_model_cleanup_confirm = True
+
+    # Show confirmation dialog if user clicked clean button
+    if st.session_state.get("show_model_cleanup_confirm", False):
+        st.sidebar.warning("⚠️ This will delete all model files!")
+
+        confirm_clicked = st.sidebar.button(
+            "✅ Confirm Delete", key="confirm_cleanup", use_container_width=True
+        )
+        cancel_clicked = st.sidebar.button(
+            "❌ Cancel", key="cancel_cleanup", use_container_width=True
         )
 
-    if clean_btn:
-        # Show confirmation dialog
-        st.sidebar.warning("⚠️ This will delete all model files!")
-        confirm_col1, confirm_col2 = st.sidebar.columns(2)
-
-        with confirm_col1:
-            if st.button("✅ Confirm Delete", key="confirm_delete"):
-                if clean_all_models(config.model_path):
-                    st.sidebar.success("✅ All models cleaned successfully!")
-                    st.rerun()
-
-        with confirm_col2:
-            if st.button("❌ Cancel", key="cancel_delete"):
+        if confirm_clicked:
+            if clean_all_models(config.model_path):
+                st.session_state.show_model_cleanup_confirm = False
+                st.sidebar.success("✅ Models cleaned!")
                 st.rerun()
 
+        if cancel_clicked:
+            st.session_state.show_model_cleanup_confirm = False
+            st.rerun()
+
     st.sidebar.markdown("---")
-    run_analysis = st.sidebar.button("🚀 Run Analysis", width="stretch")
+    run_analysis = st.sidebar.button("🚀 Run Analysis", use_container_width=True)
 
     return (
         analysis_mode,
