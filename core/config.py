@@ -16,7 +16,6 @@ from typing import List
 class Config:
     """System configuration parameters."""
 
-    rebuild_model: bool = False
     target_stock_codes: List[str] = field(
         default_factory=lambda: [
             "2330.TW",  # TSMC (台積電)

@@ -8,11 +8,39 @@ Author: Yannick
 Copyright (c) 2026 Yannick
 """
 
+import os
 import streamlit as st
 import yfinance as yf
 from core.config import Config
 from core.index_manager import load_index_constituents, update_index_data
 from core.model_builder import ModelBuilder
+
+
+def clean_all_models(model_path: str) -> bool:
+    """
+    Remove all model files from the model directory.
+
+    Args:
+        model_path: Path to model directory
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        if not os.path.exists(model_path):
+            return True  # Nothing to clean
+
+        # Remove all model files
+        for filename in os.listdir(model_path):
+            if filename.endswith((".joblib", ".h5", ".keras", ".json", ".pkl")):
+                file_path = os.path.join(model_path, filename)
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+
+        return True
+    except Exception as e:
+        st.error(f"Error cleaning models: {str(e)}")
+        return False
 
 
 def render_sidebar(config: Config):
@@ -276,9 +304,33 @@ def render_sidebar(config: Config):
         )
         config.hurdle_risk_buffer = buffer_val / 100.0
 
-    config.rebuild_model = st.sidebar.checkbox(
-        "Force Rebuild AI Models", value=config.rebuild_model
-    )
+    # --- 4. MODEL MANAGEMENT ---
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🧹 Model Management")
+
+    col1, col2 = st.sidebar.columns([2, 1])
+    with col1:
+        clean_btn = st.button(
+            "🗑️ Clean out all existing models",
+            key="clean_models_btn",
+            help="Remove all trained model files and force retraining on next run",
+            use_container_width=True,
+        )
+
+    if clean_btn:
+        # Show confirmation dialog
+        st.sidebar.warning("⚠️ This will delete all model files!")
+        confirm_col1, confirm_col2 = st.sidebar.columns(2)
+
+        with confirm_col1:
+            if st.button("✅ Confirm Delete", key="confirm_delete"):
+                if clean_all_models(config.model_path):
+                    st.sidebar.success("✅ All models cleaned successfully!")
+                    st.rerun()
+
+        with confirm_col2:
+            if st.button("❌ Cancel", key="cancel_delete"):
+                st.rerun()
 
     st.sidebar.markdown("---")
     run_analysis = st.sidebar.button("🚀 Run Analysis", width="stretch")
