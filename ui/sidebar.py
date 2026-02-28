@@ -18,7 +18,7 @@ from core.model_builder import ModelBuilder
 
 def clean_all_models(model_path: str) -> bool:
     """
-    Remove all model files from the model directory.
+    Remove all model files and ledger data.
 
     Args:
         model_path: Path to model directory
@@ -27,19 +27,26 @@ def clean_all_models(model_path: str) -> bool:
         True if successful, False otherwise
     """
     try:
-        if not os.path.exists(model_path):
-            return True  # Nothing to clean
+        # Clean model files
+        if os.path.exists(model_path):
+            for filename in os.listdir(model_path):
+                if filename.endswith((".joblib", ".h5", ".keras", ".json", ".pkl")):
+                    file_path = os.path.join(model_path, filename)
+                    if os.path.isfile(file_path):
+                        os.remove(file_path)
 
-        # Remove all model files
-        for filename in os.listdir(model_path):
-            if filename.endswith((".joblib", ".h5", ".keras", ".json", ".pkl")):
-                file_path = os.path.join(model_path, filename)
-                if os.path.isfile(file_path):
-                    os.remove(file_path)
+        # Clean ledger data
+        ledger_path = "data/ledgers"
+        if os.path.exists(ledger_path):
+            for filename in os.listdir(ledger_path):
+                if filename.endswith(".csv"):
+                    file_path = os.path.join(ledger_path, filename)
+                    if os.path.isfile(file_path):
+                        os.remove(file_path)
 
         return True
     except Exception as e:
-        st.error(f"Error cleaning models: {str(e)}")
+        st.error(f"Error cleaning models and ledgers: {str(e)}")
         return False
 
 
@@ -310,20 +317,20 @@ def render_sidebar(config: Config):
 
     # --- 4. MODEL MANAGEMENT ---
     st.sidebar.markdown("---")
-    st.sidebar.subheader("🧹 Model Management")
+    st.sidebar.subheader("🧹 Model & Ledger Management")
 
-    # Clean models button
+    # Clean models and ledgers button
     if st.sidebar.button(
-        "🗑️ Clean out all existing models",
+        "🗑️ Clean out all models & ledgers",
         key="clean_models_btn",
-        help="Remove all trained model files and force retraining on next run",
+        help="Remove all trained model files and transaction ledgers (force retraining on next run)",
         use_container_width=True,
     ):
         st.session_state.show_model_cleanup_confirm = True
 
     # Show confirmation dialog if user clicked clean button
     if st.session_state.get("show_model_cleanup_confirm", False):
-        st.sidebar.warning("⚠️ This will delete all model files!")
+        st.sidebar.warning("⚠️ This will delete all model files and ledger data!")
 
         confirm_clicked = st.sidebar.button(
             "✅ Confirm Delete", key="confirm_cleanup", use_container_width=True
@@ -335,7 +342,7 @@ def render_sidebar(config: Config):
         if confirm_clicked:
             if clean_all_models(config.model_path):
                 st.session_state.show_model_cleanup_confirm = False
-                st.sidebar.success("✅ Models cleaned!")
+                st.sidebar.success("✅ Models & ledgers cleaned!")
                 st.rerun()
 
         if cancel_clicked:
