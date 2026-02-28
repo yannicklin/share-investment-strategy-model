@@ -40,7 +40,7 @@ This branch includes specialized logic for the Taiwan (TWSE/TPEx) market:
 - **Institutional Metadata**: Integrated support for FinMind data (Institutional flows, Margin trading, and Revenue) alongside Yahoo Finance price data.
 - **Sample Weighting Strategies**: Two sample weighting modes for model training:
     - **Normal (Uniform)**: All historical samples weighted equally (default, matches traditional ML approach).
-    - **Recency Weighted**: Exponential decay favoring recent data with dynamic half-life = backtest_years / 2. Recent market conditions influence model more heavily.
+    - **Recency Weighted**: Exponential decay favoring recent data with configurable half-life = backtest_years × multiplier. Multiplier adjustable from 0.5× (aggressive) to 3.0× (gentle) via UI slider. Recent market conditions influence model more heavily.
 
 ---
 
