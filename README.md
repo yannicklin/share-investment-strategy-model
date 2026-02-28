@@ -36,6 +36,9 @@ streamlit run main.py
 - **The Hurdle Layer**: Enforcing financial sanity by requiring signals to exceed a "Tax-Aware Hurdle Rate."
 - **The Factory Interface**: A modular standard for integrating diverse machine learning algorithms (Random Forest, LSTM, GBDT).
 - **Auditability**: Every decision, fee, and tax calculation is transparent and auditable.
+- **Sample Weighting Strategies**: Two sample weighting modes for model training:
+    - **Normal (Uniform)**: All historical samples weighted equally (default, matches traditional ML approach).
+    - **Recency Weighted**: Exponential decay favoring recent data with dynamic half-life = backtest_years / 2. Recent market conditions influence model more heavily.
 
 ## 📂 Structural Identity
 
