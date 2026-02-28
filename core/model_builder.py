@@ -78,14 +78,16 @@ class ModelBuilder:
     def _calculate_sample_weights(self, n_samples: int) -> np.ndarray:
         """
         Calculate sample weights based on weighting type.
-        For recency weighting: exponential decay with half-life = backtest_years / 2
+        For recency weighting: exponential decay with half-life = backtest_years * recency_half_life_multiplier
         """
         if self.config.weighting_type == "normal":
             # Uniform weights
             return np.ones(n_samples)
 
         # Recency weighting with exponential decay
-        half_life = self.config.backtest_years / 2.0
+        half_life = (
+            self.config.backtest_years * self.config.recency_half_life_multiplier
+        )
         lambda_decay = np.log(2) / half_life  # Decay constant
 
         # Time indices: 0 (oldest) to n_samples-1 (newest)

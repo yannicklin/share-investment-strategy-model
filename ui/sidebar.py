@@ -279,8 +279,21 @@ def render_sidebar(config: Config):
         "Sample Weighting",
         ["normal", "recency"],
         index=0 if config.weighting_type == "normal" else 1,
-        help="Normal: Uniform weights. Recency: Exponential decay favoring recent data (half-life = backtest_years / 2).",
+        help="Normal: Uniform weights. Recency: Exponential decay favoring recent data (half-life = backtest_years × multiplier, see slider below).",
     )
+
+    # Show half-life multiplier slider only when recency weighting is selected
+    if config.weighting_type == "recency":
+        multiplier_val = st.slider(
+            "Recency Half-Life Multiplier",
+            min_value=0.5,
+            max_value=3.0,
+            value=config.recency_half_life_multiplier,
+            step=0.1,
+            format="%.1f×",
+            help="Adjust decay aggressiveness: Lower (0.5×) = faster decay (more extreme weights), Higher (3.0×) = slower decay (gentler weights). Default 1.0× = moderate recency effect.",
+        )
+        config.recency_half_life_multiplier = multiplier_val
 
     with st.sidebar.expander("Costs & Taxes"):
         profile_options = ["default", "fubon_twn", "first_twn"]

@@ -44,6 +44,7 @@ class Config:
 
     scaler_type: str = "robust"
     weighting_type: str = "normal"  # "normal" or "recency"
+    recency_half_life_multiplier: float = 1.0  # Multiplier for half-life calculation: half_life = backtest_years * multiplier
     model_type: str = "random_forest"
     # Available: ["random_forest", "ngboost", "catboost", "prophet", "lstm"]
     model_types: List[str] = field(
