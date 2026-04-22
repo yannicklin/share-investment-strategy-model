@@ -119,6 +119,21 @@ class BacktestEngine:
         df["Daily_Return"] = df["Close"].pct_change(fill_method=None)
         return df.dropna()
 
+    def _resolve_prediction_horizon_days(self) -> int:
+        """Map the configured holding period to a BUY prediction horizon in days."""
+        unit = self.config.hold_period_unit.lower()
+        value = max(1, int(self.config.hold_period_value))
+
+        if unit == "day":
+            return value
+        if unit == "week":
+            return value * 7
+        if unit == "month":
+            return value * 30
+        if unit == "year":
+            return value * 365
+        return value
+
     def _prepare_data(
         self, ticker: str
     ) -> Tuple[Optional[pd.DataFrame], Optional[List[str]], Optional[Dict[str, str]]]:
@@ -515,9 +530,10 @@ class BacktestEngine:
         """Mode 1: Evaluate a single specific model."""
         # Clear ledger from previous run (no archiving)
         self.ledger.clear()
+        horizon_days = self._resolve_prediction_horizon_days()
 
         self.config.model_type = model_type
-        self.model_builder.load_or_build(ticker)  # Load once
+        self.model_builder.load_or_build(ticker, target_horizon_days=horizon_days)  # Load once
 
         # Prepare filtered data (trading days only)
         df_tuple = self._prepare_data(ticker)
@@ -539,7 +555,7 @@ class BacktestEngine:
 
         # Save ledger to file and clear from memory
         if "error" not in result:
-            ledger_filename = f"{ticker}_algorithm_{model_type}_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
+            ledger_filename = f"{ticker}_algorithm_{model_type}_h{horizon_days}d_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
             ledger_path = self.ledger.save_to_file(filename=ledger_filename)
             result["ledger_path"] = ledger_path
 
@@ -555,6 +571,7 @@ class BacktestEngine:
         """Mode 2/3: Evaluate strategy sensitivity using multi-model consensus."""
         # Clear ledger from previous run (no archiving)
         self.ledger.clear()
+        horizon_days = self._resolve_prediction_horizon_days()
 
         # Prepare filtered data (trading days only)
         df_tuple = self._prepare_data(ticker)
@@ -566,7 +583,7 @@ class BacktestEngine:
         committee_preds = {}
         for m_type in models:
             self.config.model_type = m_type
-            self.model_builder.load_or_build(ticker)
+            self.model_builder.load_or_build(ticker, target_horizon_days=horizon_days)
             committee_preds[m_type] = self._get_bulk_predictions(df, features, m_type)
 
         def signal(i, df_inner, features_inner, current_cap):
@@ -596,7 +613,7 @@ class BacktestEngine:
 
         # Save ledger to file and clear from memory
         if "error" not in result:
-            ledger_filename = f"{ticker}_{mode_prefix}_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
+            ledger_filename = f"{ticker}_{mode_prefix}_h{horizon_days}d_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
             ledger_path = self.ledger.save_to_file(filename=ledger_filename)
             result["ledger_path"] = ledger_path
 

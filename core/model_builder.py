@@ -57,6 +57,7 @@ class ModelBuilder:
         self.scaler: Optional[Any] = None
         self.target_scaler: Optional[Any] = None  # For LSTM target scaling
         self.sequence_length = 30
+        self.target_horizon_days = 1
         self._data_cache: Dict[str, pd.DataFrame] = {}
         self._market_data: Optional[pd.DataFrame] = None
 
@@ -460,8 +461,26 @@ class ModelBuilder:
         """Public read-only access to cached market data."""
         return self._market_data
 
-    def prepare_features(self, data: pd.DataFrame, ticker: str = None):
+    def _build_horizon_target(
+        self, close_series: pd.Series, horizon_days: int
+    ) -> pd.Series:
+        """Build a future-close target aligned to the requested horizon."""
+        horizon_days = max(1, int(horizon_days))
+        close_index = pd.DatetimeIndex(close_series.index)
+        close_values = close_series.to_numpy(dtype=float)
+        target_values = np.full(len(close_values), np.nan, dtype=float)
+
+        for i, current_date in enumerate(close_index):
+            target_date = current_date + pd.DateOffset(days=horizon_days)
+            target_pos = close_index.searchsorted(target_date, side="left")
+            if target_pos < len(close_values):
+                target_values[i] = close_values[target_pos]
+
+        return pd.Series(target_values, index=close_index)
+
+    def prepare_features(self, data: pd.DataFrame, ticker: str = None, target_horizon_days: Optional[int] = None):
         df = data.copy()
+        horizon_days = max(1, int(target_horizon_days or self.target_horizon_days))
 
         # Double check Close is a Series
         if "Close" not in df.columns:
@@ -514,7 +533,7 @@ class ModelBuilder:
 
         df["Daily_Return"] = df["Close"].pct_change(fill_method=None)
 
-        df["Target"] = df["Close"].shift(-1)
+        df["Target"] = self._build_horizon_target(df["Close"], horizon_days)
         df = df.dropna()
 
         # Final safety cleanup for all features (including indicators and market data)
@@ -565,7 +584,10 @@ class ModelBuilder:
             y_seq.append(target[i + self.sequence_length])
         return np.array(X_seq), np.array(y_seq)
 
-    def train(self, ticker: str):
+    def train(self, ticker: str, target_horizon_days: Optional[int] = None):
+        if target_horizon_days is not None:
+            self.target_horizon_days = max(1, int(target_horizon_days))
+
         logging.info(
             f"🎓 Starting training for {ticker} (model: {self.config.model_type})..."
         )
@@ -574,7 +596,7 @@ class ModelBuilder:
             logging.error(f"❌ No data fetched for {ticker}")
             raise ValueError(f"No data for {ticker}")
 
-        X, y = self.prepare_features(data, ticker)
+        X, y = self.prepare_features(data, ticker, target_horizon_days=self.target_horizon_days)
         if len(X) < 1:
             logging.error(
                 f"❌ Insufficient data after feature engineering for {ticker}: X shape={X.shape}"
@@ -648,8 +670,9 @@ class ModelBuilder:
         os.makedirs(self.config.model_path, exist_ok=True)
         # Add weighting suffix to model filename
         weighting_suffix = self.config.weighting_type
+        horizon_suffix = f"h{self.target_horizon_days}d"
         model_filename = os.path.join(
-            self.config.model_path, f"{ticker}_{m_type}_{weighting_suffix}_model.joblib"
+            self.config.model_path, f"{ticker}_{m_type}_{weighting_suffix}_{horizon_suffix}_model.joblib"
         )
         if m_type == "lstm" and hasattr(self.model, "save"):
             keras_path = model_filename.replace(".joblib", ".keras")
@@ -661,6 +684,7 @@ class ModelBuilder:
                     "keras_path": keras_path,
                     "model_class": self.model.__class__.__name__,
                     "weighting_type": self.config.weighting_type,
+                    "target_horizon_days": self.target_horizon_days,
                 },
                 model_filename,
             )
@@ -674,16 +698,21 @@ class ModelBuilder:
                     ),  # Include if exists
                     "model_class": self.model.__class__.__name__,
                     "weighting_type": self.config.weighting_type,
+                    "target_horizon_days": self.target_horizon_days,
                 },
                 model_filename,
             )
 
-    def load_or_build(self, ticker: str) -> str:
+    def load_or_build(self, ticker: str, target_horizon_days: Optional[int] = None) -> str:
+        if target_horizon_days is not None:
+            self.target_horizon_days = max(1, int(target_horizon_days))
+
         # Build filename with weighting suffix
         weighting_suffix = self.config.weighting_type
+        horizon_suffix = f"h{self.target_horizon_days}d"
         model_filename = os.path.join(
             self.config.model_path,
-            f"{ticker}_{self.config.model_type}_{weighting_suffix}_model.joblib",
+            f"{ticker}_{self.config.model_type}_{weighting_suffix}_{horizon_suffix}_model.joblib",
         )
 
         # 1. Train if model missing
@@ -691,7 +720,7 @@ class ModelBuilder:
             logging.info(
                 f"🔧 Training new model for {ticker} (exists={os.path.exists(model_filename)})"
             )
-            self.train(ticker)
+            self.train(ticker, target_horizon_days=self.target_horizon_days)
             return "trained"
 
         try:
@@ -706,10 +735,10 @@ class ModelBuilder:
             # We fetch a tiny slice of data to check current feature dimensions
             sample_data = self.fetch_data(ticker, self.config.backtest_years)
             if sample_data.empty:
-                self.train(ticker)
+                self.train(ticker, target_horizon_days=self.target_horizon_days)
                 return "trained_fallback"
 
-            X_sample, _ = self.prepare_features(sample_data, ticker)
+            X_sample, _ = self.prepare_features(sample_data, ticker, target_horizon_days=self.target_horizon_days)
             current_dim = X_sample.shape[1]
             logging.info(
                 f"📊 Feature dimensions for {ticker}: current={current_dim}, cached={loaded_scaler.n_features_in_ if hasattr(loaded_scaler, 'n_features_in_') else 'unknown'}"
@@ -723,10 +752,13 @@ class ModelBuilder:
                 logging.warning(
                     f"⚠️ Feature mismatch for {ticker}: current={current_dim}, cached={loaded_scaler.n_features_in_}. Retraining..."
                 )
-                self.train(ticker)
+                self.train(ticker, target_horizon_days=self.target_horizon_days)
                 return "retrained"
 
             self.scaler = loaded_scaler
+            bundle_horizon = data_bundle.get("target_horizon_days")
+            if bundle_horizon is not None:
+                self.target_horizon_days = max(1, int(bundle_horizon))
             self.target_scaler = data_bundle.get(
                 "target_scaler", None
             )  # Load target scaler for LSTM
@@ -740,7 +772,7 @@ class ModelBuilder:
                 try:
                     self.model = load_model(path)
                 except Exception:
-                    self.train(ticker)
+                    self.train(ticker, target_horizon_days=self.target_horizon_days)
                     return "retrained_keras_error"
             else:
                 self.model = data_bundle.get("model")
@@ -749,7 +781,7 @@ class ModelBuilder:
 
         except Exception as e:
             logging.error(f"Failed to load model for {ticker}: {e}. Retraining...")
-            self.train(ticker)
+            self.train(ticker, target_horizon_days=self.target_horizon_days)
             return "retrained_error"
 
     def predict(
