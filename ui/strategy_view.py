@@ -8,9 +8,10 @@ Author: Yannick
 Copyright (c) 2026 Yannick
 """
 
-import streamlit as st
 import pandas as pd
 import plotly.express as px
+import streamlit as st
+
 from ui.components import render_trade_details
 
 
@@ -108,7 +109,8 @@ def render_strategy_sensitivity(ticker, ticker_res, models=None, tie_breaker=Non
         tabs = st.tabs(tab_titles)
         for i, p_info in enumerate(summary):
             with tabs[i]:
-                render_trade_details(ticker, ticker_res[p_info["Hold Period"]])
+                period_res = ticker_res[p_info["Hold Period"]]
+                render_trade_details(ticker, period_res)
     else:
         if not errors:
             st.error(

@@ -8,13 +8,14 @@ Author: Yannick
 Copyright (c) 2026 Yannick
 """
 
+import logging
 import os
+import time
+
 import joblib
 import numpy as np
 import pandas as pd
 import yfinance as yf
-import time
-import logging
 
 # Suppress heavy logging and warnings from backends
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -34,7 +35,7 @@ except ImportError:
 logging.getLogger("cmdstanpy").setLevel(logging.ERROR)
 logging.getLogger("prophet").setLevel(logging.ERROR)
 
-from typing import Optional, Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 # Try to use curl-cffi for rate limit bypass
 try:
@@ -44,8 +45,9 @@ try:
 except ImportError:
     CURL_CFFI_AVAILABLE = False
 
-from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
-from sklearn.preprocessing import StandardScaler, RobustScaler
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import RobustScaler, StandardScaler
+
 from core.config import Config
 
 
@@ -233,9 +235,8 @@ class ModelBuilder:
             return Prophet(daily_seasonality=True, yearly_seasonality=True)
 
         elif m_type == "lstm":
-            import tensorflow as tf
-            from tensorflow.keras.models import Sequential
             from tensorflow.keras.layers import LSTM, Dense, Dropout, Input
+            from tensorflow.keras.models import Sequential
 
             logging.info("Initialized LSTM model.")
             model = Sequential(
@@ -448,6 +449,15 @@ class ModelBuilder:
         # Clean up market data (handle inf/nan)
         market_df.replace([np.inf, -np.inf], np.nan, inplace=True)
         self._market_data = market_df.ffill().fillna(0)
+
+    def ensure_market_data(self):
+        """Public wrapper for market data initialization."""
+        self._ensure_market_data()
+
+    @property
+    def market_data(self) -> Optional[pd.DataFrame]:
+        """Public read-only access to cached market data."""
+        return self._market_data
 
     def prepare_features(self, data: pd.DataFrame, ticker: str = None):
         df = data.copy()

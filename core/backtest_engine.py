@@ -8,21 +8,20 @@ Author: Yannick
 Copyright (c) 2026 Yannick
 """
 
-import pandas as pd
-import numpy as np
-import os
-import joblib
 import logging
-from typing import List, Dict, Any, Callable, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+import numpy as np
+import pandas as pd
+
 from core.config import Config
 from core.model_builder import ModelBuilder
+from core.transaction_ledger import TransactionLedger
 from core.utils import (
-    format_date_with_weekday,
-    get_asx_trading_days,
     calculate_trading_days_ahead,
+    get_asx_trading_days,
     validate_buy_capacity,
 )
-from core.transaction_ledger import TransactionLedger
 
 
 class BacktestEngine:
@@ -191,8 +190,8 @@ class BacktestEngine:
         df["ATR"] = tr.rolling(window=14).mean()
 
         # 6. Market Context Integration
-        self.model_builder._ensure_market_data()
-        m_data = self.model_builder._market_data
+        self.model_builder.ensure_market_data()
+        m_data = self.model_builder.market_data
         if m_data is not None and not m_data.empty:
             market_subset = m_data.shift(1).reindex(df.index).ffill()
             df = df.join(market_subset)
@@ -221,7 +220,12 @@ class BacktestEngine:
         df = df[df.index.isin(trading_days_normalized)]
         if df.empty:
             logging.warning(
-                f"Dataframe empty for {ticker} after applying market calendar filter. Index: {raw_data.index[:1]} to {raw_data.index[-1:]}. Calendar: {self.trading_days[:1]} to {self.trading_days[-1:]}"
+                "Dataframe empty for %s after applying market calendar filter. Index: %s to %s. Calendar: %s to %s",
+                ticker,
+                raw_data.index[:1],
+                raw_data.index[-1:],
+                self.trading_days[:1],
+                self.trading_days[-1:],
             )
             return None, None, {"error": f"No valid trading days for {ticker}"}
 
@@ -253,6 +257,51 @@ class BacktestEngine:
 
         return df, features, None
 
+    def _get_pre_consensus_exit(
+        self,
+        i: int,
+        df: pd.DataFrame,
+        buy_price: float,
+        buy_date: Optional[pd.Timestamp],
+        current_date: pd.Timestamp,
+    ) -> Tuple[Optional[str], float]:
+        """Return an early risk exit before consensus voting, if one applies."""
+        if buy_date is None:
+            return None, 0.0
+
+        low_p, high_p = float(df.iloc[i]["Low"]), float(df.iloc[i]["High"])
+        sl_p, tp_p = (
+            buy_price * (1 - self.config.stop_loss_threshold),
+            buy_price * (1 + self.config.stop_profit_threshold),
+        )
+
+        if low_p <= sl_p:
+            return "stop-loss", min(sl_p, float(df.iloc[i]["Open"]))
+
+        if buy_date is not None and self.trading_days is not None:
+            if self.config.hold_period_unit.lower() == "day":
+                target_date = calculate_trading_days_ahead(
+                    buy_date, self.config.hold_period_value, self.trading_days
+                )
+                min_hold_passed = (
+                    target_date is not None and current_date >= target_date
+                )
+            else:
+                unit_map = {
+                    "week": "weeks",
+                    "month": "months",
+                    "year": "years",
+                }
+                unit = unit_map.get(self.config.hold_period_unit.lower(), "months")
+                min_hold_passed = current_date >= (
+                    buy_date + pd.DateOffset(**{unit: self.config.hold_period_value})
+                )
+
+            if min_hold_passed and high_p >= tp_p:
+                return "take-profit", max(tp_p, float(df.iloc[i]["Open"]))
+
+        return None, 0.0
+
     def _core_run(
         self,
         ticker: str,
@@ -273,6 +322,16 @@ class BacktestEngine:
         position, buy_price, buy_date, buy_fees = 0.0, 0.0, None, 0.0
         trades = []
         settlement_queue = []  # List of (available_date, amount)
+        execution_stats = {
+            "buy_capacity_checks": 0,
+            "buy_capacity_blocks": 0,
+            "buy_fee_blocks": 0,
+            "buy_signals": 0,
+            "buy_executions": 0,
+            "sell_stop_loss": 0,
+            "sell_take_profit": 0,
+            "sell_model_exit": 0,
+        }
 
         for i in range(len(df) - 1):
             date = pd.Timestamp(df.index[i])
@@ -293,10 +352,99 @@ class BacktestEngine:
 
             # Portfolio validation before signal generation (for BUY signals only)
             if position == 0:
+                execution_stats["buy_capacity_checks"] += 1
                 # Signal engine needs to know current available capital
                 validation = validate_buy_capacity(capital, {ticker: current_price})
                 if not validation["can_trade"]:
+                    execution_stats["buy_capacity_blocks"] += 1
                     # Skip signal generation if insufficient cash
+                    continue
+
+                entry_fees = self.calculate_fees(capital)
+                if capital <= entry_fees:
+                    execution_stats["buy_fee_blocks"] += 1
+                    # Skip signal generation if fees would consume all capital
+                    continue
+
+            if position > 0:
+                reason, sell_price = self._get_pre_consensus_exit(
+                    i=i,
+                    df=df,
+                    buy_price=buy_price,
+                    buy_date=buy_date,
+                    current_date=date,
+                )
+
+                if reason and buy_date is not None:
+                    if reason == "stop-loss":
+                        execution_stats["sell_stop_loss"] += 1
+                    elif reason == "take-profit":
+                        execution_stats["sell_take_profit"] += 1
+
+                    val = position * sell_price
+                    s_fees = self.calculate_fees(val)
+                    g_profit = val - (position * buy_price) - (buy_fees + s_fees)
+                    tax = 0.0
+                    if g_profit > 0:
+                        # 50% discount for 12+ months holding
+                        disc = 0.5 if (date - buy_date).days >= 365 else 1.0
+                        tax = self.calculate_ato_tax(
+                            self.config.annual_income + g_profit * disc
+                        ) - self.calculate_ato_tax(self.config.annual_income)
+                    new_capital = val - s_fees - tax
+
+                    # STRICT REALISM: T+2 Settlement Delay
+                    # Cash from sale is not available until 2 trading days later
+                    settlement_date = None
+                    if self.trading_days is not None:
+                        settlement_date = calculate_trading_days_ahead(
+                            date, 2, self.trading_days
+                        )
+                        if settlement_date is None:
+                            # Fallback if at the end of data: available tomorrow
+                            settlement_date = date + pd.DateOffset(days=1)
+                        settlement_queue.append((settlement_date, new_capital))
+                    else:
+                        # Fallback if calendar is missing
+                        settlement_date = date + pd.DateOffset(days=2)
+                        settlement_queue.append((settlement_date, new_capital))
+
+                    positions_before = {ticker: position}
+                    positions_after = {}
+
+                    # Add SELL entry to ledger
+                    self.ledger.add_entry(
+                        date=date,
+                        ticker=ticker,
+                        action="SELL",
+                        quantity=position,
+                        price=sell_price,
+                        commission=s_fees,
+                        tax=tax,
+                        cash_before=0.0,
+                        cash_after=new_capital,
+                        positions_before=positions_before,
+                        positions_after=positions_after,
+                        notes=f"{reason} triggered. Funds available {settlement_date.strftime('%Y-%m-%d') if hasattr(settlement_date, 'strftime') else settlement_date}",
+                    )
+
+                    trades.append(
+                        {
+                            "buy_date": buy_date,
+                            "sell_date": date,
+                            "profit_pct": (
+                                new_capital - (position * buy_price + buy_fees)
+                            )
+                            / (position * buy_price + buy_fees),
+                            "cumulative_capital": new_capital,
+                            "reason": reason,
+                            "buy_price": buy_price,
+                            "sell_price": sell_price,
+                            "fees": buy_fees + s_fees,
+                            "tax": tax,
+                        }
+                    )
+                    position = 0
                     continue
 
             is_bullish = signal_func(
@@ -307,6 +455,7 @@ class BacktestEngine:
             )
 
             if position == 0 and is_bullish:
+                execution_stats["buy_signals"] += 1
                 fees = self.calculate_fees(capital)
                 if capital <= fees:
                     continue
@@ -332,6 +481,7 @@ class BacktestEngine:
                 position = new_position
                 buy_price, buy_date, buy_fees = current_price, date, fees
                 capital = 0
+                execution_stats["buy_executions"] += 1
 
             elif position > 0:
                 # Calculate sell date based on holding period unit
@@ -357,26 +507,20 @@ class BacktestEngine:
                         offset = {unit: self.config.hold_period_value}
                         min_hold_passed = date >= (buy_date + pd.DateOffset(**offset))
 
-                low_p, high_p = float(df.iloc[i]["Low"]), float(df.iloc[i]["High"])
-                sl_p, tp_p = (
-                    buy_price * (1 - self.config.stop_loss_threshold),
-                    buy_price * (1 + self.config.stop_profit_threshold),
-                )
+                high_p = float(df.iloc[i]["High"])
+                tp_p = buy_price * (1 + self.config.stop_profit_threshold)
 
                 reason, sell_price = None, 0.0
-                if low_p <= sl_p:
-                    reason, sell_price = (
-                        "stop-loss",
-                        min(sl_p, float(df.iloc[i]["Open"])),
-                    )
-                elif min_hold_passed:
+                if min_hold_passed:
                     if high_p >= tp_p:
                         reason, sell_price = (
                             "take-profit",
                             max(tp_p, float(df.iloc[i]["Open"])),
                         )
+                        execution_stats["sell_take_profit"] += 1
                     elif not is_bullish:
                         reason, sell_price = "model-exit", current_price
+                        execution_stats["sell_model_exit"] += 1
 
                 if reason and buy_date is not None:
                     val = position * sell_price
@@ -469,6 +613,7 @@ class BacktestEngine:
             "win_rate": win_rate,
             "total_trades": len(trades),
             "trades": trades,
+            "execution_summary": execution_stats,
         }
 
     def run_model_mode(self, ticker: str, model_type: str) -> Dict[str, Any]:
@@ -488,7 +633,7 @@ class BacktestEngine:
         # Bulk pre-calculate predictions on FILTERED data
         all_preds = self._get_bulk_predictions(df, features, model_type)
 
-        def signal(i, df_inner, features_inner, current_cap):
+        def signal(i, df_inner, _features_inner, current_cap):
             current_price = float(df_inner.iloc[i]["Close"])
             hurdle = self.get_hurdle_rate(current_cap)
             pred = all_preds[i]
@@ -529,26 +674,50 @@ class BacktestEngine:
             self.model_builder.load_or_build(ticker)
             committee_preds[m_type] = self._get_bulk_predictions(df, features, m_type)
 
-        def signal(i, df_inner, features_inner, current_cap):
+        consensus_stats = {
+            "model_count": len(models),
+            "tie_breaker": tie_breaker if tie_breaker else models[0],
+            "signal_checks": 0,
+            "prediction_checks": 0,
+            "bullish_votes": 0,
+            "bearish_votes": 0,
+            "buy_signals": 0,
+            "tie_signals": 0,
+            "hurdle_passes": 0,
+            "hurdle_fails": 0,
+        }
+
+        def signal(i, df_inner, _features_inner, current_cap):
             votes = 0
             current_price = float(df_inner.iloc[i]["Close"])
             hurdle = self.get_hurdle_rate(current_cap)
             tie_breaker_bullish = False
             tb_model = tie_breaker if tie_breaker else models[0]
 
+            consensus_stats["signal_checks"] += 1
+
             for m_type in models:
                 pred = committee_preds[m_type][i]
                 pred_return = (pred - current_price) / current_price
                 is_m_bullish = pred_return > hurdle
 
+                consensus_stats["prediction_checks"] += 1
+
                 if is_m_bullish:
                     votes += 1
+                    consensus_stats["bullish_votes"] += 1
+                    consensus_stats["hurdle_passes"] += 1
+                else:
+                    consensus_stats["bearish_votes"] += 1
+                    consensus_stats["hurdle_fails"] += 1
                 if m_type == tb_model:
                     tie_breaker_bullish = is_m_bullish
 
             if votes > (len(models) / 2):
+                consensus_stats["buy_signals"] += 1
                 return True
             if votes == (len(models) / 2):
+                consensus_stats["tie_signals"] += 1
                 return tie_breaker_bullish
             return False
 
@@ -556,6 +725,14 @@ class BacktestEngine:
 
         # Save ledger to file and clear from memory
         if "error" not in result:
+            if consensus_stats["signal_checks"] > 0:
+                consensus_stats["bullish_vote_ratio"] = consensus_stats[
+                    "bullish_votes"
+                ] / max(consensus_stats["prediction_checks"], 1)
+                consensus_stats["buy_signal_ratio"] = consensus_stats[
+                    "buy_signals"
+                ] / max(consensus_stats["signal_checks"], 1)
+            result["consensus_summary"] = consensus_stats
             ledger_filename = f"{ticker}_{mode_prefix}_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
             ledger_path = self.ledger.save_to_file(filename=ledger_filename)
             result["ledger_path"] = ledger_path
@@ -594,7 +771,7 @@ class BacktestEngine:
 
             if len(X_seq) == 0:
                 logging.warning(
-                    f"Not enough data for LSTM sequences (need >{seq_len} days)"
+                    "Not enough data for LSTM sequences (need >%s days)", seq_len
                 )
                 return np.zeros(len(df), dtype=np.float32)
 
