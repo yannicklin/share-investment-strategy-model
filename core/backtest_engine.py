@@ -65,6 +65,21 @@ class BacktestEngine:
 
         return fees_pct + self.config.hurdle_risk_buffer
 
+    def _resolve_prediction_horizon_days(self) -> int:
+        """Map the configured holding period to a BUY prediction horizon in days."""
+        unit = self.config.hold_period_unit.lower()
+        value = max(1, int(self.config.hold_period_value))
+
+        if unit == "day":
+            return value
+        if unit == "week":
+            return value * 7
+        if unit == "month":
+            return value * 30
+        if unit == "year":
+            return value * 365
+        return value
+
     def _prepare_data(
         self, ticker: str
     ) -> Tuple[Optional[pd.DataFrame], Optional[List[str]], Optional[Dict[str, str]]]:
@@ -462,7 +477,8 @@ class BacktestEngine:
     def run_model_mode(self, ticker: str, model_type: str) -> Dict[str, Any]:
         self.ledger.clear()
         self.config.model_type = model_type
-        self.model_builder.load_or_build(ticker)
+        horizon_days = self._resolve_prediction_horizon_days()
+        self.model_builder.load_or_build(ticker, target_horizon_days=horizon_days)
         df_tuple = self._prepare_data(ticker)
         df, features, error = df_tuple
         if error or df is None or features is None:
@@ -479,7 +495,7 @@ class BacktestEngine:
         result = self._core_run(ticker, signal, df, features)
         if "error" not in result:
             result["ledger_path"] = self.ledger.save_to_file(
-                filename=f"{ticker}_algorithm_{model_type}_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
+                filename=f"{ticker}_algorithm_{model_type}_h{horizon_days}d_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
             )
         return result
 
@@ -491,6 +507,7 @@ class BacktestEngine:
         mode_prefix: str = "consensus",
     ) -> Dict[str, Any]:
         self.ledger.clear()
+        horizon_days = self._resolve_prediction_horizon_days()
         df_tuple = self._prepare_data(ticker)
         df, features, error = df_tuple
         if error or df is None or features is None:
@@ -498,7 +515,7 @@ class BacktestEngine:
         committee_preds = {}
         for m_type in models:
             self.config.model_type = m_type
-            self.model_builder.load_or_build(ticker)
+            self.model_builder.load_or_build(ticker, target_horizon_days=horizon_days)
             committee_preds[m_type] = self._get_bulk_predictions(df, features, m_type)
 
         def signal(i, df_inner, features_inner, current_cap):
@@ -527,7 +544,7 @@ class BacktestEngine:
         result = self._core_run(ticker, signal, df, features)
         if "error" not in result:
             result["ledger_path"] = self.ledger.save_to_file(
-                filename=f"{ticker}_{mode_prefix}_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
+                filename=f"{ticker}_{mode_prefix}_h{horizon_days}d_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
             )
         return result
 
@@ -576,7 +593,9 @@ class BacktestEngine:
         elif model_type == "prophet" and self.model_builder.model is not None:
             prophet_df = pd.DataFrame({"ds": df.index}).copy()
             prophet_df["ds"] = prophet_df["ds"].dt.tz_localize(None)
-            prophet_df["ds"] = prophet_df["ds"] + pd.DateOffset(days=1)
+            prophet_df["ds"] = prophet_df["ds"] + pd.DateOffset(
+                days=self.model_builder.target_horizon_days
+            )
             forecast = self.model_builder.model.predict(prophet_df)
             return forecast["yhat"].values.astype(np.float32)
 
