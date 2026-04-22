@@ -8,13 +8,14 @@ Author: Yannick
 Copyright (c) 2026 Yannick
 """
 
+import logging
 import os
+import time
+
 import joblib
 import numpy as np
 import pandas as pd
 import yfinance as yf
-import time
-import logging
 
 # Suppress heavy logging and warnings from backends
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -33,7 +34,7 @@ except ImportError:
 logging.getLogger("cmdstanpy").setLevel(logging.ERROR)
 logging.getLogger("prophet").setLevel(logging.ERROR)
 
-from typing import Optional, Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 # Try to use curl-cffi for rate limit bypass
 try:
@@ -43,8 +44,9 @@ try:
 except ImportError:
     CURL_CFFI_AVAILABLE = False
 
-from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
-from sklearn.preprocessing import StandardScaler, RobustScaler
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import RobustScaler, StandardScaler
+
 from core.config import Config
 
 
@@ -233,9 +235,8 @@ class ModelBuilder:
             return Prophet(daily_seasonality=True, yearly_seasonality=True)
 
         elif m_type == "lstm":
-            import tensorflow as tf
-            from tensorflow.keras.models import Sequential
             from tensorflow.keras.layers import LSTM, Dense, Dropout, Input
+            from tensorflow.keras.models import Sequential
 
             logging.info("Initialized LSTM model.")
             model = Sequential(
@@ -478,7 +479,12 @@ class ModelBuilder:
 
         return pd.Series(target_values, index=close_index)
 
-    def prepare_features(self, data: pd.DataFrame, ticker: str = None, target_horizon_days: Optional[int] = None):
+    def prepare_features(
+        self,
+        data: pd.DataFrame,
+        ticker: str = None,
+        target_horizon_days: Optional[int] = None,
+    ):
         df = data.copy()
         horizon_days = max(1, int(target_horizon_days or self.target_horizon_days))
 
@@ -596,7 +602,9 @@ class ModelBuilder:
             logging.error(f"❌ No data fetched for {ticker}")
             raise ValueError(f"No data for {ticker}")
 
-        X, y = self.prepare_features(data, ticker, target_horizon_days=self.target_horizon_days)
+        X, y = self.prepare_features(
+            data, ticker, target_horizon_days=self.target_horizon_days
+        )
         if len(X) < 1:
             logging.error(
                 f"❌ Insufficient data after feature engineering for {ticker}: X shape={X.shape}"
@@ -672,7 +680,8 @@ class ModelBuilder:
         weighting_suffix = self.config.weighting_type
         horizon_suffix = f"h{self.target_horizon_days}d"
         model_filename = os.path.join(
-            self.config.model_path, f"{ticker}_{m_type}_{weighting_suffix}_{horizon_suffix}_model.joblib"
+            self.config.model_path,
+            f"{ticker}_{m_type}_{weighting_suffix}_{horizon_suffix}_model.joblib",
         )
         if m_type == "lstm" and hasattr(self.model, "save"):
             keras_path = model_filename.replace(".joblib", ".keras")
@@ -703,7 +712,9 @@ class ModelBuilder:
                 model_filename,
             )
 
-    def load_or_build(self, ticker: str, target_horizon_days: Optional[int] = None) -> str:
+    def load_or_build(
+        self, ticker: str, target_horizon_days: Optional[int] = None
+    ) -> str:
         if target_horizon_days is not None:
             self.target_horizon_days = max(1, int(target_horizon_days))
 
@@ -738,7 +749,9 @@ class ModelBuilder:
                 self.train(ticker, target_horizon_days=self.target_horizon_days)
                 return "trained_fallback"
 
-            X_sample, _ = self.prepare_features(sample_data, ticker, target_horizon_days=self.target_horizon_days)
+            X_sample, _ = self.prepare_features(
+                sample_data, ticker, target_horizon_days=self.target_horizon_days
+            )
             current_dim = X_sample.shape[1]
             logging.info(
                 f"📊 Feature dimensions for {ticker}: current={current_dim}, cached={loaded_scaler.n_features_in_ if hasattr(loaded_scaler, 'n_features_in_') else 'unknown'}"

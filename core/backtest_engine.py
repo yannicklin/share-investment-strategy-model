@@ -8,21 +8,20 @@ Author: Yannick
 Copyright (c) 2026 Yannick
 """
 
-import pandas as pd
-import numpy as np
-import os
-import joblib
 import logging
-from typing import List, Dict, Any, Callable, Optional, Tuple, Union
-from core.config import Config, BROKERS, get_tax_profile
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+import numpy as np
+import pandas as pd
+
+from core.config import BROKERS, Config, get_tax_profile
 from core.model_builder import ModelBuilder
+from core.transaction_ledger import TransactionLedger
 from core.utils import (
-    format_date_with_weekday,
-    get_usa_trading_days,
     calculate_trading_days_ahead,
+    get_usa_trading_days,
     validate_buy_capacity,
 )
-from core.transaction_ledger import TransactionLedger
 
 
 class BacktestEngine:
@@ -313,7 +312,7 @@ class BacktestEngine:
         position, buy_price, buy_date, buy_fees = 0.0, 0.0, None, 0.0
         trades = []
         settlement_queue = []  # List of (available_date, amount)
-        
+
         # Execution diagnostics tracking
         execution_stats = {
             "buy_capacity_checks": 0,
@@ -393,7 +392,7 @@ class BacktestEngine:
                 exit_reason, exit_price = self._get_pre_consensus_exit(
                     i, df, buy_price, buy_date, date
                 )
-                
+
                 reason, sell_price = None, 0.0
                 if exit_reason:
                     # Pre-consensus exit triggered (before model vote)
@@ -408,7 +407,9 @@ class BacktestEngine:
                         if self.config.hold_period_unit.lower() == "day":
                             # "Day" unit = TRADING DAYS (excludes weekends + holidays)
                             target_date = calculate_trading_days_ahead(
-                                buy_date, self.config.hold_period_value, self.trading_days
+                                buy_date,
+                                self.config.hold_period_value,
+                                self.trading_days,
                             )
                             min_hold_passed = (
                                 target_date is not None and date >= target_date
@@ -429,7 +430,7 @@ class BacktestEngine:
                             )
                     else:
                         min_hold_passed = False
-                    
+
                     if min_hold_passed and not is_bullish:
                         reason, sell_price = "model-exit", current_price
                         execution_stats["sell_model_exit"] += 1
@@ -533,7 +534,9 @@ class BacktestEngine:
         horizon_days = self._resolve_prediction_horizon_days()
 
         self.config.model_type = model_type
-        self.model_builder.load_or_build(ticker, target_horizon_days=horizon_days)  # Load once
+        self.model_builder.load_or_build(
+            ticker, target_horizon_days=horizon_days
+        )  # Load once
 
         # Prepare filtered data (trading days only)
         df_tuple = self._prepare_data(ticker)
