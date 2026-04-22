@@ -14,6 +14,20 @@ import plotly.express as px
 from ui.components import render_trade_details
 
 
+def _categorize_error(message: str) -> str:
+    """Categorize error messages for cleaner display."""
+    message = (message or "").lower()
+    if "no data" in message or "empty" in message:
+        return "No Data"
+    if "insufficient" in message or "not enough" in message:
+        return "Thin Data"
+    if "model" in message or "train" in message:
+        return "Model Error"
+    if "keyerror" in message or "column" in message:
+        return "Feature Error"
+    return "Processing Error"
+
+
 def render_super_stars(index_name, all_ticker_res, models=None, tie_breaker=None):
     """Main panel for Mode 3: Finding the top 10 stocks in an index."""
     st.header(f"🌟 Hall of Fame: {index_name} Super Stars")
@@ -62,7 +76,13 @@ def render_super_stars(index_name, all_ticker_res, models=None, tie_breaker=None
                 }
             )
         elif res and "error" in res:
-            errors.append({"Ticker": ticker, "Error": res["error"]})
+            errors.append(
+                {
+                    "Ticker": ticker,
+                    "Issue": _categorize_error(res["error"]),
+                    "Error": res["error"],
+                }
+            )
 
     if summary:
         # Sort by ROI and take top 10

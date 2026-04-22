@@ -604,6 +604,15 @@ class ModelBuilder:
         else:
             self._finmind_data = pd.DataFrame()
 
+    def ensure_market_data(self):
+        """Public wrapper for market data initialization."""
+        self._ensure_market_data()
+
+    @property
+    def market_data(self) -> Optional[pd.DataFrame]:
+        """Public read-only access to cached market data."""
+        return self._market_data
+
     def prepare_features(self, data: pd.DataFrame, ticker: str = None):
         df = data.copy()
 
