@@ -8,9 +8,10 @@ Author: Yannick
 Copyright (c) 2026 Yannick
 """
 
-import streamlit as st
 import pandas as pd
 import plotly.express as px
+import streamlit as st
+
 from ui.components import render_trade_details
 
 

@@ -8,14 +8,15 @@ Author: Yannick
 Copyright (c) 2026 Yannick
 """
 
+import logging
 import os
+import time
+from typing import Any, Dict, List, Optional
+
 import joblib
 import numpy as np
 import pandas as pd
 import yfinance as yf
-import time
-import logging
-from typing import Optional, Any, Dict, List
 
 # Try to use curl-cffi for rate limit bypass
 try:
@@ -51,8 +52,9 @@ except ImportError:
 logging.getLogger("cmdstanpy").setLevel(logging.ERROR)
 logging.getLogger("prophet").setLevel(logging.ERROR)
 
-from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
-from sklearn.preprocessing import StandardScaler, RobustScaler
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import RobustScaler, StandardScaler
+
 from core.config import Config
 
 
@@ -227,9 +229,8 @@ class ModelBuilder:
             return Prophet(daily_seasonality=True, yearly_seasonality=True)
 
         elif m_type == "lstm":
-            import tensorflow as tf
-            from tensorflow.keras.models import Sequential
             from tensorflow.keras.layers import LSTM, Dense, Dropout, Input
+            from tensorflow.keras.models import Sequential
 
             logging.info("Initialized LSTM model.")
             model = Sequential(

@@ -8,21 +8,20 @@ Author: Yannick
 Copyright (c) 2026 Yannick
 """
 
-import pandas as pd
-import numpy as np
-import os
-import joblib
 import logging
-from typing import List, Dict, Any, Callable, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+import numpy as np
+import pandas as pd
+
 from core.config import Config
 from core.model_builder import ModelBuilder
+from core.transaction_ledger import TransactionLedger
 from core.utils import (
-    format_date_with_weekday,
-    get_twn_trading_days,
     calculate_trading_days_ahead,
+    get_twn_trading_days,
     validate_buy_capacity,
 )
-from core.transaction_ledger import TransactionLedger
 
 
 class BacktestEngine:
@@ -256,7 +255,7 @@ class BacktestEngine:
         position, buy_price, buy_date, buy_fees = 0.0, 0.0, None, 0.0
         trades = []
         settlement_queue = []
-        
+
         # Execution diagnostics tracking
         execution_stats = {
             "buy_capacity_checks": 0,
@@ -344,7 +343,7 @@ class BacktestEngine:
                 exit_reason, exit_price = self._get_pre_consensus_exit(
                     i, df, buy_price, buy_date, date
                 )
-                
+
                 min_hold_passed = False
                 if buy_date is not None and self.trading_days is not None:
                     if self.config.hold_period_unit.lower() == "day":
@@ -368,7 +367,7 @@ class BacktestEngine:
                     buy_price * (1 - self.config.stop_loss_threshold),
                     buy_price * (1 + self.config.stop_profit_threshold),
                 )
-                
+
                 # Use pre-consensus exit if available
                 reason, sell_price = None, 0.0
                 if exit_reason:
@@ -386,7 +385,7 @@ class BacktestEngine:
                             max(limit_down, min(current_price, limit_up)),
                         )
                         execution_stats["sell_model_exit"] += 1
-                
+
                 # Apply Taiwan's ±10% price limits to the sell price
                 if reason and sell_price > 0:
                     sell_price = max(limit_down, min(sell_price, limit_up))
