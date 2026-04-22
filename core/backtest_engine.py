@@ -233,6 +233,51 @@ class BacktestEngine:
 
         return df, features, None
 
+    def _get_pre_consensus_exit(
+        self,
+        i: int,
+        df: pd.DataFrame,
+        buy_price: float,
+        buy_date: Optional[pd.Timestamp],
+        current_date: pd.Timestamp,
+    ) -> Tuple[Optional[str], float]:
+        """Return an early risk exit before consensus voting, if one applies."""
+        if buy_date is None:
+            return None, 0.0
+
+        low_p, high_p = float(df.iloc[i]["Low"]), float(df.iloc[i]["High"])
+        sl_p, tp_p = (
+            buy_price * (1 - self.config.stop_loss_threshold),
+            buy_price * (1 + self.config.stop_profit_threshold),
+        )
+
+        if low_p <= sl_p:
+            return "stop-loss", min(sl_p, float(df.iloc[i]["Open"]))
+
+        if buy_date is not None and self.trading_days is not None:
+            if self.config.hold_period_unit.lower() == "day":
+                target_date = calculate_trading_days_ahead(
+                    buy_date, self.config.hold_period_value, self.trading_days
+                )
+                min_hold_passed = (
+                    target_date is not None and current_date >= target_date
+                )
+            else:
+                unit_map = {
+                    "week": "weeks",
+                    "month": "months",
+                    "year": "years",
+                }
+                unit = unit_map.get(self.config.hold_period_unit.lower(), "months")
+                min_hold_passed = current_date >= (
+                    buy_date + pd.DateOffset(**{unit: self.config.hold_period_value})
+                )
+
+            if min_hold_passed and high_p >= tp_p:
+                return "take-profit", max(tp_p, float(df.iloc[i]["Open"]))
+
+        return None, 0.0
+
     def _core_run(
         self,
         ticker: str,
@@ -253,6 +298,18 @@ class BacktestEngine:
         position, buy_price, buy_date, buy_fees = 0.0, 0.0, None, 0.0
         trades = []
         settlement_queue = []  # List of (available_date, amount)
+        
+        # Execution diagnostics tracking
+        execution_stats = {
+            "buy_capacity_checks": 0,
+            "buy_capacity_blocks": 0,
+            "buy_fee_blocks": 0,
+            "buy_signals": 0,
+            "buy_executions": 0,
+            "sell_stop_loss": 0,
+            "sell_take_profit": 0,
+            "sell_model_exit": 0,
+        }
 
         for i in range(len(df) - 1):
             date = pd.Timestamp(df.index[i])
@@ -273,8 +330,10 @@ class BacktestEngine:
             if position == 0:
                 # Signal engine needs to know current available capital
                 validation = validate_buy_capacity(capital, {ticker: current_price})
+                execution_stats["buy_capacity_checks"] += 1
                 if not validation["can_trade"]:
                     # Skip signal generation if insufficient cash
+                    execution_stats["buy_capacity_blocks"] += 1
                     continue
 
             is_bullish = signal_func(
@@ -285,9 +344,12 @@ class BacktestEngine:
             )
 
             if position == 0 and is_bullish:
+                execution_stats["buy_signals"] += 1
                 fees = self.calculate_fees(capital)
                 if capital <= fees:
+                    execution_stats["buy_fee_blocks"] += 1
                     continue
+                execution_stats["buy_executions"] += 1
                 new_position = (capital - fees) / current_price
                 positions_before = {}
                 positions_after = {ticker: new_position}
@@ -312,49 +374,50 @@ class BacktestEngine:
                 capital = 0
 
             elif position > 0:
-                # Calculate sell date based on holding period unit
-                min_hold_passed = False
-                if buy_date is not None and self.trading_days is not None:
-                    if self.config.hold_period_unit.lower() == "day":
-                        # "Day" unit = TRADING DAYS (excludes weekends + holidays)
-                        target_date = calculate_trading_days_ahead(
-                            buy_date, self.config.hold_period_value, self.trading_days
-                        )
-                        if target_date is not None:
-                            min_hold_passed = date >= target_date
-                    else:
-                        # Other units (Week/Month/Year) = CALENDAR DAYS
-                        unit_map = {
-                            "week": "weeks",
-                            "month": "months",
-                            "year": "years",
-                        }
-                        unit = unit_map.get(
-                            self.config.hold_period_unit.lower(), "months"
-                        )
-                        offset = {unit: self.config.hold_period_value}
-                        min_hold_passed = date >= (buy_date + pd.DateOffset(**offset))
-
-                low_p, high_p = float(df.iloc[i]["Low"]), float(df.iloc[i]["High"])
-                sl_p, tp_p = (
-                    buy_price * (1 - self.config.stop_loss_threshold),
-                    buy_price * (1 + self.config.stop_profit_threshold),
+                # Check for pre-consensus exits (stop-loss, take-profit)
+                exit_reason, exit_price = self._get_pre_consensus_exit(
+                    i, df, buy_price, buy_date, date
                 )
-
+                
                 reason, sell_price = None, 0.0
-                if low_p <= sl_p:
-                    reason, sell_price = (
-                        "stop-loss",
-                        min(sl_p, float(df.iloc[i]["Open"])),
-                    )
-                elif min_hold_passed:
-                    if high_p >= tp_p:
-                        reason, sell_price = (
-                            "take-profit",
-                            max(tp_p, float(df.iloc[i]["Open"])),
-                        )
-                    elif not is_bullish:
+                if exit_reason:
+                    # Pre-consensus exit triggered (before model vote)
+                    reason, sell_price = exit_reason, exit_price
+                    if reason == "stop-loss":
+                        execution_stats["sell_stop_loss"] += 1
+                    elif reason == "take-profit":
+                        execution_stats["sell_take_profit"] += 1
+                else:
+                    # No pre-consensus exit; check model-driven exit
+                    if buy_date is not None and self.trading_days is not None:
+                        if self.config.hold_period_unit.lower() == "day":
+                            # "Day" unit = TRADING DAYS (excludes weekends + holidays)
+                            target_date = calculate_trading_days_ahead(
+                                buy_date, self.config.hold_period_value, self.trading_days
+                            )
+                            min_hold_passed = (
+                                target_date is not None and date >= target_date
+                            )
+                        else:
+                            # Other units (Week/Month/Year) = CALENDAR DAYS
+                            unit_map = {
+                                "week": "weeks",
+                                "month": "months",
+                                "year": "years",
+                            }
+                            unit = unit_map.get(
+                                self.config.hold_period_unit.lower(), "months"
+                            )
+                            offset = {unit: self.config.hold_period_value}
+                            min_hold_passed = date >= (
+                                buy_date + pd.DateOffset(**offset)
+                            )
+                    else:
+                        min_hold_passed = False
+                    
+                    if min_hold_passed and not is_bullish:
                         reason, sell_price = "model-exit", current_price
+                        execution_stats["sell_model_exit"] += 1
 
                 if reason and buy_date is not None:
                     val = position * sell_price
@@ -445,6 +508,7 @@ class BacktestEngine:
             "win_rate": win_rate,
             "total_trades": len(trades),
             "trades": trades,
+            "execution_summary": execution_stats,
         }
 
     def run_model_mode(self, ticker: str, model_type: str) -> Dict[str, Any]:
