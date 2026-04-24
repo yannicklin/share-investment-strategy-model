@@ -435,7 +435,7 @@ class BacktestEngine:
                     else:
                         min_hold_passed = False
 
-                    else:
+                    if min_hold_passed:
                         # Use horizon-1 exit model if provided; fall back to BUY signal
                         _exit_fn = exit_signal_func if exit_signal_func is not None else signal_func
                         if not _exit_fn(i, df, features, position * current_price):
