@@ -323,14 +323,18 @@ class BacktestEngine:
         signal_func: Callable[[int, pd.DataFrame, List[str], float], bool],
         df: pd.DataFrame,
         features: List[str],
+        exit_signal_func: Optional[Callable[[int, pd.DataFrame, List[str], float], bool]] = None,
     ) -> Dict[str, Any]:
         """The shared engine logic for both modes.
 
         Args:
             ticker: Stock symbol
-            signal_func: Function(i, df, features, capital) -> bool
+            signal_func: Function(i, df, features, capital) -> bool — BUY entry signal
             df: Pre-filtered dataframe (trading days only)
             features: Feature columns list
+            exit_signal_func: Optional Function(i, df, features, capital) -> bool —
+                exit confirmation signal using the horizon=1 model. Falls back to
+                signal_func when None (backward compatible).
         """
 
         capital = self.config.init_capital
@@ -533,9 +537,12 @@ class BacktestEngine:
                             max(tp_p, float(df.iloc[i]["Open"])),
                         )
                         execution_stats["sell_take_profit"] += 1
-                    elif not is_bullish:
-                        reason, sell_price = "model-exit", current_price
-                        execution_stats["sell_model_exit"] += 1
+                    else:
+                        # Use horizon-1 exit model if provided; fall back to BUY signal
+                        _exit_fn = exit_signal_func if exit_signal_func is not None else signal_func
+                        if not _exit_fn(i, df, features, position * current_price):
+                            reason, sell_price = "model-exit", current_price
+                            execution_stats["sell_model_exit"] += 1
 
                 if reason and buy_date is not None:
                     val = position * sell_price
@@ -638,25 +645,32 @@ class BacktestEngine:
         horizon_days = self._resolve_prediction_horizon_days()
 
         self.config.model_type = model_type
-        self.model_builder.load_or_build(ticker, target_horizon_days=horizon_days)  # Load once
+        self.model_builder.load_or_build(ticker, target_horizon_days=horizon_days)
 
-        # Prepare filtered data (trading days only)
+        # Prepare filtered data (trading days only) — done once, shared for both horizons
         df_tuple = self._prepare_data(ticker)
         df, features, error = df_tuple
         if error or df is None or features is None:
             return error if error else {"error": "Failed to prepare data"}
 
-        # Bulk pre-calculate predictions on FILTERED data
-        all_preds = self._get_bulk_predictions(df, features, model_type)
+        # BUY bulk predictions — horizon=N model (already loaded above)
+        all_buy_preds = self._get_bulk_predictions(df, features, model_type)
+
+        # EXIT bulk predictions — horizon=1 model from the same bundle
+        self.model_builder.load_exit_model(ticker, buy_horizon_days=horizon_days)
+        all_exit_preds = self._get_bulk_predictions(df, features, model_type)
 
         def signal(i, df_inner, _features_inner, current_cap):
             current_price = float(df_inner.iloc[i]["Close"])
             hurdle = self.get_hurdle_rate(current_cap)
-            pred = all_preds[i]
-            pred_return = (pred - current_price) / current_price
-            return pred_return > hurdle
+            return (all_buy_preds[i] - current_price) / current_price > hurdle
 
-        result = self._core_run(ticker, signal, df, features)
+        def exit_signal(i, df_inner, _features_inner, current_cap):
+            current_price = float(df_inner.iloc[i]["Close"])
+            hurdle = self.get_hurdle_rate(current_cap)
+            return (all_exit_preds[i] - current_price) / current_price > hurdle
+
+        result = self._core_run(ticker, signal, df, features, exit_signal_func=exit_signal)
 
         # Save ledger to file and clear from memory
         if "error" not in result:
@@ -688,12 +702,19 @@ class BacktestEngine:
         if error or df is None or features is None:
             return error if error else {"error": "Failed to prepare data"}
 
-        # Bulk pre-calculate predictions for all models in the committee on FILTERED data
-        committee_preds = {}
+        # BUY bulk predictions — horizon=N per model
+        committee_buy_preds = {}
         for m_type in models:
             self.config.model_type = m_type
             self.model_builder.load_or_build(ticker, target_horizon_days=horizon_days)
-            committee_preds[m_type] = self._get_bulk_predictions(df, features, m_type)
+            committee_buy_preds[m_type] = self._get_bulk_predictions(df, features, m_type)
+
+        # EXIT bulk predictions — horizon=1 per model (from the same bundle)
+        committee_exit_preds = {}
+        for m_type in models:
+            self.config.model_type = m_type
+            self.model_builder.load_exit_model(ticker, buy_horizon_days=horizon_days)
+            committee_exit_preds[m_type] = self._get_bulk_predictions(df, features, m_type)
 
         consensus_stats = {
             "model_count": len(models),
@@ -718,7 +739,7 @@ class BacktestEngine:
             consensus_stats["signal_checks"] += 1
 
             for m_type in models:
-                pred = committee_preds[m_type][i]
+                pred = committee_buy_preds[m_type][i]
                 pred_return = (pred - current_price) / current_price
                 is_m_bullish = pred_return > hurdle
 
@@ -742,7 +763,27 @@ class BacktestEngine:
                 return tie_breaker_bullish
             return False
 
-        result = self._core_run(ticker, signal, df, features)
+        def exit_signal(i, df_inner, _features_inner, current_cap):
+            votes = 0
+            current_price = float(df_inner.iloc[i]["Close"])
+            hurdle = self.get_hurdle_rate(current_cap)
+            tb_model = tie_breaker if tie_breaker else models[0]
+            tie_breaker_bullish = False
+            for m_type in models:
+                pred = committee_exit_preds[m_type][i]
+                pred_return = (pred - current_price) / current_price
+                is_m_bullish = pred_return > hurdle
+                if is_m_bullish:
+                    votes += 1
+                if m_type == tb_model:
+                    tie_breaker_bullish = is_m_bullish
+            if votes > (len(models) / 2):
+                return True
+            if votes == (len(models) / 2):
+                return tie_breaker_bullish
+            return False
+
+        result = self._core_run(ticker, signal, df, features, exit_signal_func=exit_signal)
 
         # Save ledger to file and clear from memory
         if "error" not in result:
