@@ -265,7 +265,9 @@ class BacktestEngine:
         signal_func: Callable[[int, pd.DataFrame, List[str], float], bool],
         df: pd.DataFrame,
         features: List[str],
-        exit_signal_func: Optional[Callable[[int, pd.DataFrame, List[str], float], bool]] = None,
+        exit_signal_func: Optional[
+            Callable[[int, pd.DataFrame, List[str], float], bool]
+        ] = None,
     ) -> Dict[str, Any]:
         capital = self.config.init_capital
         position, buy_price, buy_date, buy_fees = 0.0, 0.0, None, 0.0
@@ -397,7 +399,11 @@ class BacktestEngine:
                     # No pre-consensus exit; check model-driven exit
                     if min_hold_passed:
                         # Use horizon-1 exit model if provided; fall back to BUY signal
-                        _exit_fn = exit_signal_func if exit_signal_func is not None else signal_func
+                        _exit_fn = (
+                            exit_signal_func
+                            if exit_signal_func is not None
+                            else signal_func
+                        )
                         if not _exit_fn(i, df, features, position * current_price):
                             reason, sell_price = (
                                 "model-exit",
@@ -496,7 +502,9 @@ class BacktestEngine:
         if horizon_days > 1:
             exit_builder = ModelBuilder(self.config)
             exit_builder.load_exit_model(ticker, buy_horizon_days=horizon_days)
-            all_exit_preds = self._get_bulk_predictions(df, features, model_type, builder=exit_builder)
+            all_exit_preds = self._get_bulk_predictions(
+                df, features, model_type, builder=exit_builder
+            )
 
         def signal_buy(i, df_inner, features_inner, current_cap):
             current_price = float(df_inner.iloc[i]["Close"])
@@ -512,9 +520,13 @@ class BacktestEngine:
             hurdle = self.get_hurdle_rate(current_cap)
             pred = all_exit_preds[i]
             pred_return = (pred - current_price) / current_price
-            return pred_return > hurdle  # True = exit confirmed, False = stay in position
+            return (
+                pred_return > hurdle
+            )  # True = exit confirmed, False = stay in position
 
-        result = self._core_run(ticker, signal_buy, df, features, exit_signal_func=signal_exit)
+        result = self._core_run(
+            ticker, signal_buy, df, features, exit_signal_func=signal_exit
+        )
         if "error" not in result:
             result["ledger_path"] = self.ledger.save_to_file(
                 filename=f"{ticker}_algorithm_{model_type}_h{horizon_days}d_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
@@ -540,7 +552,9 @@ class BacktestEngine:
         for m_type in models:
             self.config.model_type = m_type
             self.model_builder.load_or_build(ticker, target_horizon_days=horizon_days)
-            committee_buy_preds[m_type] = self._get_bulk_predictions(df, features, m_type)
+            committee_buy_preds[m_type] = self._get_bulk_predictions(
+                df, features, m_type
+            )
 
         # Load EXIT models (horizon=1) if buy_horizon > 1
         committee_exit_preds = {}
@@ -587,7 +601,9 @@ class BacktestEngine:
             tb_model = tie_breaker if tie_breaker else models[0]
 
             for m_type in models:
-                if m_type not in committee_exit_preds or i >= len(committee_exit_preds[m_type]):
+                if m_type not in committee_exit_preds or i >= len(
+                    committee_exit_preds[m_type]
+                ):
                     continue
                 pred = committee_exit_preds[m_type][i]
                 pred_return = (pred - current_price) / current_price
@@ -604,7 +620,9 @@ class BacktestEngine:
                 return tie_breaker_bullish
             return False  # Stay in position
 
-        result = self._core_run(ticker, signal_buy, df, features, exit_signal_func=signal_exit)
+        result = self._core_run(
+            ticker, signal_buy, df, features, exit_signal_func=signal_exit
+        )
         if "error" not in result:
             result["ledger_path"] = self.ledger.save_to_file(
                 filename=f"{ticker}_{mode_prefix}_h{horizon_days}d_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
@@ -612,8 +630,11 @@ class BacktestEngine:
         return result
 
     def _get_bulk_predictions(
-        self, df: pd.DataFrame, features: List[str], model_type: str,
-        builder: Optional["ModelBuilder"] = None
+        self,
+        df: pd.DataFrame,
+        features: List[str],
+        model_type: str,
+        builder: Optional["ModelBuilder"] = None,
     ) -> np.ndarray:
         """Helper to get predictions for all rows in one go with memory safety."""
         _builder = builder if builder is not None else self.model_builder
@@ -665,10 +686,7 @@ class BacktestEngine:
             forecast = _builder.model.predict(prophet_df)
             return forecast["yhat"].values.astype(np.float32)
 
-        elif (
-            _builder.model is not None
-            and _builder.scaler is not None
-        ):
+        elif _builder.model is not None and _builder.scaler is not None:
             X_scaled = _builder.scaler.transform(X_all).astype(np.float32)
             return _builder.model.predict(X_scaled).astype(np.float32)
 
