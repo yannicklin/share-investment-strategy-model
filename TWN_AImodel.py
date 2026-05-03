@@ -9,6 +9,9 @@ Copyright (c) 2026 Yannick
 """
 
 # 1. Core Network/Data Libraries (MUST be before TensorFlow)
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from copy import deepcopy
+
 import yfinance as yf
 
 try:
@@ -35,7 +38,7 @@ try:
     tf.autograph.set_verbosity(0)
 except (ImportError, AttributeError):
     pass
-from core.config import load_config
+from core.config import Config, load_config
 from core.model_builder import ModelBuilder
 from core.backtest_engine import BacktestEngine
 from ui.sidebar import render_sidebar
@@ -80,6 +83,33 @@ def categorize_error(error_msg: str) -> str:
         return "⚠️ Technical Error"
 
 
+def _run_super_star_worker(
+    ticker: str,
+    config: Config,
+    data_cache: dict,
+    market_data: pd.DataFrame | None,
+    models: list[str],
+    tie_breaker: str | None,
+) -> tuple[str, dict]:
+    """Run one Super Stars ticker analysis in an isolated worker state."""
+    worker_config = deepcopy(config)
+    worker_config.target_stock_codes = [ticker]
+    worker_config.model_types = list(models)
+
+    worker_builder = ModelBuilder(worker_config)
+    worker_builder.set_data_cache_snapshot(data_cache)
+    worker_builder.set_cached_market_data(market_data)
+
+    worker_engine = BacktestEngine(worker_config, worker_builder)
+    result = worker_engine.run_strategy_mode(
+        ticker,
+        worker_config.model_types,
+        tie_breaker=tie_breaker,
+        mode_prefix="ranking",
+    )
+    return ticker, result
+
+
 def render_app():
     st.title("📈 Taiwan Stock AI Trading Strategy Dashboard")
 
@@ -115,79 +145,156 @@ def render_app():
             f"Pre-fetching historical data for {len(tickers)} Taiwan stocks..."
         ):
             builder.prefetch_data_batch(tickers, config.backtest_years)
+            builder.ensure_market_data()
 
         # Simple failure tracking for Super Stars mode
         ticker_failures = {}  # {ticker: {"issue": "...", "models": [...]}}
-        
+
         prog_placeholder = st.empty()
 
-        for idx, ticker in enumerate(tickers):
-            ticker_results = {}
-            with prog_placeholder.container():
-                st.write(f"### 🔍 Analyzing {ticker} ({idx + 1}/{len(tickers)})")
-                st.progress((idx) / len(tickers))
+        if mode == "Find Super Stars" and len(tickers) > 1:
+            shared_data_cache = builder.get_data_cache_snapshot()
+            shared_market_data = builder._market_data
+            max_workers = min(config.super_stars_workers, len(tickers))
+            completed = 0
 
-                with st.status(
-                    f"Processing {ticker}...",
-                    expanded=(mode != "Find Super Stars"),
-                ) as status:
+            st.info(
+                f"🚀 Running {max_workers} parallel workers for Super Stars analysis..."
+            )
+            with ProcessPoolExecutor(max_workers=max_workers) as executor:
+                future_map = {
+                    executor.submit(
+                        _run_super_star_worker,
+                        ticker,
+                        config,
+                        shared_data_cache,
+                        shared_market_data,
+                        list(config.model_types),
+                        tie_breaker,
+                    ): ticker
+                    for ticker in tickers
+                }
+
+                for future in as_completed(future_map):
+                    ticker = future_map[future]
+                    completed += 1
                     try:
-                        st.write("Preparing AI Models...")
-                        for m_type in config.model_types:
-                            config.model_type = m_type
-                            try:
-                                result = builder.load_or_build(ticker)
-                                status_emoji = (
-                                    "🆕" if "train" in result else "💾"
-                                )  # New trained vs Cached
-                                st.write(
-                                    f"{status_emoji} **{m_type.upper()}**: {result.replace('_', ' ').title()}"
-                                )
-                            except Exception as e:
-                                error_msg = str(e)
-                                st.error(f"❌ Model Error ({m_type}): {error_msg}")
-                                ticker_results[f"{m_type}_error"] = error_msg
-                                
-                                # Track failure for Super Stars summary
-                                if mode == "Find Super Stars":
-                                    if ticker not in ticker_failures:
-                                        ticker_failures[ticker] = []
-                                    
-                                    # Check if this error type already exists for this ticker
-                                    issue_type = categorize_error(error_msg)
-                                    existing = next(
-                                        (item for item in ticker_failures[ticker] 
-                                         if item["issue"] == issue_type), 
-                                        None
-                                    )
-                                    
-                                    if existing:
-                                        # Same error type, just add model to list
-                                        existing["models"].append(m_type)
-                                    else:
-                                        # New error type for this ticker
-                                        ticker_failures[ticker].append({
-                                            "issue": issue_type,
-                                            "details": error_msg,
-                                            "models": [m_type]
-                                        })
+                        ticker_name, ticker_results = future.result()
+                    except Exception as e:
+                        ticker_name = ticker
+                        ticker_results = {"error": str(e)}
 
-                        if mode == "Models Comparison":
+                    all_results[ticker_name] = ticker_results
+
+                    if isinstance(ticker_results, dict) and "error" in ticker_results:
+                        ticker_failures[ticker_name] = [
+                            {
+                                "issue": categorize_error(ticker_results["error"]),
+                                "details": ticker_results["error"],
+                                "models": list(config.model_types),
+                            }
+                        ]
+
+                    with prog_placeholder.container():
+                        st.write(
+                            f"### 🔍 Analyzing Super Stars ({completed}/{len(tickers)})"
+                        )
+                        st.progress(completed / len(tickers))
+        else:
+            for idx, ticker in enumerate(tickers):
+                ticker_results = {}
+                with prog_placeholder.container():
+                    st.write(f"### 🔍 Analyzing {ticker} ({idx + 1}/{len(tickers)})")
+                    st.progress((idx) / len(tickers))
+
+                    with st.status(
+                        f"Processing {ticker}...",
+                        expanded=(mode != "Find Super Stars"),
+                    ) as status:
+                        try:
+                            st.write("Preparing AI Models...")
                             for m_type in config.model_types:
-                                st.write(f"Backtesting {m_type}...")
+                                config.model_type = m_type
                                 try:
-                                    res = engine.run_model_mode(ticker, m_type)
-                                    if "error" in res:
-                                        st.error(
-                                            f"Backtest Error ({m_type}): {res['error']}"
-                                        )
-                                    ticker_results[m_type] = res
+                                    result = builder.load_or_build(ticker)
+                                    status_emoji = (
+                                        "🆕" if "train" in result else "💾"
+                                    )  # New trained vs Cached
+                                    st.write(
+                                        f"{status_emoji} **{m_type.upper()}**: {result.replace('_', ' ').title()}"
+                                    )
                                 except Exception as e:
-                                    st.error(f"Backtest Exception ({m_type}): {e}")
-                                    ticker_results[m_type] = {"error": str(e)}
-                        elif mode == "Time-Span Comparison":
-                            for p_name in test_periods:
-                                st.write(f"Evaluating {p_name} strategy...")
+                                    error_msg = str(e)
+                                    st.error(f"❌ Model Error ({m_type}): {error_msg}")
+                                    ticker_results[f"{m_type}_error"] = error_msg
+
+                                    # Track failure for Super Stars summary
+                                    if mode == "Find Super Stars":
+                                        if ticker not in ticker_failures:
+                                            ticker_failures[ticker] = []
+
+                                        # Check if this error type already exists for this ticker
+                                        issue_type = categorize_error(error_msg)
+                                        existing = next(
+                                            (
+                                                item
+                                                for item in ticker_failures[ticker]
+                                                if item["issue"] == issue_type
+                                            ),
+                                            None,
+                                        )
+
+                                        if existing:
+                                            # Same error type, just add model to list
+                                            existing["models"].append(m_type)
+                                        else:
+                                            # New error type for this ticker
+                                            ticker_failures[ticker].append(
+                                                {
+                                                    "issue": issue_type,
+                                                    "details": error_msg,
+                                                    "models": [m_type],
+                                                }
+                                            )
+
+                            if mode == "Models Comparison":
+                                for m_type in config.model_types:
+                                    st.write(f"Backtesting {m_type}...")
+                                    try:
+                                        res = engine.run_model_mode(ticker, m_type)
+                                        if "error" in res:
+                                            st.error(
+                                                f"Backtest Error ({m_type}): {res['error']}"
+                                            )
+                                        ticker_results[m_type] = res
+                                    except Exception as e:
+                                        st.error(f"Backtest Exception ({m_type}): {e}")
+                                        ticker_results[m_type] = {"error": str(e)}
+                            elif mode == "Time-Span Comparison":
+                                for p_name in test_periods:
+                                    st.write(f"Evaluating {p_name} strategy...")
+                                    unit, val = period_map[p_name]
+                                    config.hold_period_unit, config.hold_period_value = (
+                                        unit,
+                                        val,
+                                    )
+                                    try:
+                                        res = engine.run_strategy_mode(
+                                            ticker,
+                                            config.model_types,
+                                            tie_breaker=tie_breaker,
+                                        )
+                                        if "error" in res:
+                                            st.error(
+                                                f"Strategy Error ({p_name}): {res['error']}"
+                                            )
+                                        ticker_results[p_name] = res
+                                    except Exception as e:
+                                        st.error(f"Strategy Exception ({p_name}): {e}")
+                                        ticker_results[p_name] = {"error": str(e)}
+                            else:
+                                st.write("Ranking stock...")
+                                p_name = test_periods[0]
                                 unit, val = period_map[p_name]
                                 config.hold_period_unit, config.hold_period_value = (
                                     unit,
@@ -198,57 +305,35 @@ def render_app():
                                         ticker,
                                         config.model_types,
                                         tie_breaker=tie_breaker,
+                                        mode_prefix="ranking",
                                     )
                                     if "error" in res:
-                                        st.error(
-                                            f"Strategy Error ({p_name}): {res['error']}"
-                                        )
-                                    ticker_results[p_name] = res
+                                        st.error(f"Ranking Error: {res['error']}")
+                                    # Include metadata for Super Stars UI
+                                    res["company_name"] = builder.get_company_name(ticker)
+                                    res["chinese_name"] = builder.get_chinese_name(ticker)
+                                    ticker_results = res
                                 except Exception as e:
-                                    st.error(f"Strategy Exception ({p_name}): {e}")
-                                    ticker_results[p_name] = {"error": str(e)}
-                        else:
-                            st.write("Ranking stock...")
-                            p_name = test_periods[0]
-                            unit, val = period_map[p_name]
-                            config.hold_period_unit, config.hold_period_value = (
-                                unit,
-                                val,
-                            )
-                            try:
-                                res = engine.run_strategy_mode(
-                                    ticker,
-                                    config.model_types,
-                                    tie_breaker=tie_breaker,
-                                    mode_prefix="ranking",
-                                )
-                                if "error" in res:
-                                    st.error(f"Ranking Error: {res['error']}")
-                                # Include metadata for Super Stars UI
-                                res["company_name"] = builder.get_company_name(ticker)
-                                res["chinese_name"] = builder.get_chinese_name(ticker)
-                                ticker_results = res
-                            except Exception as e:
-                                st.error(f"Ranking Exception: {e}")
-                                ticker_results = {"error": str(e)}
+                                    st.error(f"Ranking Exception: {e}")
+                                    ticker_results = {"error": str(e)}
 
-                        # Add metadata to ticker_results for all modes
-                        if (
-                            isinstance(ticker_results, dict)
-                            and "error" not in ticker_results
-                        ):
-                            ticker_results["_metadata"] = {
-                                "chinese_name": builder.get_chinese_name(ticker),
-                                "company_name": builder.get_company_name(ticker),
-                            }
+                            # Add metadata to ticker_results for all modes
+                            if (
+                                isinstance(ticker_results, dict)
+                                and "error" not in ticker_results
+                            ):
+                                ticker_results["_metadata"] = {
+                                    "chinese_name": builder.get_chinese_name(ticker),
+                                    "company_name": builder.get_company_name(ticker),
+                                }
 
-                    except Exception as ticker_e:
-                        st.error(f"Critical Ticker Error ({ticker}): {ticker_e}")
-                        ticker_results = {"error": str(ticker_e)}
+                        except Exception as ticker_e:
+                            st.error(f"Critical Ticker Error ({ticker}): {ticker_e}")
+                            ticker_results = {"error": str(ticker_e)}
 
-                    status.update(
-                        label=f"✅ {ticker} Complete", state="complete", expanded=False
-                    )
+                        status.update(
+                            label=f"✅ {ticker} Complete", state="complete", expanded=False
+                        )
 
                 all_results[ticker] = ticker_results
 
@@ -370,6 +455,7 @@ def render_app():
                     results,
                     models=config.model_types,
                     tie_breaker=tie_breaker,
+                    builder=builder,
                 )
             else:
                 for ticker in valid_tickers:

@@ -29,7 +29,13 @@ def _categorize_error(message: str) -> str:
     return "Processing Error"
 
 
-def render_super_stars(index_name, all_ticker_res, models=None, tie_breaker=None):
+def render_super_stars(
+    index_name,
+    all_ticker_res,
+    models=None,
+    tie_breaker=None,
+    builder=None,
+):
     """Main panel for Mode 3: Finding the top 10 stocks in an index."""
     st.header(f"🌟 Hall of Fame: {index_name} Super Stars")
 
@@ -98,6 +104,22 @@ def render_super_stars(index_name, all_ticker_res, models=None, tie_breaker=None
             lambda x: f"${x:,.2f}"
         )
 
+        if builder is not None:
+            for row_idx, ticker in enumerate(df_top10["Ticker"]):
+                if df_display.at[row_idx, "Name"] == ticker:
+                    try:
+                        company_name = builder.get_company_name(ticker)
+                        chinese_name = ""
+                        if hasattr(builder, "get_chinese_name"):
+                            chinese_name = builder.get_chinese_name(ticker)
+                        df_display.at[row_idx, "Name"] = (
+                            f"{chinese_name} ({company_name})"
+                            if chinese_name
+                            else company_name
+                        )
+                    except Exception:
+                        pass
+
         # 1. Leaderboard Table
         st.subheader("🏆 Top 10 Profit Performers")
         st.dataframe(
@@ -142,8 +164,16 @@ def render_super_stars(index_name, all_ticker_res, models=None, tie_breaker=None
                 ticker_symbol = tab_labels[i]
                 res = all_ticker_res[ticker_symbol]
                 chinese_name = res.get("chinese_name", "")
+                company_name = res.get("company_name", "")
+                if not company_name and builder is not None:
+                    try:
+                        company_name = builder.get_company_name(ticker_symbol)
+                    except Exception:
+                        company_name = ""
                 if chinese_name:
                     st.subheader(f"{chinese_name}")
+                elif company_name:
+                    st.subheader(f"{company_name}")
                 render_trade_details(ticker_symbol, res)
 
     # Show errors in an expander at the bottom
