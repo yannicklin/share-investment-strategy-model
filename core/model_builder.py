@@ -63,6 +63,8 @@ class ModelBuilder:
         self.target_horizon_days = 1
         self._data_cache: Dict[str, pd.DataFrame] = {}
         self._market_data: Optional[pd.DataFrame] = None
+        self._company_name_cache: Dict[str, str] = {}
+        self._etf_cache: Dict[str, bool] = {}
 
     def _init_scaler(self) -> Any:
         if self.config.scaler_type == "robust":
@@ -318,20 +320,30 @@ class ModelBuilder:
 
     def get_company_name(self, ticker: str) -> str:
         """Fetches the long name of the company from yfinance."""
+        if ticker in self._company_name_cache:
+            return self._company_name_cache[ticker]
+
         try:
             info = yf.Ticker(ticker).info
-            return info.get("longName", ticker)
+            company_name = info.get("longName", ticker)
+            self._company_name_cache[ticker] = company_name
+            return company_name
         except Exception:
             return ticker
 
     def is_etf(self, ticker: str) -> bool:
         """Determines if a ticker is an ETF using yfinance info."""
+        if ticker in self._etf_cache:
+            return self._etf_cache[ticker]
+
         try:
             # We don't want to call .info for every run, so we might want a small cache
             # or just rely on the quoteType if we had it.
             # For now, a quick fetch is fine as it's only called during rendering once per ticker.
             info = yf.Ticker(ticker).info
-            return info.get("quoteType") == "ETF"
+            is_etf = info.get("quoteType") == "ETF"
+            self._etf_cache[ticker] = is_etf
+            return is_etf
         except Exception:
             return False
 
@@ -356,11 +368,23 @@ class ModelBuilder:
 
         return pd.DataFrame()
 
+    def get_data_cache_snapshot(self) -> Dict[str, pd.DataFrame]:
+        """Return a shallow copy of the current data cache for worker reuse."""
+        return dict(self._data_cache)
+
+    def set_data_cache_snapshot(self, data_cache: Dict[str, pd.DataFrame]) -> None:
+        """Replace the local cache with a shallow copy of a shared snapshot."""
+        self._data_cache = dict(data_cache)
+
+    def set_cached_market_data(self, market_data: Optional[pd.DataFrame]) -> None:
+        """Prime the market data cache from an existing DataFrame snapshot."""
+        self._market_data = market_data
+
     def prefetch_data_batch(self, tickers: List[str], years: int):
         if not tickers:
             return
         end_date = pd.Timestamp.now()
-        start_date = end_date - pd.DateOffset(years=years)
+        start_date = end_date - pd.DateOffset(years=years) - pd.DateOffset(days=90)
         to_fetch = [t for t in tickers if f"{t}_{years}" not in self._data_cache]
         if not to_fetch:
             return
@@ -374,7 +398,7 @@ class ModelBuilder:
                     end=end_date,
                     auto_adjust=True,
                     progress=False,
-                    threads=False,
+                    threads=True,
                     group_by="ticker",
                 )
                 if data.empty:
@@ -477,7 +501,12 @@ class ModelBuilder:
 
         return pd.Series(target_values, index=close_index)
 
-    def prepare_features(self, data: pd.DataFrame, ticker: str = None, target_horizon_days: Optional[int] = None):
+    def prepare_features(
+        self,
+        data: pd.DataFrame,
+        ticker: str = None,
+        target_horizon_days: Optional[int] = None,
+    ):
         df = data.copy()
         horizon_days = max(1, int(target_horizon_days or self.target_horizon_days))
 
@@ -702,7 +731,9 @@ class ModelBuilder:
                     prophet_df = pd.DataFrame(
                         {"ds": data.index, "y": data["Close"].values.flatten()}
                     )
-                    prophet_df["ds"] = pd.to_datetime(prophet_df["ds"]).dt.tz_localize(None)
+                    prophet_df["ds"] = pd.to_datetime(prophet_df["ds"]).dt.tz_localize(
+                        None
+                    )
                     prophet_df = prophet_df.dropna()
                     self.model = self._init_model()
                     self.model.fit(prophet_df)
@@ -737,7 +768,9 @@ class ModelBuilder:
         # After the loop self.model / self.scaler hold the BUY horizon (last iteration)
         joblib.dump(bundle_payload, model_filename)
 
-    def load_or_build(self, ticker: str, target_horizon_days: Optional[int] = None) -> str:
+    def load_or_build(
+        self, ticker: str, target_horizon_days: Optional[int] = None
+    ) -> str:
         if target_horizon_days is not None:
             self.target_horizon_days = max(1, int(target_horizon_days))
 
@@ -759,7 +792,9 @@ class ModelBuilder:
 
             # Extract the requested horizon entry (supports new multi-horizon and legacy bundles)
             try:
-                horizon_entry = self._extract_horizon_entry(data_bundle, self.target_horizon_days)
+                horizon_entry = self._extract_horizon_entry(
+                    data_bundle, self.target_horizon_days
+                )
             except FileNotFoundError:
                 # Horizon not in bundle → retrain to populate it
                 self.train(ticker, target_horizon_days=self.target_horizon_days)
@@ -798,9 +833,13 @@ class ModelBuilder:
             if "keras_path" in horizon_entry or "lstm_h5" in horizon_entry:
                 from tensorflow.keras.models import load_model
 
-                keras_path = self._get_lstm_horizon_path(model_filename, self.target_horizon_days)
+                keras_path = self._get_lstm_horizon_path(
+                    model_filename, self.target_horizon_days
+                )
                 if not os.path.exists(keras_path):
-                    stored_path = horizon_entry.get("keras_path") or horizon_entry.get("lstm_h5")
+                    stored_path = horizon_entry.get("keras_path") or horizon_entry.get(
+                        "lstm_h5"
+                    )
                     if stored_path and os.path.exists(stored_path):
                         keras_path = stored_path
                     else:
@@ -857,7 +896,9 @@ class ModelBuilder:
 
                 keras_path = self._get_lstm_horizon_path(model_filename, 1)
                 if not os.path.exists(keras_path):
-                    stored_path = horizon_entry.get("keras_path") or horizon_entry.get("lstm_h5")
+                    stored_path = horizon_entry.get("keras_path") or horizon_entry.get(
+                        "lstm_h5"
+                    )
                     if stored_path and os.path.exists(stored_path):
                         keras_path = stored_path
                     else:
@@ -876,9 +917,7 @@ class ModelBuilder:
         except (FileNotFoundError, RuntimeError):
             raise
         except Exception as e:
-            raise RuntimeError(
-                f"Failed to load exit model for {ticker}: {e}"
-            ) from e
+            raise RuntimeError(f"Failed to load exit model for {ticker}: {e}") from e
 
     def predict(
         self, current_data: np.ndarray, date: Optional[pd.Timestamp] = None

@@ -58,6 +58,11 @@ class Config:
     )
     data_source: str = "yfinance"
 
+    # Performance & Parallelization
+    super_stars_workers: int = (
+        6  # Worker count for parallel Super Stars analysis (1-6 recommended for 6vCPU)
+    )
+
     # Cost & Tax Profiles
     cost_profile: str = "default"  # "default", "cmc_markets", or "tiger_au"
     annual_income: float = 90000.0  # Annual income for tax bracket calculation
