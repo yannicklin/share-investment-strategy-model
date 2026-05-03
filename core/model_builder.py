@@ -739,7 +739,9 @@ class ModelBuilder:
                     prophet_df = pd.DataFrame(
                         {"ds": data.index, "y": data["Close"].values.flatten()}
                     )
-                    prophet_df["ds"] = pd.to_datetime(prophet_df["ds"]).dt.tz_localize(None)
+                    prophet_df["ds"] = pd.to_datetime(prophet_df["ds"]).dt.tz_localize(
+                        None
+                    )
                     prophet_df = prophet_df.dropna()
                     self.model = self._init_model()
                     self.model.fit(prophet_df)
@@ -798,7 +800,9 @@ class ModelBuilder:
 
             # Extract the requested horizon entry (supports new multi-horizon and legacy bundles)
             try:
-                horizon_entry = self._extract_horizon_entry(data_bundle, self.target_horizon_days)
+                horizon_entry = self._extract_horizon_entry(
+                    data_bundle, self.target_horizon_days
+                )
             except FileNotFoundError:
                 # Horizon not in bundle → retrain to populate it
                 self.train(ticker, target_horizon_days=self.target_horizon_days)
@@ -837,9 +841,13 @@ class ModelBuilder:
             if "keras_path" in horizon_entry or "lstm_h5" in horizon_entry:
                 from tensorflow.keras.models import load_model
 
-                keras_path = self._get_lstm_horizon_path(model_filename, self.target_horizon_days)
+                keras_path = self._get_lstm_horizon_path(
+                    model_filename, self.target_horizon_days
+                )
                 if not os.path.exists(keras_path):
-                    stored_path = horizon_entry.get("keras_path") or horizon_entry.get("lstm_h5")
+                    stored_path = horizon_entry.get("keras_path") or horizon_entry.get(
+                        "lstm_h5"
+                    )
                     if stored_path and os.path.exists(stored_path):
                         keras_path = stored_path
                     else:
@@ -896,7 +904,9 @@ class ModelBuilder:
 
                 keras_path = self._get_lstm_horizon_path(model_filename, 1)
                 if not os.path.exists(keras_path):
-                    stored_path = horizon_entry.get("keras_path") or horizon_entry.get("lstm_h5")
+                    stored_path = horizon_entry.get("keras_path") or horizon_entry.get(
+                        "lstm_h5"
+                    )
                     if stored_path and os.path.exists(stored_path):
                         keras_path = stored_path
                     else:
@@ -915,9 +925,7 @@ class ModelBuilder:
         except (FileNotFoundError, RuntimeError):
             raise
         except Exception as e:
-            raise RuntimeError(
-                f"Failed to load exit model for {ticker}: {e}"
-            ) from e
+            raise RuntimeError(f"Failed to load exit model for {ticker}: {e}") from e
 
     def predict(
         self, current_data: np.ndarray, date: Optional[pd.Timestamp] = None

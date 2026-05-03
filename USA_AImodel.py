@@ -12,16 +12,15 @@ Copyright (c) 2026 Yannick
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from copy import deepcopy
 
-import yfinance as yf
-
 try:
     from curl_cffi import requests as cf_requests
 except ImportError:
     pass
 
-import pandas as pd
-import os
 import logging
+import os
+
+import pandas as pd
 import streamlit as st
 
 logging.basicConfig(level=logging.WARNING)
@@ -36,14 +35,14 @@ try:
 except ImportError:
     pass
 
+from core.backtest_engine import BacktestEngine
 from core.config import Config, load_config
 from core.model_builder import ModelBuilder
-from core.backtest_engine import BacktestEngine
-from ui.sidebar import render_sidebar
 from ui.algo_view import render_algorithm_comparison
-from ui.strategy_view import render_strategy_sensitivity
-from ui.stars_view import render_super_stars
 from ui.components import render_glossary
+from ui.sidebar import render_sidebar
+from ui.stars_view import render_super_stars
+from ui.strategy_view import render_strategy_sensitivity
 
 
 def main():
@@ -62,14 +61,22 @@ def main():
 def categorize_error(error_msg: str) -> str:
     """Categorize error messages into simple issue types."""
     error_lower = error_msg.lower()
-    
-    if "no data" in error_lower or "empty" in error_lower or "insufficient data" in error_lower:
+
+    if (
+        "no data" in error_lower
+        or "empty" in error_lower
+        or "insufficient data" in error_lower
+    ):
         return "📊 Data Missing"
     elif "rate limit" in error_lower or "too many requests" in error_lower:
         return "⏱️ Rate Limited"
     elif "division by zero" in error_lower or "divide" in error_lower:
         return "🔢 Math Error"
-    elif "import" in error_lower or "module" in error_lower or "not installed" in error_lower:
+    elif (
+        "import" in error_lower
+        or "module" in error_lower
+        or "not installed" in error_lower
+    ):
         return "📦 Library Missing"
     elif "feature mismatch" in error_lower or "dimension" in error_lower:
         return "⚙️ Config Changed"
@@ -213,9 +220,7 @@ def render_app():
                                 config.model_type = m_type
                                 try:
                                     result = builder.load_or_build(ticker)
-                                    status_emoji = (
-                                        "🆕" if "train" in result else "💾"
-                                    )
+                                    status_emoji = "🆕" if "train" in result else "💾"
                                     st.write(
                                         f"{status_emoji} **{m_type.upper()}**: {result.replace('_', ' ').title()}"
                                     )
@@ -266,7 +271,10 @@ def render_app():
                                 for p_name in test_periods:
                                     st.write(f"Evaluating {p_name} strategy...")
                                     unit, val = period_map[p_name]
-                                    config.hold_period_unit, config.hold_period_value = (
+                                    (
+                                        config.hold_period_unit,
+                                        config.hold_period_value,
+                                    ) = (
                                         unit,
                                         val,
                                     )
@@ -345,19 +353,25 @@ def render_app():
             st.warning(
                 f"⚠️ {len(ticker_failures)} tickers had issues ({total_issues} unique error types)"
             )
-            
+
             with st.expander("📋 Problem Tickers Report", expanded=True):
                 # Create clean table (one row per ticker+error type combination)
                 report_data = []
                 for ticker, error_list in ticker_failures.items():
                     for error_info in error_list:
-                        report_data.append({
-                            "Ticker": ticker,
-                            "Issue Type": error_info["issue"],
-                            "Failed Models": ", ".join([m.upper() for m in error_info["models"]]),
-                            "Details": error_info["details"][:100] + "..." if len(error_info["details"]) > 100 else error_info["details"]
-                        })
-                
+                        report_data.append(
+                            {
+                                "Ticker": ticker,
+                                "Issue Type": error_info["issue"],
+                                "Failed Models": ", ".join(
+                                    [m.upper() for m in error_info["models"]]
+                                ),
+                                "Details": error_info["details"][:100] + "..."
+                                if len(error_info["details"]) > 100
+                                else error_info["details"],
+                            }
+                        )
+
                 df = pd.DataFrame(report_data)
                 st.dataframe(
                     df,
@@ -365,10 +379,16 @@ def render_app():
                     hide_index=True,
                     column_config={
                         "Ticker": st.column_config.TextColumn("Ticker", width="small"),
-                        "Issue Type": st.column_config.TextColumn("Issue Type", width="medium"),
-                        "Failed Models": st.column_config.TextColumn("Failed Models", width="medium"),
-                        "Details": st.column_config.TextColumn("Error Details", width="large"),
-                    }
+                        "Issue Type": st.column_config.TextColumn(
+                            "Issue Type", width="medium"
+                        ),
+                        "Failed Models": st.column_config.TextColumn(
+                            "Failed Models", width="medium"
+                        ),
+                        "Details": st.column_config.TextColumn(
+                            "Error Details", width="large"
+                        ),
+                    },
                 )
 
         st.session_state["results"] = all_results
