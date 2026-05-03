@@ -62,6 +62,8 @@ class ModelBuilder:
         self.target_horizon_days = 1
         self._data_cache: Dict[str, pd.DataFrame] = {}
         self._market_data: Optional[pd.DataFrame] = None
+        self._company_name_cache: Dict[str, str] = {}
+        self._etf_cache: Dict[str, bool] = {}
 
     def _init_scaler(self) -> Any:
         if self.config.scaler_type == "robust":
@@ -317,22 +319,44 @@ class ModelBuilder:
 
     def get_company_name(self, ticker: str) -> str:
         """Fetches the long name of the company from yfinance."""
+        if ticker in self._company_name_cache:
+            return self._company_name_cache[ticker]
+
         try:
             info = yf.Ticker(ticker).info
-            return info.get("longName", ticker)
+            company_name = info.get("longName", ticker)
+            self._company_name_cache[ticker] = company_name
+            return company_name
         except Exception:
             return ticker
 
     def is_etf(self, ticker: str) -> bool:
         """Determines if a ticker is an ETF using yfinance info."""
+        if ticker in self._etf_cache:
+            return self._etf_cache[ticker]
+
         try:
             # We don't want to call .info for every run, so we might want a small cache
             # or just rely on the quoteType if we had it.
             # For now, a quick fetch is fine as it's only called during rendering once per ticker.
             info = yf.Ticker(ticker).info
-            return info.get("quoteType") == "ETF"
+            is_etf = info.get("quoteType") == "ETF"
+            self._etf_cache[ticker] = is_etf
+            return is_etf
         except Exception:
             return False
+
+    def get_data_cache_snapshot(self) -> Dict[str, pd.DataFrame]:
+        """Return a shallow copy of the current data cache for worker reuse."""
+        return dict(self._data_cache)
+
+    def set_data_cache_snapshot(self, data_cache: Dict[str, pd.DataFrame]) -> None:
+        """Replace the local cache with a shallow copy of a shared snapshot."""
+        self._data_cache = dict(data_cache)
+
+    def set_cached_market_data(self, market_data: Optional[pd.DataFrame]) -> None:
+        """Prime the market data cache from an existing DataFrame snapshot."""
+        self._market_data = market_data
 
     def fetch_data(self, ticker: str, years: int) -> pd.DataFrame:
         cache_key = f"{ticker}_{years}"

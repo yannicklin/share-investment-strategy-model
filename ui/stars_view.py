@@ -28,7 +28,13 @@ def _categorize_error(message: str) -> str:
     return "Processing Error"
 
 
-def render_super_stars(index_name, all_ticker_res, models=None, tie_breaker=None):
+def render_super_stars(
+    index_name,
+    all_ticker_res,
+    models=None,
+    tie_breaker=None,
+    builder=None,
+):
     """Main panel for Mode 3: Finding the top 10 stocks in an index."""
     st.header(f"🌟 Hall of Fame: {index_name} Super Stars")
 
@@ -94,6 +100,16 @@ def render_super_stars(index_name, all_ticker_res, models=None, tie_breaker=None
             lambda x: f"${x:,.2f}"
         )
 
+        if builder is not None:
+            for row_idx, ticker in enumerate(df_top10["Ticker"]):
+                if df_display.at[row_idx, "Company"] == ticker:
+                    try:
+                        df_display.at[row_idx, "Company"] = builder.get_company_name(
+                            ticker
+                        )
+                    except Exception:
+                        pass
+
         # 1. Leaderboard Table
         st.subheader("🏆 Top 10 Profit Performers")
         st.dataframe(
@@ -138,6 +154,11 @@ def render_super_stars(index_name, all_ticker_res, models=None, tie_breaker=None
                 ticker_symbol = tab_labels[i]
                 res = all_ticker_res[ticker_symbol]
                 company_name = res.get("company_name", "")
+                if not company_name and builder is not None:
+                    try:
+                        company_name = builder.get_company_name(ticker_symbol)
+                    except Exception:
+                        company_name = ""
                 if company_name:
                     st.subheader(f"{company_name}")
                 render_trade_details(ticker_symbol, res)

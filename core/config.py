@@ -128,6 +128,11 @@ class Config:
     #   3.0x = Slowest decay (minimal recent bias, ~150% CPU overhead)
     recency_half_life_multiplier: float = 1.0
 
+    # Performance & Parallelization
+    super_stars_workers: int = (
+        6  # Worker count for parallel Super Stars analysis (1-6 recommended for 6vCPU)
+    )
+
     # Market & Cost Settings
     cost_profile: str = "Saxo / Global Prime (Classic)"
 
