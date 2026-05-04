@@ -114,6 +114,33 @@ def _run_super_star_worker(
         tie_breaker=tie_breaker,
         mode_prefix="ranking",
     )
+
+    # ── Cleanup ───────────────────────────────────────────────────────────────
+    # Runs AFTER result is fully computed and stored in the local variable above.
+    # result is a plain Python dict of numbers/strings — completely decoupled
+    # from worker_builder and worker_engine at this point.
+    # Deleting the ML objects here reduces atexit work so the process exits fast.
+    worker_builder.model = None
+    del worker_engine
+    del worker_builder
+
+    if "lstm" in models:
+        try:
+            import tensorflow as tf
+
+            tf.keras.backend.clear_session()
+        except Exception:
+            pass
+
+    if "prophet" in models:
+        try:
+            import gc
+
+            gc.collect()  # releases cmdstanpy CmdStanModel objects and temp file refs
+        except Exception:
+            pass
+    # ─────────────────────────────────────────────────────────────────────────
+
     return ticker, result
 
 
