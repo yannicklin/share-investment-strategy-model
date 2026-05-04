@@ -383,11 +383,14 @@ class ModelBuilder:
         if not tickers:
             return
         end_date = pd.Timestamp.now()
-        start_date = end_date - pd.DateOffset(years=years)
+        # Match the same 90-day warm-up buffer used by fetch_data so that
+        # batch-prefetched tickers have sufficient history for indicators/LSTM.
+        start_date = end_date - pd.DateOffset(years=years) - pd.DateOffset(days=90)
         to_fetch = [t for t in tickers if f"{t}_{years}" not in self._data_cache]
         if not to_fetch:
             return
 
+        # Phase 1: batch download — one HTTP call per 20 tickers (fast path)
         for i in range(0, len(to_fetch), 20):
             batch = to_fetch[i : i + 20]
             try:
@@ -421,6 +424,28 @@ class ModelBuilder:
                         continue
             except Exception:
                 pass
+
+        # Phase 2: individually retry any tickers still missing after the batch.
+        # Done serially in the main process so that workers never need to make
+        # network calls — eliminating parallel-download race conditions entirely.
+        still_missing = [
+            t for t in to_fetch if f"{t}_{years}" not in self._data_cache
+        ]
+        if still_missing:
+            logging.info(
+                f"Retrying {len(still_missing)} tickers individually "
+                f"after batch prefetch miss: {still_missing}"
+            )
+            for t in still_missing:
+                df = self._download_with_retry(t, start_date)
+                if not df.empty:
+                    norm = self._normalize_df(df, t)
+                    if not norm.empty:
+                        self._data_cache[f"{t}_{years}"] = norm
+                else:
+                    logging.warning(
+                        f"⚠️ {t}: could not fetch data — will be skipped in analysis."
+                    )
 
     def _ensure_market_data(self):
         """Fetches and caches market/macro data if not already present."""

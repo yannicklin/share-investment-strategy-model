@@ -161,7 +161,7 @@ DEFAULT_INDEX_DATA = {
         "GOOGL",
         "GOOG",
         "META",
-        "BRK.B",
+        "BRK-B",
         "TSLA",
         "LLY",
         "AVGO",
