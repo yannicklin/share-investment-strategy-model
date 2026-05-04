@@ -187,7 +187,8 @@ def render_app():
             st.info(
                 f"🚀 Running {max_workers} parallel workers for Super Stars analysis..."
             )
-            with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            executor = ProcessPoolExecutor(max_workers=max_workers)
+            try:
                 future_map = {
                     executor.submit(
                         _run_super_star_worker,
@@ -226,6 +227,11 @@ def render_app():
                             f"### 🔍 Analyzing Super Stars ({completed}/{len(tickers)})"
                         )
                         st.progress(completed / len(tickers))
+            finally:
+                # shutdown(wait=False) returns immediately instead of blocking on
+                # worker processes that hold lingering ML threads (Prophet/LSTM/TF).
+                # All futures are already done at this point — no work is lost.
+                executor.shutdown(wait=False, cancel_futures=True)
         else:
             for idx, ticker in enumerate(tickers):
                 ticker_results = {}
