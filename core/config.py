@@ -79,6 +79,7 @@ class Config:
     hurdle_risk_buffer: float = (
         0.005  # 0.5% default, adjustable in 0.1% increments via UI
     )
+    super_stars_workers: int = 4  # Parallel worker count for Find Super Stars mode
 
 
 def load_config() -> Config:
