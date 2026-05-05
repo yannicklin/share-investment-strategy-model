@@ -15,6 +15,12 @@ from typing import Any, Dict, List, Optional
 
 import joblib
 import numpy as np
+        
+        if self._is_taiwan_ticker(ticker):
+            chinese_name = self.get_chinese_name(ticker)
+            company_name = chinese_name or self._base_ticker_symbol(ticker)
+            self._company_name_cache[ticker] = company_name
+            return company_name
 import pandas as pd
 import yfinance as yf
 
@@ -29,6 +35,10 @@ except ImportError:
 # Try to import FinMind for Taiwan institutional data
 try:
     from FinMind.data import DataLoader
+        
+        if self._is_taiwan_ticker(ticker):
+            self._etf_cache[ticker] = False
+            return False
 
     FINMIND_AVAILABLE = True
 except ImportError:
@@ -312,10 +322,25 @@ class ModelBuilder:
 
         return data
 
+    @staticmethod
+    def _is_taiwan_ticker(ticker: str) -> bool:
+        ticker_upper = ticker.upper().strip()
+        return ticker_upper.endswith(".TW") or ticker_upper.endswith(".TWO")
+
+    @staticmethod
+    def _base_ticker_symbol(ticker: str) -> str:
+        return ticker.split(".")[0].strip() if "." in ticker else ticker.strip()
+
     def get_company_name(self, ticker: str) -> str:
         """Fetches the long name of the company from yfinance."""
         if ticker in self._company_name_cache:
             return self._company_name_cache[ticker]
+
+        if self._is_taiwan_ticker(ticker):
+            chinese_name = self.get_chinese_name(ticker)
+            company_name = chinese_name or self._base_ticker_symbol(ticker)
+            self._company_name_cache[ticker] = company_name
+            return company_name
 
         try:
             info = yf.Ticker(ticker).info
@@ -323,6 +348,7 @@ class ModelBuilder:
             self._company_name_cache[ticker] = company_name
             return company_name
         except Exception:
+            self._company_name_cache[ticker] = ticker
             return ticker
 
     def get_chinese_name(self, ticker: str) -> str:
@@ -358,6 +384,10 @@ class ModelBuilder:
         if ticker in self._etf_cache:
             return self._etf_cache[ticker]
 
+        if self._is_taiwan_ticker(ticker):
+            self._etf_cache[ticker] = False
+            return False
+
         try:
             # We don't want to call .info for every run, so we might want a small cache
             # or just rely on the quoteType if we had it.
@@ -367,6 +397,7 @@ class ModelBuilder:
             self._etf_cache[ticker] = is_etf
             return is_etf
         except Exception:
+            self._etf_cache[ticker] = False
             return False
 
     def get_data_cache_snapshot(self) -> Dict[str, pd.DataFrame]:
