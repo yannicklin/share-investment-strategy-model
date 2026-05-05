@@ -15,12 +15,6 @@ from typing import Any, Dict, List, Optional
 
 import joblib
 import numpy as np
-        
-        if self._is_taiwan_ticker(ticker):
-            chinese_name = self.get_chinese_name(ticker)
-            company_name = chinese_name or self._base_ticker_symbol(ticker)
-            self._company_name_cache[ticker] = company_name
-            return company_name
 import pandas as pd
 import yfinance as yf
 
@@ -35,10 +29,6 @@ except ImportError:
 # Try to import FinMind for Taiwan institutional data
 try:
     from FinMind.data import DataLoader
-        
-        if self._is_taiwan_ticker(ticker):
-            self._etf_cache[ticker] = False
-            return False
 
     FINMIND_AVAILABLE = True
 except ImportError:
@@ -480,9 +470,7 @@ class ModelBuilder:
         # Phase 2: individually retry any tickers still missing after the batch.
         # Done serially in the main process so that workers never need to make
         # network calls — eliminating parallel-download race conditions entirely.
-        still_missing = [
-            t for t in to_fetch if f"{t}_{years}" not in self._data_cache
-        ]
+        still_missing = [t for t in to_fetch if f"{t}_{years}" not in self._data_cache]
         if still_missing:
             logging.info(
                 f"Retrying {len(still_missing)} tickers individually "
