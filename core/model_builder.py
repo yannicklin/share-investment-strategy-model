@@ -448,6 +448,7 @@ class ModelBuilder:
                     logging.warning(
                         f"⚠️ {t}: could not fetch data — will be skipped in analysis."
                     )
+                    self._data_cache[f"{t}_{years}"] = pd.DataFrame()
 
     def _ensure_market_data(self):
         """Fetches and caches market/macro data if not already present."""

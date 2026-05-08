@@ -36,6 +36,8 @@ The model may buy even if projected returns do not meet take-profit thresholds, 
     - **Mode 3 (Find Super Stars)**: Scans entire market indexes to identify the **Top 10** performers for a chosen timeframe (1 day to 1 year).
         - **Company Profiles**: Displays full legal company names and provides direct links to **Yahoo Finance** for each winner.
         - **Error Transparency**: Includes a reviewable section for stocks that failed processing (e.g., insufficient data for new listings).
+      - **Worker Isolation**: Parallel worker processes must execute from a lightweight module that does not import Streamlit, preventing worker-exit shutdown noise and reducing process teardown overhead.
+      - **Prefetch Failure Sentinel**: If a ticker still fails after serial retry during prefetch, cache an empty result sentinel so workers skip redundant re-download attempts and log the failure only once.
 
 #### 2.4 UI Modules (`ui/`)
 - **`sidebar.py`** — Analysis mode selection via a **Segmented Button Switch** (Models vs. Time-Span vs. Super Stars). Includes:
