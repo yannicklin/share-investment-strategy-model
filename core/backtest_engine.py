@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 from core.config import Config
-from core.model_builder import ModelBuilder
+from core.model_builder import FINMIND_FEATURE_COLUMNS, ModelBuilder
 from core.transaction_ledger import TransactionLedger
 from core.utils import (
     calculate_trading_days_ahead,
@@ -134,11 +134,9 @@ class BacktestEngine:
 
         # 7. FinMind Institutional Data (Taiwan Only)
         if ticker.endswith(".TW"):
-            self.model_builder._ensure_finmind_data(ticker)
-            fm_data = self.model_builder._finmind_data
-            if fm_data is not None and not fm_data.empty:
-                finmind_subset = fm_data.shift(1).reindex(df.index).ffill()
-                df = df.join(finmind_subset)
+            fm_data = self.model_builder.get_finmind_data_for_ticker(ticker)
+            finmind_subset = fm_data.shift(1).reindex(df.index).ffill().fillna(0)
+            df = df.join(finmind_subset)
 
         # 8. Market Context Integration
         self.model_builder._ensure_market_data()
@@ -199,10 +197,9 @@ class BacktestEngine:
             "Daily_Return",
         ]
 
-        # Add dynamic FinMind features (Taiwan institutional data)
-        fm_data = self.model_builder._finmind_data
-        if fm_data is not None and not fm_data.empty:
-            for col in fm_data.columns:
+        # Add fixed FinMind features (Taiwan institutional data)
+        if ticker.endswith(".TW"):
+            for col in FINMIND_FEATURE_COLUMNS:
                 if col in df.columns:
                     features.append(col)
 

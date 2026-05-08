@@ -10,7 +10,6 @@ Copyright (c) 2026 Yannick
 
 # 1. Core Network/Data Libraries (MUST be before TensorFlow)
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from copy import deepcopy
 
 try:
     from curl_cffi import requests as cf_requests
@@ -38,8 +37,9 @@ try:
 except (ImportError, AttributeError):
     pass
 from core.backtest_engine import BacktestEngine
-from core.config import Config, load_config
+from core.config import load_config
 from core.model_builder import ModelBuilder
+from core.super_stars_worker import run_super_star_worker
 from ui.algo_view import render_algorithm_comparison
 from ui.components import render_glossary
 from ui.sidebar import render_sidebar
@@ -90,60 +90,6 @@ def categorize_error(error_msg: str) -> str:
         return "⚠️ Technical Error"
 
 
-def _run_super_star_worker(
-    ticker: str,
-    config: Config,
-    data_cache: dict,
-    market_data: pd.DataFrame | None,
-    models: list[str],
-    tie_breaker: str | None,
-) -> tuple[str, dict]:
-    """Run one Super Stars ticker analysis in an isolated worker state."""
-    worker_config = deepcopy(config)
-    worker_config.target_stock_codes = [ticker]
-    worker_config.model_types = list(models)
-
-    worker_builder = ModelBuilder(worker_config)
-    worker_builder.set_data_cache_snapshot(data_cache)
-    worker_builder.set_cached_market_data(market_data)
-
-    worker_engine = BacktestEngine(worker_config, worker_builder)
-    result = worker_engine.run_strategy_mode(
-        ticker,
-        worker_config.model_types,
-        tie_breaker=tie_breaker,
-        mode_prefix="ranking",
-    )
-
-    # ── Cleanup ───────────────────────────────────────────────────────────────
-    # Runs AFTER result is fully computed and stored in the local variable above.
-    # result is a plain Python dict of numbers/strings — completely decoupled
-    # from worker_builder and worker_engine at this point.
-    # Deleting the ML objects here reduces atexit work so the process exits fast.
-    worker_builder.model = None
-    del worker_engine
-    del worker_builder
-
-    if "lstm" in models:
-        try:
-            import tensorflow as tf
-
-            tf.keras.backend.clear_session()
-        except Exception:
-            pass
-
-    if "prophet" in models:
-        try:
-            import gc
-
-            gc.collect()  # releases cmdstanpy CmdStanModel objects and temp file refs
-        except Exception:
-            pass
-    # ─────────────────────────────────────────────────────────────────────────
-
-    return ticker, result
-
-
 def render_app():
     st.title("📈 Taiwan Stock AI Trading Strategy Dashboard")
 
@@ -179,6 +125,8 @@ def render_app():
             f"Pre-fetching historical data for {len(tickers)} Taiwan stocks..."
         ):
             builder.prefetch_data_batch(tickers, config.backtest_years)
+            if mode == "Find Super Stars" and len(tickers) > 1:
+                builder.prefetch_finmind_batch(tickers)
             builder.ensure_market_data()
 
         # Simple failure tracking for Super Stars mode
@@ -188,6 +136,7 @@ def render_app():
 
         if mode == "Find Super Stars" and len(tickers) > 1:
             shared_data_cache = builder.get_data_cache_snapshot()
+            shared_finmind_cache = builder.get_finmind_cache_snapshot()
             shared_market_data = builder._market_data
             max_workers = min(config.super_stars_workers, len(tickers))
             completed = 0
@@ -199,10 +148,11 @@ def render_app():
             try:
                 future_map = {
                     executor.submit(
-                        _run_super_star_worker,
+                        run_super_star_worker,
                         ticker,
                         config,
                         shared_data_cache,
+                        shared_finmind_cache,
                         shared_market_data,
                         list(config.model_types),
                         tie_breaker,

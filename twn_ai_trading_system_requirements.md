@@ -27,6 +27,9 @@ The model may buy even if projected returns do not meet take-profit thresholds, 
     - **Mode 2 (Time-Span Comparison)**: Evaluates holding period efficiency using a **Multi-Model Consensus** (majority vote).
         - **Tie-Breaker Rule**: In the event of a 50/50 vote split, a user-selected Tie-Breaker model makes the final decision.
     - **Mode 3 (Find Super Stars)**: Scans Taiwan market indices to identify the **Top 10** performers for a chosen timeframe.
+        - **Worker Isolation**: Parallel worker processes must run from a lightweight helper module that does not import Streamlit, preventing worker-exit shutdown noise.
+        - **Serial FinMind Prefetch**: Taiwan-specific FinMind data must be fetched in the main process before worker execution so Super Stars workers remain compute-only.
+        - **Fixed Feature Schema**: Taiwan stocks must keep the same 27-feature input shape even when FinMind is unavailable or rate-limited; missing Taiwan-specific inputs are zero-filled rather than removed.
     - **Indices Supported**: 台股50 (Taiwan 50), 台股中型100 (Mid 100), MSCI台股指數 (MSCI Taiwan).
     - **Current Limitation**: Due to formal API stabilization issues, online constituent synchronization is currently disabled. Constituents are managed via a localized static cache (`core/index_manager.py`) until robust sources are verified.
 
@@ -116,6 +119,7 @@ The model builder supports two distinct sample weighting modes during training:
 - **FinMind API (Primary)**:
     - **Enhanced Features**: Includes OHLCV + **Institutional Net Buy (三大法人)**.
     - **Stability**: Highly reliable for Taiwan market data.
+    - **Rate-Limit Fallback**: If FinMind returns upper-limit responses, the system must preserve the six Taiwan-specific feature columns with zero-filled fallback values so model input dimensions stay stable.
 - **Yahoo Finance (`yfinance`) (Fallback)**:
     - **TWSE Tickers**: `[4-digit].TW` (e.g., `2330.TW`)
     - **TPEx Tickers**: `[4-digit].TWO` (e.g., `6488.TWO`)

@@ -58,6 +58,16 @@ from sklearn.preprocessing import RobustScaler, StandardScaler
 from core.config import Config
 
 
+FINMIND_FEATURE_COLUMNS = [
+    "FM_Foreign_NetBuy",
+    "FM_Trust_NetBuy",
+    "FM_Dealer_NetBuy",
+    "FM_Margin_Balance",
+    "FM_Short_Balance",
+    "FM_Revenue_YoY",
+]
+
+
 class ModelBuilder:
     """Handles data fetching, preprocessing, and model training."""
 
@@ -73,6 +83,7 @@ class ModelBuilder:
         self._company_name_cache: Dict[str, str] = {}
         self._etf_cache: Dict[str, bool] = {}
         self._finmind_data: Optional[pd.DataFrame] = None  # Taiwan institutional data
+        self._finmind_data_cache: Dict[str, pd.DataFrame] = {}
         self._stock_info_cache: Optional[pd.DataFrame] = None  # Taiwan stock metadata
 
     def _init_scaler(self) -> Any:
@@ -365,6 +376,7 @@ class ModelBuilder:
                     return str(match["stock_name"].iloc[0])
 
         except Exception as e:
+            self._stock_info_cache = pd.DataFrame()
             logging.warning(f"Failed to fetch Chinese name for {ticker}: {e}")
 
         return ""
@@ -401,6 +413,18 @@ class ModelBuilder:
     def set_cached_market_data(self, market_data: Optional[pd.DataFrame]) -> None:
         """Prime the market data cache from an existing DataFrame snapshot."""
         self._market_data = market_data
+
+    def get_finmind_cache_snapshot(self) -> Dict[str, pd.DataFrame]:
+        """Return a shallow copy of the current per-ticker FinMind cache."""
+        return {ticker: df.copy() for ticker, df in self._finmind_data_cache.items()}
+
+    def set_finmind_cache_snapshot(
+        self, finmind_cache: Dict[str, pd.DataFrame]
+    ) -> None:
+        """Prime the local per-ticker FinMind cache from a shared snapshot."""
+        self._finmind_data_cache = {
+            ticker: df.copy() for ticker, df in finmind_cache.items()
+        }
 
     def fetch_data(self, ticker: str, years: int) -> pd.DataFrame:
         cache_key = f"{ticker}_{years}"
@@ -486,6 +510,35 @@ class ModelBuilder:
                     logging.warning(
                         f"⚠️ {t}: could not fetch data — will be skipped in analysis."
                     )
+                    self._data_cache[f"{t}_{years}"] = pd.DataFrame()
+
+    @staticmethod
+    def _empty_finmind_frame(index: Optional[pd.Index] = None) -> pd.DataFrame:
+        """Return the canonical Taiwan FinMind feature frame with zero rows."""
+        return pd.DataFrame(index=index, columns=FINMIND_FEATURE_COLUMNS, dtype=float)
+
+    def get_finmind_data_for_ticker(self, ticker: str) -> pd.DataFrame:
+        """Return the per-ticker FinMind frame, fetching it once if needed."""
+        self._ensure_finmind_data(ticker)
+        return self._finmind_data_cache.get(ticker, self._empty_finmind_frame())
+
+    def prefetch_finmind_batch(self, tickers: List[str]) -> None:
+        """Serially prefetch TWN FinMind features in the main process."""
+        tw_tickers = [
+            ticker
+            for ticker in tickers
+            if ticker.endswith(".TW") and ticker not in self._finmind_data_cache
+        ]
+        if not tw_tickers:
+            return
+
+        logging.info(
+            f"Prefetching FinMind features serially for {len(tw_tickers)} tickers..."
+        )
+        for index, ticker in enumerate(tw_tickers):
+            self._ensure_finmind_data(ticker)
+            if index < len(tw_tickers) - 1:
+                time.sleep(0.5)
 
     def _ensure_market_data(self):
         """Fetches and caches market/macro data if not already present."""
@@ -548,19 +601,22 @@ class ModelBuilder:
 
     def _ensure_finmind_data(self, ticker: str):
         """Fetch Taiwan institutional data from FinMind with fallback handling."""
-        if self._finmind_data is not None:
+        if ticker in self._finmind_data_cache:
+            self._finmind_data = self._finmind_data_cache[ticker]
             return
 
         if not FINMIND_AVAILABLE:
             logging.warning(
                 "FinMind not installed. Skipping Taiwan institutional features."
             )
-            self._finmind_data = pd.DataFrame()
+            self._finmind_data = self._empty_finmind_frame()
+            self._finmind_data_cache[ticker] = self._finmind_data.copy()
             return
 
         # Only fetch for Taiwan stocks (*.TW format)
         if not ticker.endswith(".TW"):
-            self._finmind_data = pd.DataFrame()
+            self._finmind_data = self._empty_finmind_frame()
+            self._finmind_data_cache[ticker] = self._finmind_data.copy()
             return
 
         # Extract stock ID (remove .TW suffix)
@@ -572,7 +628,7 @@ class ModelBuilder:
         start_str = start_date.strftime("%Y-%m-%d")
         end_str = end_date.strftime("%Y-%m-%d")
 
-        finmind_df = pd.DataFrame()
+        finmind_df = self._empty_finmind_frame()
         successful_features = []
         failed_features = []
 
@@ -664,11 +720,8 @@ class ModelBuilder:
         except Exception as e:
             logging.error(f"FinMind initialization failed for {stock_id}: {e}")
 
-        # Forward fill and handle NaN
-        if not finmind_df.empty:
-            self._finmind_data = finmind_df.ffill().fillna(0)
-        else:
-            self._finmind_data = pd.DataFrame()
+        self._finmind_data = finmind_df.ffill().fillna(0)
+        self._finmind_data_cache[ticker] = self._finmind_data.copy()
 
     def ensure_market_data(self):
         """Public wrapper for market data initialization."""
@@ -753,12 +806,10 @@ class ModelBuilder:
 
         # --- 7. FinMind Institutional Data (Taiwan Only) ---
         if ticker and ticker.endswith(".TW"):
-            self._ensure_finmind_data(ticker)
-            if self._finmind_data is not None and not self._finmind_data.empty:
-                # Align FinMind data to stock dates with T-1 lag to prevent look-ahead bias
-                finmind_subset = self._finmind_data.shift(1).reindex(df.index).ffill()
-                df = df.join(finmind_subset)
-                df = df.ffill().fillna(0)
+            fm_data = self.get_finmind_data_for_ticker(ticker)
+            finmind_subset = fm_data.shift(1).reindex(df.index).ffill().fillna(0)
+            df = df.join(finmind_subset)
+            df = df.ffill().fillna(0)
 
         # --- 8. Market Context Integration (New) ---
         self._ensure_market_data()
@@ -811,9 +862,9 @@ class ModelBuilder:
                 if col in df.columns:
                     features.append(col)
 
-        # Add FinMind institutional features (Taiwan only)
-        if self._finmind_data is not None:
-            for col in self._finmind_data.columns:
+        # Add fixed FinMind institutional features (Taiwan only)
+        if ticker and ticker.endswith(".TW"):
+            for col in FINMIND_FEATURE_COLUMNS:
                 if col in df.columns:
                     features.append(col)
 
