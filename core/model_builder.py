@@ -446,6 +446,10 @@ class ModelBuilder:
                     logging.warning(
                         f"⚠️ {t}: could not fetch data — will be skipped in analysis."
                     )
+                    # Insert an empty-DataFrame sentinel so that fetch_data() returns
+                    # immediately (cache hit) instead of retrying inside worker processes,
+                    # which would produce duplicate error logs and unnecessary network calls.
+                    self._data_cache[f"{t}_{years}"] = pd.DataFrame()
 
     def _ensure_market_data(self):
         """Fetches and caches market/macro data if not already present."""
