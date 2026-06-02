@@ -689,10 +689,12 @@ class BacktestEngine:
             return _builder.model.predict(X_scaled).astype(np.float32)
 
         return np.zeros(len(df), dtype=np.float32)
-# WP-7.6: Phase 7 trend analysis for dynamic sell friction
+        # WP-7.6: Phase 7 trend analysis for dynamic sell friction
         trend_data_for_consensus = {}
         for idx in range(len(df)):
-            df_window = df.iloc[max(0, idx - 60):idx + 1]  # 60 days lookback for indicators
+            df_window = df.iloc[
+                max(0, idx - 60) : idx + 1
+            ]  # 60 days lookback for indicators
             if len(df_window) >= 50:
                 trend_result = detect_trend(df_window, ticker)
                 trend_data_for_consensus[idx] = trend_result.get("trend", "RANGEBOUND")
@@ -705,16 +707,16 @@ class BacktestEngine:
             hurdle = self.get_hurdle_rate(current_cap)
             tb_model = tie_breaker if tie_breaker else models[0]
             tie_breaker_bullish = False
-            
+
             # WP-7.6: Get dynamic sell_friction based on trend
             trend = trend_data_for_consensus.get(i, "RANGEBOUND")
             TREND_MULTIPLIERS = {
-                "UPTREND": 5.0,      # Higher threshold: let winners run
-                "DOWNTREND": 2.0,    # Lower threshold: quick exits
-                "RANGEBOUND": 3.0,   # Neutral
+                "UPTREND": 5.0,  # Higher threshold: let winners run
+                "DOWNTREND": 2.0,  # Lower threshold: quick exits
+                "RANGEBOUND": 3.0,  # Neutral
             }
             sell_friction = TREND_MULTIPLIERS.get(trend, 3.0)
-            
+
             for m_type in models:
                 pred = committee_exit_preds[m_type][i]
                 pred_return = (pred - current_price) / current_price

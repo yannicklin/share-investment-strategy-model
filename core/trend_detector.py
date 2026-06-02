@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 def detect_trend(
-    data: pd.DataFrame, 
+    data: pd.DataFrame,
     ticker: str,
     lookback_days: int = 20,
     sma_period: int = 50,
