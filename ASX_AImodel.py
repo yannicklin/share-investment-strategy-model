@@ -37,7 +37,7 @@ try:
 except (ImportError, AttributeError):
     pass
 from core.backtest_engine import BacktestEngine
-from core.config import Config, load_config
+from core.config import load_config
 from core.model_builder import ModelBuilder
 from core.super_stars_worker import run_super_star_worker
 from ui.algo_view import render_algorithm_comparison
@@ -495,7 +495,7 @@ def render_app():
                 "- **T+2 Settlement**: Capital from a sale is locked for 2 trading days."
             )
             st.write(
-                "- **ATO Tax**: Capital gains subject to individual income tax (50% discount if held > 12 months)."
+                "- **ATO Tax**: Capital gains subject to 30% minimum tax rate (no holding period discount as of June 2, 2026)."
             )
         with col2:
             st.write(

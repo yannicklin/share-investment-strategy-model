@@ -8,11 +8,11 @@ Author: Yannick
 Copyright (c) 2026 Yannick
 """
 
-import streamlit as st
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
+import streamlit as st
 from plotly.subplots import make_subplots
+
 from core.utils import format_date_with_weekday
 
 
@@ -95,7 +95,7 @@ def render_trade_details(ticker, res):
             title_text=f"{ticker} Price (AUD)", secondary_y=True, showgrid=False
         )
 
-        st.plotly_chart(fig, width='stretch')
+        st.plotly_chart(fig, width="stretch")
 
         # 2. Statistics
         c1, c2, c3, c4 = st.columns(4)
@@ -164,6 +164,6 @@ def render_glossary():
         - **Avg Profit/Trade:** Average net percentage gain per closed position.
 
         **Tax & Fees:**
-        - **ATO Tax:** Marginal CGT based on your annual income (includes 12-month 50% discount).
+        - **ATO Tax:** Marginal CGT based on your annual income with 30% minimum floor (no holding period discount).
         - **CMC Profile:** Greater of $11 or 0.10% flat brokerage.
         """)

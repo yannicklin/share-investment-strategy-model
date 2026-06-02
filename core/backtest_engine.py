@@ -323,7 +323,9 @@ class BacktestEngine:
         signal_func: Callable[[int, pd.DataFrame, List[str], float], bool],
         df: pd.DataFrame,
         features: List[str],
-        exit_signal_func: Optional[Callable[[int, pd.DataFrame, List[str], float], bool]] = None,
+        exit_signal_func: Optional[
+            Callable[[int, pd.DataFrame, List[str], float], bool]
+        ] = None,
     ) -> Dict[str, Any]:
         """The shared engine logic for both modes.
 
@@ -405,11 +407,12 @@ class BacktestEngine:
                     g_profit = val - (position * buy_price) - (buy_fees + s_fees)
                     tax = 0.0
                     if g_profit > 0:
-                        # 50% discount for 12+ months holding
-                        disc = 0.5 if (date - buy_date).days >= 365 else 1.0
-                        tax = self.calculate_ato_tax(
-                            self.config.annual_income + g_profit * disc
-                        ) - self.calculate_ato_tax(self.config.annual_income)
+                        # Apply minimum 30% tax rate (no holding period discount as of June 2, 2026)
+                        marginal_rate = self.get_marginal_tax_rate(
+                            self.config.annual_income + g_profit
+                        )
+                        effective_rate = max(0.30, marginal_rate)
+                        tax = g_profit * effective_rate
                     new_capital = val - s_fees - tax
 
                     # STRICT REALISM: T+2 Settlement Delay
@@ -539,7 +542,11 @@ class BacktestEngine:
                         execution_stats["sell_take_profit"] += 1
                     else:
                         # Use horizon-1 exit model if provided; fall back to BUY signal
-                        _exit_fn = exit_signal_func if exit_signal_func is not None else signal_func
+                        _exit_fn = (
+                            exit_signal_func
+                            if exit_signal_func is not None
+                            else signal_func
+                        )
                         if not _exit_fn(i, df, features, position * current_price):
                             reason, sell_price = "model-exit", current_price
                             execution_stats["sell_model_exit"] += 1
@@ -550,11 +557,12 @@ class BacktestEngine:
                     g_profit = val - (position * buy_price) - (buy_fees + s_fees)
                     tax = 0.0
                     if g_profit > 0:
-                        # 50% discount for 12+ months holding
-                        disc = 0.5 if (date - buy_date).days >= 365 else 1.0
-                        tax = self.calculate_ato_tax(
-                            self.config.annual_income + g_profit * disc
-                        ) - self.calculate_ato_tax(self.config.annual_income)
+                        # Apply minimum 30% tax rate (no holding period discount as of June 2, 2026)
+                        marginal_rate = self.get_marginal_tax_rate(
+                            self.config.annual_income + g_profit
+                        )
+                        effective_rate = max(0.30, marginal_rate)
+                        tax = g_profit * effective_rate
                     new_capital = val - s_fees - tax
 
                     # STRICT REALISM: T+2 Settlement Delay
@@ -670,7 +678,9 @@ class BacktestEngine:
             hurdle = self.get_hurdle_rate(current_cap)
             return (all_exit_preds[i] - current_price) / current_price > hurdle
 
-        result = self._core_run(ticker, signal, df, features, exit_signal_func=exit_signal)
+        result = self._core_run(
+            ticker, signal, df, features, exit_signal_func=exit_signal
+        )
 
         # Save ledger to file and clear from memory
         if "error" not in result:
@@ -707,14 +717,18 @@ class BacktestEngine:
         for m_type in models:
             self.config.model_type = m_type
             self.model_builder.load_or_build(ticker, target_horizon_days=horizon_days)
-            committee_buy_preds[m_type] = self._get_bulk_predictions(df, features, m_type)
+            committee_buy_preds[m_type] = self._get_bulk_predictions(
+                df, features, m_type
+            )
 
         # EXIT bulk predictions — horizon=1 per model (from the same bundle)
         committee_exit_preds = {}
         for m_type in models:
             self.config.model_type = m_type
             self.model_builder.load_exit_model(ticker, buy_horizon_days=horizon_days)
-            committee_exit_preds[m_type] = self._get_bulk_predictions(df, features, m_type)
+            committee_exit_preds[m_type] = self._get_bulk_predictions(
+                df, features, m_type
+            )
 
         consensus_stats = {
             "model_count": len(models),
@@ -783,7 +797,9 @@ class BacktestEngine:
                 return tie_breaker_bullish
             return False
 
-        result = self._core_run(ticker, signal, df, features, exit_signal_func=exit_signal)
+        result = self._core_run(
+            ticker, signal, df, features, exit_signal_func=exit_signal
+        )
 
         # Save ledger to file and clear from memory
         if "error" not in result:
