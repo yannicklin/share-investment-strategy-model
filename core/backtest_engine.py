@@ -17,6 +17,7 @@ import pandas as pd
 from core.config import Config
 from core.model_builder import FINMIND_FEATURE_COLUMNS, ModelBuilder
 from core.transaction_ledger import TransactionLedger
+from core.trend_detector import detect_trend
 from core.utils import (
     calculate_trading_days_ahead,
     get_twn_trading_days,
@@ -688,3 +689,34 @@ class BacktestEngine:
             return _builder.model.predict(X_scaled).astype(np.float32)
 
         return np.zeros(len(df), dtype=np.float32)
+# WP-7.6: Phase 7 trend analysis for dynamic sell friction
+        trend_data_for_consensus = {}
+        for idx in range(len(df)):
+            df_window = df.iloc[max(0, idx - 60):idx + 1]  # 60 days lookback for indicators
+            if len(df_window) >= 50:
+                trend_result = detect_trend(df_window, ticker)
+                trend_data_for_consensus[idx] = trend_result.get("trend", "RANGEBOUND")
+            else:
+                trend_data_for_consensus[idx] = "RANGEBOUND"
+
+        def exit_signal(i, df_inner, _features_inner, current_cap):
+            votes = 0
+            current_price = float(df_inner.iloc[i]["Close"])
+            hurdle = self.get_hurdle_rate(current_cap)
+            tb_model = tie_breaker if tie_breaker else models[0]
+            tie_breaker_bullish = False
+            
+            # WP-7.6: Get dynamic sell_friction based on trend
+            trend = trend_data_for_consensus.get(i, "RANGEBOUND")
+            TREND_MULTIPLIERS = {
+                "UPTREND": 5.0,      # Higher threshold: let winners run
+                "DOWNTREND": 2.0,    # Lower threshold: quick exits
+                "RANGEBOUND": 3.0,   # Neutral
+            }
+            sell_friction = TREND_MULTIPLIERS.get(trend, 3.0)
+            
+            for m_type in models:
+                pred = committee_exit_preds[m_type][i]
+                pred_return = (pred - current_price) / current_price
+                # WP-7.6: Apply dynamic friction multiplier
+                is_m_bullish = pred_return > (hurdle * sell_friction)
