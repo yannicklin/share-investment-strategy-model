@@ -1,6 +1,7 @@
 # Core AI and Data
 yfinance>=0.2.38  # threads=False prevents chrome impersonation errors
 curl-cffi>=0.5.9  # For rate limit bypass (yfinance workaround)
+alpaca-trade-api>=3.0.0  # USA market data (paper trading API)
 pandas
 pandas_market_calendars
 numpy

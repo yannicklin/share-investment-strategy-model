@@ -48,6 +48,7 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import RobustScaler, StandardScaler
 
 from core.config import Config
+from core.data_helpers import get_data_helper
 
 
 class ModelBuilder:
@@ -100,8 +101,21 @@ class ModelBuilder:
     def _download_with_retry(
         self, ticker: str, start_date, max_retries: int = 3, base_delay: float = 2.0
     ) -> pd.DataFrame:
-        """Download data with exponential backoff retry and curl-cffi session support."""
+        """Download data with exponential backoff retry and Alpaca/yfinance support."""
 
+        # Try Alpaca first for USA market
+        try:
+            data_helper = get_data_helper("USA")
+            df = data_helper.fetch_historical_data(
+                ticker, pd.Timestamp(start_date), pd.Timestamp.now()
+            )
+            if df is not None and not df.empty:
+                logging.info(f"✅ Successfully fetched {ticker} via Alpaca")
+                return df
+        except Exception as e:
+            logging.debug(f"Alpaca fetch failed for {ticker}: {e}, trying yfinance")
+
+        # Fallback to yfinance with retry logic
         # Create curl-cffi session if available
         session = None
         if CURL_CFFI_AVAILABLE:
@@ -428,9 +442,7 @@ class ModelBuilder:
         # Phase 2: individually retry any tickers still missing after the batch.
         # Done serially in the main process so that workers never need to make
         # network calls — eliminating parallel-download race conditions entirely.
-        still_missing = [
-            t for t in to_fetch if f"{t}_{years}" not in self._data_cache
-        ]
+        still_missing = [t for t in to_fetch if f"{t}_{years}" not in self._data_cache]
         if still_missing:
             logging.info(
                 f"Retrying {len(still_missing)} tickers individually "
