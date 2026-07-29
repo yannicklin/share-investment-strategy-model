@@ -1,8 +1,7 @@
-"""
-ASX AI Trading System - Model Builder
+"""ASX AI Trading System - Model Builder
 
-Purpose: Factory for creating and training machine learning models with
-standardized interfaces for prediction and backtesting.
+Factory for ML models with multi-scaler groups, log-normalization, and feature mapping.
+See docs/MULTI_SCALER_AND_LOG_NORMALIZATION_ARCHITECTURE.md for architecture details.
 
 Author: Yannick
 Copyright (c) 2026 Yannick
@@ -35,7 +34,7 @@ except ImportError:
 logging.getLogger("cmdstanpy").setLevel(logging.ERROR)
 logging.getLogger("prophet").setLevel(logging.ERROR)
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 # Try to use curl-cffi for rate limit bypass
 try:
@@ -46,7 +45,12 @@ except ImportError:
     CURL_CFFI_AVAILABLE = False
 
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.preprocessing import RobustScaler, StandardScaler
+from sklearn.preprocessing import (
+    MinMaxScaler,
+    QuantileTransformer,
+    RobustScaler,
+    StandardScaler,
+)
 
 from core.config import Config
 
@@ -56,20 +60,115 @@ class ModelBuilder:
 
     def __init__(self, config: Config):
         self.config = config
-        self.model: Optional[Any] = None
-        self.scaler: Optional[Any] = None
-        self.target_scaler: Optional[Any] = None  # For LSTM target scaling
+        self.model: Any | None = None
+        self.price_scaler: Any | None = None
+        self.volume_scaler: Any | None = None
+        self.technical_scaler: Any | None = None
+        self.scaler: Any | None = None  # Legacy (deprecated)
+        self.target_scaler: Any | None = None
+        self.close_was_log_normalized: bool = False
         self.sequence_length = 30
         self.target_horizon_days = 1
-        self._data_cache: Dict[str, pd.DataFrame] = {}
-        self._market_data: Optional[pd.DataFrame] = None
-        self._company_name_cache: Dict[str, str] = {}
-        self._etf_cache: Dict[str, bool] = {}
+        self._data_cache: dict[str, pd.DataFrame] = {}
+        self._market_data: pd.DataFrame | None = None
+        self._company_name_cache: dict[str, str] = {}
+        self._etf_cache: dict[str, bool] = {}
+        # Feature group indices (populated by prepare_features)
+        self._price_feature_indices: list[int] = []
+        self._volume_feature_indices: list[int] = []
+        self._technical_feature_indices: list[int] = []
 
     def _init_scaler(self) -> Any:
+        """Initialize legacy single scaler (deprecated, kept for backward compat)."""
         if self.config.scaler_type == "robust":
             return RobustScaler()
         return StandardScaler()
+
+    def _init_scalers(self, n_samples: int | None = None) -> dict[str, Any]:
+        """Initialize multi-scaler groups. See docs for architecture."""
+        if n_samples is not None:
+            n_quantiles = max(10, min(1000, n_samples - 1))
+        else:
+            n_quantiles = 500
+
+        return {
+            "price_scaler": MinMaxScaler(feature_range=(0.1, 0.9)),
+            "volume_scaler": QuantileTransformer(
+                output_distribution="normal", n_quantiles=n_quantiles, random_state=42
+            ),
+            "technical_scaler": RobustScaler(),
+            "target_scaler": MinMaxScaler(feature_range=(0.1, 0.9)),
+        }
+
+    def _get_feature_group_indices(self, feature_list: list[str]) -> None:
+        """Map feature columns to scaler groups."""
+        price_features = {"Open", "High", "Low", "Close", "BB_Upper", "BB_Lower"}
+        volume_features = {"Volume"}
+        technical_features = {
+            "MA5",
+            "MA20",
+            "MA50",
+            "RSI",
+            "MACD",
+            "Signal_Line",
+            "BB_Width",
+            "ATR",
+            "Daily_Return",
+        }
+
+        self._price_feature_indices = [
+            i for i, f in enumerate(feature_list) if f in price_features
+        ]
+        self._volume_feature_indices = [
+            i for i, f in enumerate(feature_list) if f in volume_features
+        ]
+        self._technical_feature_indices = [
+            i for i, f in enumerate(feature_list) if f in technical_features
+        ]
+
+    def _apply_multi_scalers_fit(self, X: np.ndarray) -> np.ndarray:
+        """Fit scalers on respective feature groups."""
+        X_scaled = X.copy()
+
+        if self._price_feature_indices:
+            X_scaled[:, self._price_feature_indices] = self.price_scaler.fit_transform(
+                X[:, self._price_feature_indices]
+            )
+
+        if self._volume_feature_indices:
+            X_scaled[:, self._volume_feature_indices] = (
+                self.volume_scaler.fit_transform(X[:, self._volume_feature_indices])
+            )
+
+        if self._technical_feature_indices:
+            X_scaled[:, self._technical_feature_indices] = (
+                self.technical_scaler.fit_transform(
+                    X[:, self._technical_feature_indices]
+                )
+            )
+
+        return X_scaled
+
+    def _apply_multi_scalers_transform(self, X: np.ndarray) -> np.ndarray:
+        """Transform feature matrix using fitted scalers."""
+        X_scaled = X.copy()
+
+        if self._price_feature_indices:
+            X_scaled[:, self._price_feature_indices] = self.price_scaler.transform(
+                X[:, self._price_feature_indices]
+            )
+
+        if self._volume_feature_indices:
+            X_scaled[:, self._volume_feature_indices] = self.volume_scaler.transform(
+                X[:, self._volume_feature_indices]
+            )
+
+        if self._technical_feature_indices:
+            X_scaled[:, self._technical_feature_indices] = (
+                self.technical_scaler.transform(X[:, self._technical_feature_indices])
+            )
+
+        return X_scaled
 
     def _calculate_sample_weights(self, n_samples: int) -> np.ndarray:
         """
@@ -170,7 +269,7 @@ class ModelBuilder:
         return pd.DataFrame()
 
     @classmethod
-    def get_available_models(cls) -> List[str]:
+    def get_available_models(cls) -> list[str]:
         """Returns a list of models that have their dependencies installed."""
         available = ["random_forest"]
 
@@ -368,19 +467,19 @@ class ModelBuilder:
 
         return pd.DataFrame()
 
-    def get_data_cache_snapshot(self) -> Dict[str, pd.DataFrame]:
+    def get_data_cache_snapshot(self) -> dict[str, pd.DataFrame]:
         """Return a shallow copy of the current data cache for worker reuse."""
         return dict(self._data_cache)
 
-    def set_data_cache_snapshot(self, data_cache: Dict[str, pd.DataFrame]) -> None:
+    def set_data_cache_snapshot(self, data_cache: dict[str, pd.DataFrame]) -> None:
         """Replace the local cache with a shallow copy of a shared snapshot."""
         self._data_cache = dict(data_cache)
 
-    def set_cached_market_data(self, market_data: Optional[pd.DataFrame]) -> None:
+    def set_cached_market_data(self, market_data: pd.DataFrame | None) -> None:
         """Prime the market data cache from an existing DataFrame snapshot."""
         self._market_data = market_data
 
-    def prefetch_data_batch(self, tickers: List[str], years: int):
+    def prefetch_data_batch(self, tickers: list[str], years: int):
         if not tickers:
             return
         end_date = pd.Timestamp.now()
@@ -430,9 +529,7 @@ class ModelBuilder:
         # Phase 2: individually retry any tickers still missing after the batch.
         # Done serially in the main process so that workers never need to make
         # network calls — eliminating parallel-download race conditions entirely.
-        still_missing = [
-            t for t in to_fetch if f"{t}_{years}" not in self._data_cache
-        ]
+        still_missing = [t for t in to_fetch if f"{t}_{years}" not in self._data_cache]
         if still_missing:
             logging.info(
                 f"Retrying {len(still_missing)} tickers individually "
@@ -507,7 +604,7 @@ class ModelBuilder:
         self._ensure_market_data()
 
     @property
-    def market_data(self) -> Optional[pd.DataFrame]:
+    def market_data(self) -> pd.DataFrame | None:
         """Public read-only access to cached market data."""
         return self._market_data
 
@@ -532,7 +629,7 @@ class ModelBuilder:
         self,
         data: pd.DataFrame,
         ticker: str = None,
-        target_horizon_days: Optional[int] = None,
+        target_horizon_days: int | None = None,
     ):
         df = data.copy()
         horizon_days = max(1, int(target_horizon_days or self.target_horizon_days))
@@ -577,7 +674,7 @@ class ModelBuilder:
         self._ensure_market_data()
         if self._market_data is not None and not self._market_data.empty:
             # Align market data to stock dates
-            # CRITICAL: Shift market data by 1 day to prevent look-ahead bias.
+            # Shift market data by 1 day to prevent look-ahead bias
             # US Markets (S&P500) close *after* ASX closes on the same date.
             # We must use T-1 market data for T calculations.
             market_subset = self._market_data.shift(1).reindex(df.index).ffill()
@@ -622,8 +719,21 @@ class ModelBuilder:
                 if col in df.columns:
                     features.append(col)
 
+        # \u2b50 Log-normalization detection: Apply log1p to Close if price range is large
+        close_min = df["Close"].min()
+        close_max = df["Close"].max()
+        if close_min > 0 and (close_max / close_min) > 1.5:
+            df["Close"] = np.log1p(df["Close"])
+            self.close_was_log_normalized = True
+        else:
+            self.close_was_log_normalized = False
+
         X = df[features].values
         y = df["Target"].values
+
+        # Populate feature group indices for multi-scaler routing
+        self._get_feature_group_indices(features)
+
         return X, y
 
     def _create_sequences(self, data_scaled, target):
@@ -666,7 +776,7 @@ class ModelBuilder:
             )
         return data_bundle
 
-    def train(self, ticker: str, target_horizon_days: Optional[int] = None):
+    def train(self, ticker: str, target_horizon_days: int | None = None):
         if target_horizon_days is not None:
             self.target_horizon_days = max(1, int(target_horizon_days))
 
@@ -715,25 +825,30 @@ class ModelBuilder:
                     f"Insufficient data rows for {ticker} (horizon={h}) after feature engineering."
                 )
 
-            self.scaler = self._init_scaler()
-            X_scaled = self.scaler.fit_transform(X)
-
-            # Calculate sample weights based on weighting strategy
-            sample_weights = self._calculate_sample_weights(len(X_scaled))
-
-            # For LSTM, also scale the target
+            sample_weights = self._calculate_sample_weights(len(X))
             target_scaler = None
             y_scaled = y
             if m_type == "lstm":
-                from sklearn.preprocessing import StandardScaler
+                scalers_dict = self._init_scalers(n_samples=len(X))
+                self.price_scaler = scalers_dict["price_scaler"]
+                self.volume_scaler = scalers_dict["volume_scaler"]
+                self.technical_scaler = scalers_dict["technical_scaler"]
+                target_scaler = scalers_dict["target_scaler"]
 
-                target_scaler = StandardScaler()
+                X_scaled = self._apply_multi_scalers_fit(X)
                 y_scaled = target_scaler.fit_transform(y.reshape(-1, 1)).flatten()
+            else:
+                # Tree models & Prophet: no feature scaling needed
+                X_scaled = X
+                self.price_scaler = None
+                self.volume_scaler = None
+                self.technical_scaler = None
+                target_scaler = None
 
             if m_type == "lstm":
                 try:
                     X_seq, y_seq = self._create_sequences(X_scaled, y_scaled)
-                    # For LSTM sequences, we need to align weights with sequences
+
                     seq_sample_weights = self._calculate_sample_weights(len(X_seq))
                     self.model = self._init_model(input_dim=X.shape[1])
                     self.model.fit(
@@ -751,8 +866,8 @@ class ModelBuilder:
                         f"Falling back to standard training."
                     )
                     self.model = self._init_model()
-                    self.model.fit(X_scaled, y, sample_weight=sample_weights)
-                    self.target_scaler = None
+                    self.model.fit(X_scaled, y_scaled, sample_weight=sample_weights)
+                    self.target_scaler = target_scaler
             elif m_type == "prophet":
                 try:
                     prophet_df = pd.DataFrame(
@@ -770,14 +885,20 @@ class ModelBuilder:
                         f"Falling back to standard training."
                     )
                     self.model = self._init_model()
-                    self.model.fit(X_scaled, y, sample_weight=sample_weights)
+                    self.model.fit(
+                        X, y, sample_weight=sample_weights
+                    )  # Use raw X, y for fallback
             else:
                 self.model = self._init_model()
-                self.model.fit(X_scaled, y, sample_weight=sample_weights)
+                self.model.fit(X, y, sample_weight=sample_weights)
 
             horizon_entry = {
+                "price_scaler": self.price_scaler,
+                "volume_scaler": self.volume_scaler,
+                "technical_scaler": self.technical_scaler,
                 "scaler": self.scaler,
                 "target_scaler": getattr(self, "target_scaler", None),
+                "close_was_log_normalized": self.close_was_log_normalized,
                 "model_class": self.model.__class__.__name__,
                 "weighting_type": self.config.weighting_type,
                 "target_horizon_days": h,
@@ -795,9 +916,7 @@ class ModelBuilder:
         # After the loop self.model / self.scaler hold the BUY horizon (last iteration)
         joblib.dump(bundle_payload, model_filename)
 
-    def load_or_build(
-        self, ticker: str, target_horizon_days: Optional[int] = None
-    ) -> str:
+    def load_or_build(self, ticker: str, target_horizon_days: int | None = None) -> str:
         if target_horizon_days is not None:
             self.target_horizon_days = max(1, int(target_horizon_days))
 
@@ -852,10 +971,18 @@ class ModelBuilder:
                 return "retrained"
 
             self.scaler = loaded_scaler
+            # Load multi-scalers for LSTM
+            self.price_scaler = horizon_entry.get("price_scaler", None)
+            self.volume_scaler = horizon_entry.get("volume_scaler", None)
+            self.technical_scaler = horizon_entry.get("technical_scaler", None)
+            # Load target scaler and log-normalization flag
+            self.target_scaler = horizon_entry.get("target_scaler", None)
+            self.close_was_log_normalized = horizon_entry.get(
+                "close_was_log_normalized", False
+            )
             bundle_horizon = horizon_entry.get("target_horizon_days")
             if bundle_horizon is not None:
                 self.target_horizon_days = max(1, int(bundle_horizon))
-            self.target_scaler = horizon_entry.get("target_scaler", None)
 
             if "keras_path" in horizon_entry or "lstm_h5" in horizon_entry:
                 from tensorflow.keras.models import load_model
@@ -947,38 +1074,68 @@ class ModelBuilder:
             raise RuntimeError(f"Failed to load exit model for {ticker}: {e}") from e
 
     def predict(
-        self, current_data: np.ndarray, date: Optional[pd.Timestamp] = None
+        self, current_data: np.ndarray, date: pd.Timestamp | None = None
     ) -> float:
+        """Generate price prediction with model-specific handling."""
         if self.model is None:
             raise ValueError("Model not loaded.")
         m_type = self.config.model_type
+
+        # Prophet path
         if m_type == "prophet" and hasattr(self.model, "predict"):
             future = pd.DataFrame(
                 {"ds": [(date + pd.DateOffset(days=1)).tz_localize(None)]}
             )
-            return float(self.model.predict(future)["yhat"].iloc[0])
+            pred = float(self.model.predict(future)["yhat"].iloc[0])
+
+            # Inverse-transform: expm1 only if Close was log-normalized
+            if self.close_was_log_normalized:
+                pred = np.expm1(pred)
+            return pred
+
+        # LSTM path (multi-scaler + inverse-transform)
         if m_type == "lstm" and hasattr(self.model, "predict"):
             if len(current_data.shape) == 2:
-                X = self.scaler.transform(current_data)
-                pred = float(
+                X_scaled = self._apply_multi_scalers_transform(current_data)
+                lstm_sigmoid = float(
                     self.model.predict(
-                        X.reshape(1, self.sequence_length, -1), verbose=0
+                        X_scaled.reshape(1, self.sequence_length, -1), verbose=0
                     )[0][0]
                 )
-                # Inverse transform if target was scaled
+                # Rescale sigmoid (0,1) to (0.1,0.9) for target inverse-transform
+                log_price_scaled = lstm_sigmoid * 0.8 + 0.1
+
                 if self.target_scaler is not None:
-                    pred = float(self.target_scaler.inverse_transform([[pred]])[0][0])
+                    log_pred = float(
+                        self.target_scaler.inverse_transform([[log_price_scaled]])[0][0]
+                    )
+                else:
+                    log_pred = log_price_scaled
+
+                # Inverse-transform: expm1 if Close was log-normalized
+                if self.close_was_log_normalized:
+                    pred = np.expm1(log_pred)
+                else:
+                    pred = log_pred
+
                 return pred
             return 0.0
+
+        # Tree models path (scale-invariant, raw data)
         X_input = (
             current_data[-1].reshape(1, -1)
             if len(current_data.shape) == 2
             else current_data.reshape(1, -1)
         )
-        X_scaled = self.scaler.transform(X_input)
-        return float(self.model.predict(X_scaled)[0])
+        log_pred = float(self.model.predict(X_input)[0])
 
-    def get_latest_features(self, ticker: str) -> Optional[np.ndarray]:
+        # Inverse-transform: expm1 only if Close was log-normalized
+        if self.close_was_log_normalized:
+            return np.expm1(log_pred)
+        else:
+            return log_pred
+
+    def get_latest_features(self, ticker: str) -> np.ndarray | None:
         data = self.fetch_data(ticker, 1)
         if data.empty:
             return None
