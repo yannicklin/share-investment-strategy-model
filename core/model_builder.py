@@ -115,7 +115,7 @@ class ModelBuilder:
             "target_scaler": MinMaxScaler(feature_range=(0.1, 0.9)),
         }
 
-    def _get_feature_group_indices(self, feature_list: List[str]) -> None:
+    def _get_feature_group_indices(self, feature_list: list[str]) -> None:
         """Map feature columns to scaler groups."""
         price_features = {"Open", "High", "Low", "Close", "BB_Upper", "BB_Lower"}
         volume_features = {"Volume"}
