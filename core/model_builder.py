@@ -1,8 +1,7 @@
-"""
-Taiwan Stock AI Trading System - Model Builder
+"""Taiwan Stock AI Trading System - Model Builder
 
-Purpose: Factory for creating and training machine learning models with
-standardized interfaces for prediction and backtesting for the Taiwan market.
+Factory for ML models with multi-scaler groups, log-normalization, and feature mapping.
+See docs/MULTI_SCALER_AND_LOG_NORMALIZATION_ARCHITECTURE.md for architecture details.
 
 Author: Yannick
 Copyright (c) 2026 Yannick
@@ -11,7 +10,7 @@ Copyright (c) 2026 Yannick
 import logging
 import os
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import joblib
 import numpy as np
@@ -53,10 +52,12 @@ logging.getLogger("cmdstanpy").setLevel(logging.ERROR)
 logging.getLogger("prophet").setLevel(logging.ERROR)
 
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.preprocessing import RobustScaler, StandardScaler
+from sklearn.preprocessing import (
+    RobustScaler,
+    StandardScaler,
+)
 
 from core.config import Config
-
 
 FINMIND_FEATURE_COLUMNS = [
     "FM_Foreign_NetBuy",
@@ -73,23 +74,116 @@ class ModelBuilder:
 
     def __init__(self, config: Config):
         self.config = config
-        self.model: Optional[Any] = None
-        self.scaler: Optional[Any] = None
-        self.target_scaler: Optional[Any] = None  # For LSTM target scaling
+        self.model: Any | None = None
+        self.price_scaler: Any | None = None
+        self.volume_scaler: Any | None = None
+        self.technical_scaler: Any | None = None
+        self.scaler: Any | None = None
+        self.target_scaler: Any | None = None
+        self.close_was_log_normalized: bool = False
         self.sequence_length = 30
         self.target_horizon_days = 1
-        self._data_cache: Dict[str, pd.DataFrame] = {}
-        self._market_data: Optional[pd.DataFrame] = None
-        self._company_name_cache: Dict[str, str] = {}
-        self._etf_cache: Dict[str, bool] = {}
-        self._finmind_data: Optional[pd.DataFrame] = None  # Taiwan institutional data
-        self._finmind_data_cache: Dict[str, pd.DataFrame] = {}
-        self._stock_info_cache: Optional[pd.DataFrame] = None  # Taiwan stock metadata
+        self._data_cache: dict[str, pd.DataFrame] = {}
+        self._market_data: pd.DataFrame | None = None
+        self._company_name_cache: dict[str, str] = {}
+        self._etf_cache: dict[str, bool] = {}
+        self._finmind_data: pd.DataFrame | None = None
+        self._finmind_data_cache: dict[str, pd.DataFrame] = {}
+        self._stock_info_cache: pd.DataFrame | None = None
+        self._price_feature_indices: list[int] = []
+        self._volume_feature_indices: list[int] = []
+        self._technical_feature_indices: list[int] = []
 
     def _init_scaler(self) -> Any:
         if self.config.scaler_type == "robust":
             return RobustScaler()
         return StandardScaler()
+
+    def _init_scalers(self, n_samples: Optional[int] = None) -> Dict[str, Any]:
+        """Initialize multi-scaler groups. See docs for architecture."""
+        if n_samples is not None:
+            n_quantiles = max(10, min(1000, n_samples - 1))
+        else:
+            n_quantiles = 500
+
+        return {
+            "price_scaler": MinMaxScaler(feature_range=(0.1, 0.9)),
+            "volume_scaler": QuantileTransformer(
+                output_distribution="normal", n_quantiles=n_quantiles, random_state=42
+            ),
+            "technical_scaler": RobustScaler(),
+            "target_scaler": MinMaxScaler(feature_range=(0.1, 0.9)),
+        }
+
+    def _get_feature_group_indices(self, feature_list: List[str]) -> None:
+        """Map feature columns to scaler groups."""
+        price_features = {"Open", "High", "Low", "Close", "BB_Upper", "BB_Lower"}
+        volume_features = {"Volume"}
+        technical_features = {
+            "MA5",
+            "MA20",
+            "MA50",
+            "RSI",
+            "MACD",
+            "Signal_Line",
+            "BB_Width",
+            "ATR",
+            "Daily_Return",
+        }
+
+        self._price_feature_indices = [
+            i for i, f in enumerate(feature_list) if f in price_features
+        ]
+        self._volume_feature_indices = [
+            i for i, f in enumerate(feature_list) if f in volume_features
+        ]
+        self._technical_feature_indices = [
+            i for i, f in enumerate(feature_list) if f in technical_features
+        ]
+
+    def _apply_multi_scalers_fit(self, X: np.ndarray) -> np.ndarray:
+        """Fit scalers on respective feature groups."""
+        X_scaled = X.copy()
+
+        if self._price_feature_indices:
+            X_scaled[:, self._price_feature_indices] = self.price_scaler.fit_transform(
+                X[:, self._price_feature_indices]
+            )
+
+        if self._volume_feature_indices:
+            X_scaled[:, self._volume_feature_indices] = (
+                self.volume_scaler.fit_transform(X[:, self._volume_feature_indices])
+            )
+
+        if self._technical_feature_indices:
+            X_scaled[:, self._technical_feature_indices] = (
+                self.technical_scaler.fit_transform(
+                    X[:, self._technical_feature_indices]
+                )
+            )
+
+        return X_scaled
+
+    def _apply_multi_scalers_transform(self, X: np.ndarray) -> np.ndarray:
+        """Transform feature matrix using fitted scalers."""
+        X_scaled = X.copy()
+
+        if self._price_feature_indices:
+            X_scaled[:, self._price_feature_indices] = self.price_scaler.transform(
+                X[:, self._price_feature_indices]
+            )
+
+        if self._volume_feature_indices:
+            X_scaled[:, self._volume_feature_indices] = self.volume_scaler.transform(
+                X[:, self._volume_feature_indices]
+            )
+
+        if self._technical_feature_indices:
+            X_scaled[:, self._technical_feature_indices] = (
+                self.technical_scaler.transform(X[:, self._technical_feature_indices])
+            )
+
+        return X_scaled
 
     def _calculate_sample_weights(self, n_samples: int) -> np.ndarray:
         """
@@ -175,7 +269,7 @@ class ModelBuilder:
         return pd.DataFrame()
 
     @classmethod
-    def get_available_models(cls) -> List[str]:
+    def get_available_models(cls) -> list[str]:
         """Returns a list of models that have their dependencies installed."""
         available = ["random_forest"]
 
@@ -402,24 +496,24 @@ class ModelBuilder:
             self._etf_cache[ticker] = False
             return False
 
-    def get_data_cache_snapshot(self) -> Dict[str, pd.DataFrame]:
+    def get_data_cache_snapshot(self) -> dict[str, pd.DataFrame]:
         """Return a shallow copy of the current data cache for worker reuse."""
         return dict(self._data_cache)
 
-    def set_data_cache_snapshot(self, data_cache: Dict[str, pd.DataFrame]) -> None:
+    def set_data_cache_snapshot(self, data_cache: dict[str, pd.DataFrame]) -> None:
         """Replace the local cache with a shallow copy of a shared snapshot."""
         self._data_cache = dict(data_cache)
 
-    def set_cached_market_data(self, market_data: Optional[pd.DataFrame]) -> None:
+    def set_cached_market_data(self, market_data: pd.DataFrame | None) -> None:
         """Prime the market data cache from an existing DataFrame snapshot."""
         self._market_data = market_data
 
-    def get_finmind_cache_snapshot(self) -> Dict[str, pd.DataFrame]:
+    def get_finmind_cache_snapshot(self) -> dict[str, pd.DataFrame]:
         """Return a shallow copy of the current per-ticker FinMind cache."""
         return {ticker: df.copy() for ticker, df in self._finmind_data_cache.items()}
 
     def set_finmind_cache_snapshot(
-        self, finmind_cache: Dict[str, pd.DataFrame]
+        self, finmind_cache: dict[str, pd.DataFrame]
     ) -> None:
         """Prime the local per-ticker FinMind cache from a shared snapshot."""
         self._finmind_data_cache = {
@@ -444,7 +538,7 @@ class ModelBuilder:
 
         return pd.DataFrame()
 
-    def prefetch_data_batch(self, tickers: List[str], years: int):
+    def prefetch_data_batch(self, tickers: list[str], years: int):
         if not tickers:
             return
         end_date = pd.Timestamp.now()
@@ -513,7 +607,7 @@ class ModelBuilder:
                     self._data_cache[f"{t}_{years}"] = pd.DataFrame()
 
     @staticmethod
-    def _empty_finmind_frame(index: Optional[pd.Index] = None) -> pd.DataFrame:
+    def _empty_finmind_frame(index: pd.Index | None = None) -> pd.DataFrame:
         """Return the canonical Taiwan FinMind feature frame with zero rows."""
         return pd.DataFrame(index=index, columns=FINMIND_FEATURE_COLUMNS, dtype=float)
 
@@ -522,7 +616,7 @@ class ModelBuilder:
         self._ensure_finmind_data(ticker)
         return self._finmind_data_cache.get(ticker, self._empty_finmind_frame())
 
-    def prefetch_finmind_batch(self, tickers: List[str]) -> None:
+    def prefetch_finmind_batch(self, tickers: list[str]) -> None:
         """Serially prefetch TWN FinMind features in the main process."""
         tw_tickers = [
             ticker
@@ -728,7 +822,7 @@ class ModelBuilder:
         self._ensure_market_data()
 
     @property
-    def market_data(self) -> Optional[pd.DataFrame]:
+    def market_data(self) -> pd.DataFrame | None:
         """Public read-only access to cached market data."""
         return self._market_data
 
@@ -753,7 +847,7 @@ class ModelBuilder:
         self,
         data: pd.DataFrame,
         ticker: str = None,
-        target_horizon_days: Optional[int] = None,
+        target_horizon_days: int | None = None,
     ):
         df = data.copy()
         horizon_days = max(1, int(target_horizon_days or self.target_horizon_days))
@@ -870,6 +964,19 @@ class ModelBuilder:
 
         X = df[features].values
         y = df["Target"].values
+
+        # Detect log-normalization: if Close max/min ratio > 1.5, apply log transformation
+        close_min = df["Close"].min()
+        close_max = df["Close"].max()
+        if close_min > 0 and (close_max / close_min) > 1.5:
+            self.close_was_log_normalized = True
+            y = np.log1p(y)
+        else:
+            self.close_was_log_normalized = False
+
+        # Map features to scaler groups for multi-scaler training
+        self._get_feature_group_indices(features)
+
         return X, y
 
     def _create_sequences(self, data_scaled, target):
@@ -912,7 +1019,7 @@ class ModelBuilder:
             )
         return data_bundle
 
-    def train(self, ticker: str, target_horizon_days: Optional[int] = None):
+    def train(self, ticker: str, target_horizon_days: int | None = None):
         if target_horizon_days is not None:
             self.target_horizon_days = max(1, int(target_horizon_days))
 
@@ -961,8 +1068,15 @@ class ModelBuilder:
                     f"Insufficient data rows for {ticker} (horizon={h}) after feature engineering."
                 )
 
-            self.scaler = self._init_scaler()
-            X_scaled = self.scaler.fit_transform(X)
+            # Conditional scaling based on model type
+            if m_type == "lstm":
+                scalers = self._init_scalers(len(X))
+                self.price_scaler = scalers["price_scaler"]
+                self.volume_scaler = scalers["volume_scaler"]
+                self.technical_scaler = scalers["technical_scaler"]
+                X_scaled = self._apply_multi_scalers_fit(X)
+            else:
+                X_scaled = X  # Tree models use raw data
 
             # Calculate sample weights based on weighting strategy
             sample_weights = self._calculate_sample_weights(len(X_scaled))
@@ -1024,6 +1138,10 @@ class ModelBuilder:
             horizon_entry = {
                 "scaler": self.scaler,
                 "target_scaler": getattr(self, "target_scaler", None),
+                "price_scaler": getattr(self, "price_scaler", None),
+                "volume_scaler": getattr(self, "volume_scaler", None),
+                "technical_scaler": getattr(self, "technical_scaler", None),
+                "close_was_log_normalized": self.close_was_log_normalized,
                 "model_class": self.model.__class__.__name__,
                 "weighting_type": self.config.weighting_type,
                 "target_horizon_days": h,
@@ -1041,9 +1159,7 @@ class ModelBuilder:
         # After the loop self.model / self.scaler hold the BUY horizon (last iteration)
         joblib.dump(bundle_payload, model_filename)
 
-    def load_or_build(
-        self, ticker: str, target_horizon_days: Optional[int] = None
-    ) -> str:
+    def load_or_build(self, ticker: str, target_horizon_days: int | None = None) -> str:
         if target_horizon_days is not None:
             self.target_horizon_days = max(1, int(target_horizon_days))
 
@@ -1101,12 +1217,16 @@ class ModelBuilder:
                 return "retrained"
 
             self.scaler = loaded_scaler
+            self.price_scaler = horizon_entry.get("price_scaler", None)
+            self.volume_scaler = horizon_entry.get("volume_scaler", None)
+            self.technical_scaler = horizon_entry.get("technical_scaler", None)
+            self.close_was_log_normalized = horizon_entry.get(
+                "close_was_log_normalized", False
+            )
             bundle_horizon = horizon_entry.get("target_horizon_days")
             if bundle_horizon is not None:
                 self.target_horizon_days = max(1, int(bundle_horizon))
-            self.target_scaler = horizon_entry.get(
-                "target_scaler", None
-            )  # Load target scaler for LSTM
+            self.target_scaler = horizon_entry.get("target_scaler", None)
 
             # Load Model
             if "keras_path" in horizon_entry or "lstm_h5" in horizon_entry:
@@ -1202,8 +1322,8 @@ class ModelBuilder:
     def predict(
         self,
         current_data: np.ndarray,
-        date: Optional[pd.Timestamp] = None,
-        target_horizon_days: Optional[int] = None,
+        date: pd.Timestamp | None = None,
+        target_horizon_days: int | None = None,
     ) -> float:
         if self.model is None:
             raise ValueError("Model not loaded.")
@@ -1213,18 +1333,24 @@ class ModelBuilder:
             future = pd.DataFrame(
                 {"ds": [(date + pd.DateOffset(days=horizon_days)).tz_localize(None)]}
             )
-            return float(self.model.predict(future)["yhat"].iloc[0])
+            pred = float(self.model.predict(future)["yhat"].iloc[0])
+            if self.close_was_log_normalized:
+                pred = np.expm1(pred)
+            return pred
         if m_type == "lstm" and hasattr(self.model, "predict"):
             if len(current_data.shape) == 2:
-                X = self.scaler.transform(current_data)
+                X_scaled = self._apply_multi_scalers_transform(current_data)
                 pred = float(
                     self.model.predict(
-                        X.reshape(1, self.sequence_length, -1), verbose=0
+                        X_scaled.reshape(1, self.sequence_length, -1), verbose=0
                     )[0][0]
                 )
-                # Inverse transform if target was scaled
+                # Sigmoid output (0-1) -> rescale to training range (0.1-0.9)
                 if self.target_scaler is not None:
+                    pred = pred * 0.8 + 0.1
                     pred = float(self.target_scaler.inverse_transform([[pred]])[0][0])
+                if self.close_was_log_normalized:
+                    pred = np.expm1(pred)
                 return pred
             return 0.0
         X_input = (
@@ -1232,10 +1358,12 @@ class ModelBuilder:
             if len(current_data.shape) == 2
             else current_data.reshape(1, -1)
         )
-        X_scaled = self.scaler.transform(X_input)
-        return float(self.model.predict(X_scaled)[0])
+        pred = float(self.model.predict(X_input)[0])
+        if self.close_was_log_normalized:
+            pred = np.expm1(pred)
+        return pred
 
-    def get_latest_features(self, ticker: str) -> Optional[np.ndarray]:
+    def get_latest_features(self, ticker: str) -> np.ndarray | None:
         data = self.fetch_data(ticker, 1)
         if data.empty:
             return None
