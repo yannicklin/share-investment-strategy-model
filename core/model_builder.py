@@ -99,7 +99,7 @@ class ModelBuilder:
             return RobustScaler()
         return StandardScaler()
 
-    def _init_scalers(self, n_samples: Optional[int] = None) -> Dict[str, Any]:
+    def _init_scalers(self, n_samples: int | None = None) -> dict[str, Any]:
         """Initialize multi-scaler groups. See docs for architecture."""
         if n_samples is not None:
             n_quantiles = max(10, min(1000, n_samples - 1))
