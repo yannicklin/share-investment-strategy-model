@@ -961,10 +961,14 @@ class ModelBuilder:
         X = df[features].values
         y = df["Target"].values
 
-        # Detect log-normalization: if Close max/min ratio > 1.5, apply log transformation
+        # Apply log-normalization ONLY for LSTM (other models trained on raw data)
         close_min = df["Close"].min()
         close_max = df["Close"].max()
-        if close_min > 0 and (close_max / close_min) > 1.5:
+        if (
+            self.config.model_type == "lstm"
+            and close_min > 0
+            and (close_max / close_min) > 1.5
+        ):
             self.close_was_log_normalized = True
             y = np.log1p(y)
         else:
