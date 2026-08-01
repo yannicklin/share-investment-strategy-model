@@ -155,25 +155,43 @@ def render_super_stars(
 
         # 3. Drill-down for winners
         st.subheader("Detailed Look at Winners")
-        # Ensure labels are strings for Streamlit tabs and match the sorted top 10
-        tab_labels = [str(ticker) for ticker in df_top10["Ticker"]]
+        # Build tab labels with Chinese names for Taiwan stocks
+        tab_display_names = []
+        ticker_to_name_map = {}
 
-        tabs = st.tabs(tab_labels)
-        for i in range(len(tab_labels)):
+        for ticker in df_top10["Ticker"]:
+            ticker_str = str(ticker)
+            display_name = ticker_str  # Default to ticker
+
+            if builder is not None:
+                try:
+                    # Fetch Traditional Chinese name for Taiwan stocks
+                    chinese_name = (
+                        builder.get_chinese_name(ticker_str)
+                        if ticker_str.endswith(".TW")
+                        else ""
+                    )
+                    if chinese_name:
+                        display_name = chinese_name
+                        ticker_to_name_map[ticker_str] = chinese_name
+                    else:
+                        company_name = builder.get_company_name(ticker_str)
+                        if company_name:
+                            display_name = company_name
+                            ticker_to_name_map[ticker_str] = company_name
+                except Exception:
+                    pass
+
+            tab_display_names.append(display_name)
+
+        tabs = st.tabs(tab_display_names)
+        for i in range(len(tab_display_names)):
             with tabs[i]:
-                ticker_symbol = tab_labels[i]
+                ticker_symbol = str(df_top10["Ticker"].iloc[i])
                 res = all_ticker_res[ticker_symbol]
-                chinese_name = res.get("chinese_name", "")
-                company_name = res.get("company_name", "")
-                if not company_name and builder is not None:
-                    try:
-                        company_name = builder.get_company_name(ticker_symbol)
-                    except Exception:
-                        company_name = ""
-                if chinese_name:
-                    st.subheader(f"{chinese_name}")
-                elif company_name:
-                    st.subheader(f"{company_name}")
+                display_name = ticker_to_name_map.get(ticker_symbol, "")
+                if display_name:
+                    st.subheader(f"{display_name}")
                 render_trade_details(ticker_symbol, res)
 
     # Show errors in an expander at the bottom
