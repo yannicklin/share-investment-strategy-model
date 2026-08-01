@@ -20,15 +20,26 @@ import logging
 import os
 
 import pandas as pd
-import streamlit as st
+imlit as st
 
-# --- Enhanced Logging Setup ---
+# --- Enhanced Logging Setup (App-Only, No Third-Party Noise) ---
 os.makedirs("data/logs", exist_ok=True)
-logging_config = logging.basicConfig(
-    level=logging.DEBUG,
+
+# Configure root logger to WARNING (suppresses third-party DEBUG noise)
+logging.basicConfig(
+    level=logging.WARNING,
     format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
     handlers=[logging.FileHandler("data/logs/dashboard.log"), logging.StreamHandler()],
 )
+
+# Enable DEBUG for OUR modules only (core.*, ui.*)
+for module_name in ["core.backtest_engine", "core.model_builder", "core.config", "ui.sidebar"]:
+    logging.getLogger(module_name).setLevel(logging.DEBUG)
+
+# Suppress known third-party DEBUG spam
+for noise_logger in ["watchdog.observers.inotify_buffer", "urllib3.connectionpool"]:
+    logging.getLogger(noise_logger).setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 logger.info("=" * 80)
 logger.info("Dashboard started")
