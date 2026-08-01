@@ -688,6 +688,10 @@ class BacktestEngine:
             X_scaled = _builder.scaler.transform(X_all).astype(np.float32)
             return _builder.model.predict(X_scaled).astype(np.float32)
 
+        elif _builder.model is not None:
+            # Tree models (random_forest, catboost, ngboost) use raw data without scaling
+            return _builder.model.predict(X_all).astype(np.float32)
+
         return np.zeros(len(df), dtype=np.float32)
         # WP-7.6: Phase 7 trend analysis for dynamic sell friction
         trend_data_for_consensus = {}
