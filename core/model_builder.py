@@ -37,6 +37,11 @@ logging.getLogger("prophet").setLevel(logging.ERROR)
 from typing import Any
 
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import (
+    MinMaxScaler,
+    QuantileTransformer,
+    RobustScaler,
+)
 
 from core.config import Config
 
