@@ -761,6 +761,17 @@ class BacktestEngine:
             )
             return preds
 
+        # Tree models (random_forest, catboost, ngboost) use raw data without scaling
+        elif model_type in ("random_forest", "catboost", "ngboost") and _builder.model is not None:
+            self.logger.debug(
+                f"[{ticker}] [{model_type.upper()}] Predicting without scaling (tree model)..."
+            )
+            preds = _builder.model.predict(X_all).astype(np.float32)
+            self.logger.debug(
+                f"[{ticker}] [{model_type.upper()}] Predictions shape: {preds.shape}, non-zero: {np.count_nonzero(preds)}"
+            )
+            return preds
+
         elif _builder.model is not None and _builder.scaler is not None:
             self.logger.debug(
                 f"[{ticker}] [{model_type.upper()}] Scaling features and predicting..."
@@ -773,9 +784,9 @@ class BacktestEngine:
             return preds
 
         elif _builder.model is not None:
-            # Tree models (random_forest, catboost, ngboost) use raw data without scaling
+            # Fallback for any other model type without scaler
             self.logger.debug(
-                f"[{ticker}] [{model_type.upper()}] Predicting without scaling (tree model)..."
+                f"[{ticker}] [{model_type.upper()}] Predicting without scaling..."
             )
             preds = _builder.model.predict(X_all).astype(np.float32)
             self.logger.debug(
