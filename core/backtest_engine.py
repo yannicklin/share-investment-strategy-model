@@ -9,7 +9,8 @@ Copyright (c) 2026 Yannick
 """
 
 import logging
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -32,7 +33,7 @@ class BacktestEngine:
         self.config = config
         self.model_builder = model_builder
         self.ledger = TransactionLedger()
-        self.trading_days: Optional[pd.DatetimeIndex] = None
+        self.trading_days: pd.DatetimeIndex | None = None
 
     def calculate_fees(self, trade_value: float) -> float:
         if self.config.cost_profile == "cmc_markets":
@@ -158,7 +159,7 @@ class BacktestEngine:
 
     def _prepare_data(
         self, ticker: str
-    ) -> Tuple[Optional[pd.DataFrame], Optional[List[str]], Optional[Dict[str, str]]]:
+    ) -> tuple[pd.DataFrame | None, list[str] | None, dict[str, str] | None]:
         """Prepare and filter dataframe for backtesting.
 
         Returns:
@@ -278,9 +279,9 @@ class BacktestEngine:
         i: int,
         df: pd.DataFrame,
         buy_price: float,
-        buy_date: Optional[pd.Timestamp],
+        buy_date: pd.Timestamp | None,
         current_date: pd.Timestamp,
-    ) -> Tuple[Optional[str], float]:
+    ) -> tuple[str | None, float]:
         """Return an early risk exit before consensus voting, if one applies."""
         if buy_date is None:
             return None, 0.0
@@ -321,13 +322,12 @@ class BacktestEngine:
     def _core_run(
         self,
         ticker: str,
-        signal_func: Callable[[int, pd.DataFrame, List[str], float], bool],
+        signal_func: Callable[[int, pd.DataFrame, list[str], float], bool],
         df: pd.DataFrame,
-        features: List[str],
-        exit_signal_func: Optional[
-            Callable[[int, pd.DataFrame, List[str], float], bool]
-        ] = None,
-    ) -> Dict[str, Any]:
+        features: list[str],
+        exit_signal_func: Callable[[int, pd.DataFrame, list[str], float], bool]
+        | None = None,
+    ) -> dict[str, Any]:
         """The shared engine logic for both modes.
 
         Args:
@@ -647,7 +647,7 @@ class BacktestEngine:
             "execution_summary": execution_stats,
         }
 
-    def run_model_mode(self, ticker: str, model_type: str) -> Dict[str, Any]:
+    def run_model_mode(self, ticker: str, model_type: str) -> dict[str, Any]:
         """Mode 1: Evaluate a single specific model."""
         # Clear ledger from previous run (no archiving)
         self.ledger.clear()
@@ -698,10 +698,10 @@ class BacktestEngine:
     def run_strategy_mode(
         self,
         ticker: str,
-        models: List[str],
-        tie_breaker: Optional[str] = None,
+        models: list[str],
+        tie_breaker: str | None = None,
         mode_prefix: str = "consensus",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Mode 2/3: Evaluate strategy sensitivity using multi-model consensus."""
         # Clear ledger from previous run (no archiving)
         self.ledger.clear()
@@ -842,7 +842,7 @@ class BacktestEngine:
         return result
 
     def _get_bulk_predictions(
-        self, df: pd.DataFrame, features: List[str], model_type: str
+        self, df: pd.DataFrame, features: list[str], model_type: str
     ) -> np.ndarray:
         """Helper to get predictions for all rows in one go with memory safety."""
         # Ensure data is clean and use float64 to prevent overflow/inf during cast
@@ -863,7 +863,9 @@ class BacktestEngine:
             X_all_f32 = X_all.astype(np.float32)
             # Use sequence_length from model_builder for consistency
             seq_len = self.model_builder.sequence_length
-            X_scaled = self.model_builder._apply_multi_scalers_transform(X_all_f32).astype(np.float32)
+            X_scaled = self.model_builder._apply_multi_scalers_transform(
+                X_all_f32
+            ).astype(np.float32)
 
             # Create sequences: at time i, use [i-seq_len:i] to predict i+1
             # This matches training where [i:i+seq_len] predicts target[i+seq_len]=Close[i+seq_len+1]
@@ -889,6 +891,10 @@ class BacktestEngine:
                     raw_preds.reshape(-1, 1)
                 ).flatten()
 
+            # Inverse log transform if target was log-normalized during training
+            if self.model_builder.close_was_log_normalized:
+                raw_preds = np.expm1(raw_preds).astype(np.float32)
+
             # Pad the beginning with zeros (no predictions for first seq_len days)
             all_preds = np.zeros(len(df), dtype=np.float32)
             all_preds[seq_len:] = raw_preds
@@ -901,7 +907,13 @@ class BacktestEngine:
             prophet_df["ds"] = prophet_df["ds"] + pd.DateOffset(days=1)
 
             forecast = self.model_builder.model.predict(prophet_df)
-            return forecast["yhat"].values.astype(np.float32)
+            preds = forecast["yhat"].values.astype(np.float32)
+
+            # Inverse log transform if target was log-normalized during training
+            if self.model_builder.close_was_log_normalized:
+                preds = np.expm1(preds).astype(np.float32)
+
+            return preds
 
         elif (
             self.model_builder.model is not None
@@ -909,10 +921,22 @@ class BacktestEngine:
         ):
             # Standard SKLearn-like models with single scaler
             X_scaled = self.model_builder.scaler.transform(X_all).astype(np.float32)
-            return self.model_builder.model.predict(X_scaled).astype(np.float32)
+            preds = self.model_builder.model.predict(X_scaled).astype(np.float32)
+
+            # Inverse log transform if target was log-normalized during training
+            if self.model_builder.close_was_log_normalized:
+                preds = np.expm1(preds).astype(np.float32)
+
+            return preds
 
         elif self.model_builder.model is not None:
             # Tree models (random_forest, catboost, ngboost) use raw data without scaling
-            return self.model_builder.model.predict(X_all).astype(np.float32)
+            preds = self.model_builder.model.predict(X_all).astype(np.float32)
+
+            # Inverse log transform if target was log-normalized during training
+            if self.model_builder.close_was_log_normalized:
+                preds = np.expm1(preds).astype(np.float32)
+
+            return preds
 
         return np.zeros(len(df), dtype=np.float32)

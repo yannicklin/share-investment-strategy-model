@@ -1044,6 +1044,13 @@ class ModelBuilder:
             self.scaler = horizon_entry["scaler"]
             self.target_horizon_days = 1
             self.target_scaler = horizon_entry.get("target_scaler", None)
+            # Load LSTM multi-scalers for exit model prediction
+            self.price_scaler = horizon_entry.get("price_scaler", None)
+            self.volume_scaler = horizon_entry.get("volume_scaler", None)
+            self.technical_scaler = horizon_entry.get("technical_scaler", None)
+            self.close_was_log_normalized = horizon_entry.get(
+                "close_was_log_normalized", False
+            )
 
             if "keras_path" in horizon_entry or "lstm_h5" in horizon_entry:
                 from tensorflow.keras.models import load_model
