@@ -35,7 +35,7 @@ except ImportError:
     pass
 
 from core.backtest_engine import BacktestEngine
-from core.config import Config, load_config
+from core.config import load_config
 from core.model_builder import ModelBuilder
 from core.super_stars_worker import run_super_star_worker
 from ui.algo_view import render_algorithm_comparison
@@ -121,7 +121,7 @@ def render_app():
         # Batch pre-fetch all ticker data at once
         with st.spinner(f"Pre-fetching historical data for {len(tickers)} tickers..."):
             builder.prefetch_data_batch(tickers, config.backtest_years)
-            builder.ensure_market_data()
+            builder._ensure_market_data()
 
         # Simple failure tracking for Super Stars mode
         ticker_failures = {}  # {ticker: {"issue": "...", "models": [...]}}
@@ -391,9 +391,10 @@ def render_app():
             if not isinstance(r, dict):
                 continue
             is_valid = False
-            if any(isinstance(m_res, dict) and "roi" in m_res for m_res in r.values()):
-                is_valid = True
-            elif "roi" in r:
+            if (
+                any(isinstance(m_res, dict) and "roi" in m_res for m_res in r.values())
+                or "roi" in r
+            ):
                 is_valid = True
 
             if is_valid:
