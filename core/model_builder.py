@@ -55,6 +55,8 @@ logging.getLogger("FinMind.data").setLevel(logging.ERROR)
 logging.getLogger("FinMind.data.finmind_api").setLevel(logging.ERROR)
 logging.getLogger("requests").setLevel(logging.ERROR)
 logging.getLogger("urllib3").setLevel(logging.ERROR)
+logging.getLogger("yfinance").setLevel(logging.ERROR)
+logging.getLogger("yfinance.utils").setLevel(logging.ERROR)
 
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import (
