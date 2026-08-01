@@ -9,14 +9,13 @@ Copyright (c) 2026 Yannick
 """
 
 from dataclasses import dataclass, field
-from typing import List
 
 
 @dataclass
 class Config:
     """System configuration parameters."""
 
-    target_stock_codes: List[str] = field(
+    target_stock_codes: list[str] = field(
         default_factory=lambda: [
             "ABB.AX",
             "SIG.AX",
@@ -41,7 +40,6 @@ class Config:
     clearing_rate: float = 0.0000225  # 0.00225%
     settlement_fee: float = 1.5  # $1.5 fixed
     tax_rate: float = 0.25  # 25% tax
-    scaler_type: str = "robust"  # "standard" or "robust"
     weighting_type: str = "normal"  # "normal" or "recency"
     # Recency weighting multiplier: half_life = backtest_years * multiplier
     # Controls decay aggressiveness in exponential weighting for recent data emphasis:
@@ -53,7 +51,7 @@ class Config:
     recency_half_life_multiplier: float = 1.0
     model_type: str = "random_forest"
     # Available: ["random_forest", "ngboost", "catboost", "prophet", "lstm"]
-    model_types: List[str] = field(
+    model_types: list[str] = field(
         default_factory=lambda: ["random_forest", "catboost"]
     )
     data_source: str = "yfinance"

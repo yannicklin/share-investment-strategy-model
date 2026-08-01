@@ -47,7 +47,7 @@ def clean_all_models(model_path: str) -> bool:
 
         return True
     except Exception as e:
-        st.error(f"Error cleaning models and ledgers: {str(e)}")
+        st.error(f"Error cleaning models and ledgers: {e!s}")
         return False
 
 
@@ -273,12 +273,6 @@ def render_sidebar(config: Config):
 
     # --- 3. PREPROCESSING & ACCOUNTING ---
     st.sidebar.markdown("---")
-    config.scaler_type = st.sidebar.radio(
-        "Feature Scaler",
-        ["standard", "robust"],
-        index=0 if config.scaler_type == "standard" else 1,
-    )
-
     config.weighting_type = st.sidebar.radio(
         "Sample Weighting",
         ["normal", "recency"],
