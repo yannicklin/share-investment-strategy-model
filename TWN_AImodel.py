@@ -32,14 +32,14 @@ logging.basicConfig(
     handlers=[logging.FileHandler("data/logs/dashboard.log"), logging.StreamHandler()],
 )
 
-# Enable DEBUG for OUR modules only (core.*, ui.*)
+# Set INFO level for OUR modules (bug fixing complete, reducing debug noise)
 for module_name in [
     "core.backtest_engine",
     "core.model_builder",
     "core.config",
     "ui.sidebar",
 ]:
-    logging.getLogger(module_name).setLevel(logging.DEBUG)
+    logging.getLogger(module_name).setLevel(logging.INFO)
 
 # Suppress known third-party DEBUG spam
 for noise_logger in ["watchdog.observers.inotify_buffer", "urllib3.connectionpool"]:
@@ -185,11 +185,16 @@ def render_app():
                     for ticker in tickers
                 }
 
-                for future in as_completed(future_map):
+                for future in as_completed(future_map, timeout=300):
                     ticker = future_map[future]
                     completed += 1
                     try:
-                        ticker_name, ticker_results = future.result()
+                        ticker_name, ticker_results = future.result(timeout=300)
+                    except TimeoutError:
+                        ticker_name = ticker
+                        ticker_results = {
+                            "error": f"Worker timeout for {ticker} (exceeded 300s)"
+                        }
                     except Exception as e:
                         ticker_name = ticker
                         ticker_results = {"error": str(e)}
