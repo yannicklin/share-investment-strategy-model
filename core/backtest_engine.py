@@ -541,11 +541,7 @@ class BacktestEngine:
             ticker, signal_buy, df, features, exit_signal_func=signal_exit
         )
         if "error" not in result:
-            trade_count = (
-                len(self.ledger.ledger_df)
-                if self.ledger.ledger_df is not None and len(self.ledger.ledger_df) > 0
-                else 0
-            )
+            trade_count = len(self.ledger.entries) if self.ledger.entries else 0
             roi = result.get("roi", 0.0)
             self.logger.info(
                 f"[{ticker}] {model_type.upper()} Results: Trades={trade_count}, ROI={roi:.2f}%"
@@ -616,6 +612,18 @@ class BacktestEngine:
                 return tie_breaker_bullish
             return False
 
+        # WP-7.6: Phase 7 trend analysis for dynamic sell friction
+        trend_data_for_consensus = {}
+        for idx in range(len(df)):
+            df_window = df.iloc[
+                max(0, idx - 60) : idx + 1
+            ]  # 60 days lookback for indicators
+            if len(df_window) >= 50:
+                trend_result = detect_trend(df_window, ticker)
+                trend_data_for_consensus[idx] = trend_result.get("trend", "RANGEBOUND")
+            else:
+                trend_data_for_consensus[idx] = "RANGEBOUND"
+
         def signal_exit(i, df_inner, features_inner, current_cap):
             if not committee_exit_preds or i >= len(df_inner):
                 return True  # No exit models → default to bullish (don't exit)
@@ -626,6 +634,15 @@ class BacktestEngine:
             tie_breaker_bullish = False
             tb_model = tie_breaker if tie_breaker else models[0]
 
+            # WP-7.6: Get dynamic sell_friction based on trend
+            trend = trend_data_for_consensus.get(i, "RANGEBOUND")
+            TREND_MULTIPLIERS = {
+                "UPTREND": 5.0,  # Higher threshold: let winners run
+                "DOWNTREND": 2.0,  # Lower threshold: quick exits
+                "RANGEBOUND": 3.0,  # Neutral
+            }
+            sell_friction = TREND_MULTIPLIERS.get(trend, 3.0)
+
             for m_type in models:
                 if m_type not in committee_exit_preds or i >= len(
                     committee_exit_preds[m_type]
@@ -633,7 +650,8 @@ class BacktestEngine:
                     continue
                 pred = committee_exit_preds[m_type][i]
                 pred_return = (pred - current_price) / current_price
-                is_m_bullish = pred_return > hurdle
+                # WP-7.6: Apply dynamic friction multiplier
+                is_m_bullish = pred_return > (hurdle * sell_friction)
 
                 if is_m_bullish:
                     votes += 1
@@ -770,36 +788,3 @@ class BacktestEngine:
                 f"[{ticker}] [{model_type.upper()}] Model is None or insufficient configuration"
             )
             return np.zeros(len(df), dtype=np.float32)
-        # WP-7.6: Phase 7 trend analysis for dynamic sell friction
-        trend_data_for_consensus = {}
-        for idx in range(len(df)):
-            df_window = df.iloc[
-                max(0, idx - 60) : idx + 1
-            ]  # 60 days lookback for indicators
-            if len(df_window) >= 50:
-                trend_result = detect_trend(df_window, ticker)
-                trend_data_for_consensus[idx] = trend_result.get("trend", "RANGEBOUND")
-            else:
-                trend_data_for_consensus[idx] = "RANGEBOUND"
-
-        def exit_signal(i, df_inner, _features_inner, current_cap):
-            votes = 0
-            current_price = float(df_inner.iloc[i]["Close"])
-            hurdle = self.get_hurdle_rate(current_cap)
-            tb_model = tie_breaker if tie_breaker else models[0]
-            tie_breaker_bullish = False
-
-            # WP-7.6: Get dynamic sell_friction based on trend
-            trend = trend_data_for_consensus.get(i, "RANGEBOUND")
-            TREND_MULTIPLIERS = {
-                "UPTREND": 5.0,  # Higher threshold: let winners run
-                "DOWNTREND": 2.0,  # Lower threshold: quick exits
-                "RANGEBOUND": 3.0,  # Neutral
-            }
-            sell_friction = TREND_MULTIPLIERS.get(trend, 3.0)
-
-            for m_type in models:
-                pred = committee_exit_preds[m_type][i]
-                pred_return = (pred - current_price) / current_price
-                # WP-7.6: Apply dynamic friction multiplier
-                is_m_bullish = pred_return > (hurdle * sell_friction)
