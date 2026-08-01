@@ -791,8 +791,8 @@ class ModelBuilder:
             raise
 
     def _extract_horizon_entry(
-        self, data_bundle: Dict[str, Any], target_horizon_days: int
-    ) -> Dict[str, Any]:
+        self, data_bundle: dict[str, Any], target_horizon_days: int
+    ) -> dict[str, Any]:
         """Extract the requested horizon entry from a bundle.
 
         Supports both multi-horizon bundles (new) and single-horizon legacy bundles.
