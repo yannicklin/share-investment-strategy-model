@@ -762,7 +762,10 @@ class BacktestEngine:
             return preds
 
         # Tree models (random_forest, catboost, ngboost) use raw data without scaling
-        elif model_type in ("random_forest", "catboost", "ngboost") and _builder.model is not None:
+        elif (
+            model_type in ("random_forest", "catboost", "ngboost")
+            and _builder.model is not None
+        ):
             self.logger.debug(
                 f"[{ticker}] [{model_type.upper()}] Predicting without scaling (tree model)..."
             )
