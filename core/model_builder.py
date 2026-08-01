@@ -547,6 +547,14 @@ class ModelBuilder:
         if data.empty:
             raise ValueError(f"No data for {ticker}")
 
+        # Apply log-normalization ONLY for LSTM (multi-scaler architecture needs it)
+        # Other models (tree, prophet, sklearn) train on raw data
+        if self.config.model_type == "lstm":
+            data["Close"] = np.log1p(data["Close"])
+            self.close_was_log_normalized = True
+        else:
+            self.close_was_log_normalized = False
+
         X, y = self.prepare_features(data)
         if len(X) < 1:
             raise ValueError(
