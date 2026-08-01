@@ -51,11 +51,6 @@ class ModelBuilder:
         self._data_cache: Dict[str, pd.DataFrame] = {}
         self._market_data: Optional[pd.DataFrame] = None
 
-    def _init_scaler(self) -> Any:
-        if self.config.scaler_type == "robust":
-            return RobustScaler()
-        return StandardScaler()
-
     @classmethod
     def get_available_models(cls) -> List[str]:
         """Returns a list of models that have their dependencies installed."""

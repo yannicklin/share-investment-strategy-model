@@ -232,12 +232,6 @@ def render_sidebar(config: Config):
 
     # --- 3. PREPROCESSING & ACCOUNTING ---
     st.sidebar.markdown("---")
-    config.scaler_type = st.sidebar.radio(
-        "Feature Scaler",
-        ["standard", "robust"],
-        index=0 if config.scaler_type == "standard" else 1,
-    )
-
     with st.sidebar.expander("Costs & Taxes"):
         profile_options = ["default", "cmc_markets", "tiger_au"]
         config.cost_profile = st.selectbox(
