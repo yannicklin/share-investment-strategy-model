@@ -145,34 +145,36 @@ def render_super_stars(
 
         # Drill-down for winners
         st.subheader("Detailed Look at Winners")
-        # Build tab labels with company names
-        tab_display_names = []
-        ticker_to_name_map = {}
-        
+        # Build tab labels with stock IDs and store metadata
+        tab_labels = []
+        ticker_metadata = {}
+
         for ticker in df_top10["Ticker"]:
             ticker_str = str(ticker)
-            display_name = ticker_str  # Default to ticker
-            
-            if builder is not None:
-                try:
-                    # Fetch company name (with market-specific logic)
-                    company_name = builder.get_company_name(ticker_str)
-                    if company_name:
-                        display_name = company_name
-                    ticker_to_name_map[ticker_str] = company_name
-                except Exception:
-                    pass
-            
-            tab_display_names.append(display_name)
+            # Extract stock ID (remove market suffix like .US, etc.)
+            stock_id = ticker_str.split(".")[0] if "." in ticker_str else ticker_str
+            tab_labels.append(stock_id)
 
-        tabs = st.tabs(tab_display_names)
-        for i in range(len(tab_display_names)):
+            # Store metadata for each ticker
+            res = all_ticker_res[ticker_str]
+            company_name = res.get("company_name", "") or builder.get_company_name(ticker_str) if builder else ""
+
+            ticker_metadata[stock_id] = {
+                "ticker": ticker_str,
+                "company_name": company_name,
+            }
+
+        tabs = st.tabs(tab_labels)
+        for i, stock_id in enumerate(tab_labels):
             with tabs[i]:
-                ticker_symbol = str(df_top10["Ticker"].iloc[i])
-                res = all_ticker_res[ticker_symbol]
-                company_name = ticker_to_name_map.get(ticker_symbol, "")
+                ticker_symbol = ticker_metadata[stock_id]["ticker"]
+                company_name = ticker_metadata[stock_id]["company_name"]
+
+                # Display company name as heading
                 if company_name:
                     st.subheader(f"{company_name}")
+
+                res = all_ticker_res[ticker_symbol]
                 render_trade_details(ticker_symbol, res)
 
     # Show errors in an expander at the bottom
