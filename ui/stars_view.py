@@ -63,10 +63,17 @@ def render_super_stars(
 
     for ticker, res in all_ticker_res.items():
         if res and "error" not in res:
+            # Extract metadata (prefer _metadata structure, fall back to top-level)
+            metadata = res.get("_metadata", {})
+            chinese_name = metadata.get("chinese_name", "") or res.get(
+                "chinese_name", ""
+            )
+            company_name = metadata.get("company_name", "") or res.get(
+                "company_name", ticker
+            )
+
             # Ensure win_rate is present and valid
             win_rate = float(res.get("win_rate", 0.0))
-            company_name = res.get("company_name", ticker)
-            chinese_name = res.get("chinese_name", "")
             yfinance_url = f"https://finance.yahoo.com/quote/{ticker}"
 
             summary.append(
@@ -155,43 +162,46 @@ def render_super_stars(
 
         # 3. Drill-down for winners
         st.subheader("Detailed Look at Winners")
-        # Build tab labels with Chinese names for Taiwan stocks
-        tab_display_names = []
-        ticker_to_name_map = {}
+        # Build tab labels with stock IDs and store metadata
+        tab_labels = []
+        ticker_metadata = {}
 
         for ticker in df_top10["Ticker"]:
             ticker_str = str(ticker)
-            display_name = ticker_str  # Default to ticker
+            # Extract stock ID (remove market suffix like .TW, .AX, etc.)
+            stock_id = ticker_str.split(".")[0] if "." in ticker_str else ticker_str
+            tab_labels.append(stock_id)
 
-            if builder is not None:
-                try:
-                    # Fetch Traditional Chinese name for Taiwan stocks
-                    chinese_name = (
-                        builder.get_chinese_name(ticker_str)
-                        if ticker_str.endswith(".TW")
-                        else ""
-                    )
-                    if chinese_name:
-                        display_name = chinese_name
-                        ticker_to_name_map[ticker_str] = chinese_name
-                    else:
-                        company_name = builder.get_company_name(ticker_str)
-                        if company_name:
-                            display_name = company_name
-                            ticker_to_name_map[ticker_str] = company_name
-                except Exception:
-                    pass
+            # Store metadata for each ticker
+            res = all_ticker_res[ticker_str]
+            metadata = res.get("_metadata", {})
+            chinese_name = metadata.get("chinese_name", "") or res.get(
+                "chinese_name", ""
+            )
+            company_name = metadata.get("company_name", "") or res.get(
+                "company_name", ""
+            )
 
-            tab_display_names.append(display_name)
+            ticker_metadata[stock_id] = {
+                "ticker": ticker_str,
+                "chinese_name": chinese_name,
+                "company_name": company_name,
+            }
 
-        tabs = st.tabs(tab_display_names)
-        for i in range(len(tab_display_names)):
+        tabs = st.tabs(tab_labels)
+        for i, stock_id in enumerate(tab_labels):
             with tabs[i]:
-                ticker_symbol = str(df_top10["Ticker"].iloc[i])
+                ticker_symbol = ticker_metadata[stock_id]["ticker"]
+                chinese_name = ticker_metadata[stock_id]["chinese_name"]
+                company_name = ticker_metadata[stock_id]["company_name"]
+
+                # Display Chinese name as heading if available
+                if chinese_name:
+                    st.subheader(f"{chinese_name}")
+                elif company_name:
+                    st.subheader(f"{company_name}")
+
                 res = all_ticker_res[ticker_symbol]
-                display_name = ticker_to_name_map.get(ticker_symbol, "")
-                if display_name:
-                    st.subheader(f"{display_name}")
                 render_trade_details(ticker_symbol, res)
 
     # Show errors in an expander at the bottom
