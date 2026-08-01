@@ -524,6 +524,15 @@ class BacktestEngine:
             hurdle = self.get_hurdle_rate(current_cap)
             pred = all_buy_preds[i]
             pred_return = (pred - current_price) / current_price
+            
+            # Log first 5 bars for diagnosis
+            if i < 5:
+                self.logger.debug(
+                    f"[{ticker}] [BUY] Bar {i}: price={current_price:.2f}, pred={pred:.2f}, "
+                    f"pred_return={pred_return:.4f} ({pred_return*100:.2f}%), hurdle={hurdle:.4f} ({hurdle*100:.2f}%), "
+                    f"signal={pred_return > hurdle}, capital={current_cap:.2f}"
+                )
+            
             return pred_return > hurdle
 
         def signal_exit(i, df_inner, features_inner, current_cap):
@@ -573,7 +582,11 @@ class BacktestEngine:
         committee_buy_preds = {}
         for m_type in models:
             self.config.model_type = m_type
-            self.model_builder.load_or_build(ticker, target_horizon_days=horizon_days)
+            load_status = self.model_builder.load_or_build(ticker, target_horizon_days=horizon_days)
+            self.logger.info(
+                f"[{ticker}] Loaded BUY {m_type} model (horizon={horizon_days}d): status={load_status}, "
+                f"model exists={self.model_builder.model is not None}"
+            )
             committee_buy_preds[m_type] = self._get_bulk_predictions(
                 ticker, df, features, m_type
             )
@@ -595,16 +608,31 @@ class BacktestEngine:
             hurdle = self.get_hurdle_rate(current_cap)
             tie_breaker_bullish = False
             tb_model = tie_breaker if tie_breaker else models[0]
+            
+            # For logging first 5 bars
+            model_votes_debug = {}
 
             for m_type in models:
                 pred = committee_buy_preds[m_type][i]
                 pred_return = (pred - current_price) / current_price
                 is_m_bullish = pred_return > hurdle
+                model_votes_debug[m_type] = {
+                    "pred": pred,
+                    "pred_return": pred_return,
+                    "is_bullish": is_m_bullish
+                }
 
                 if is_m_bullish:
                     votes += 1
                 if m_type == tb_model:
                     tie_breaker_bullish = is_m_bullish
+            
+            # Log first 5 bars for diagnosis
+            if i < 5:
+                self.logger.debug(
+                    f"[{ticker}] [CONSENSUS BUY] Bar {i}: price={current_price:.2f}, hurdle={hurdle:.4f} ({hurdle*100:.2f}%), "
+                    f"votes={votes}/{len(models)}, details={model_votes_debug}"
+                )
 
             if votes > (len(models) / 2):
                 return True
@@ -683,6 +711,12 @@ class BacktestEngine:
     ) -> np.ndarray:
         """Helper to get predictions for all rows in one go with memory safety."""
         _builder = builder if builder is not None else self.model_builder
+        
+        self.logger.debug(
+            f"[{ticker}] _get_bulk_predictions called: model_type={model_type}, "
+            f"builder is custom={builder is not None}, model={_builder.model is not None}, "
+            f"scaler={_builder.scaler is not None}"
+        )
 
         # Ensure data is clean and use float64 to prevent overflow/inf during cast
         X_all = (
@@ -767,11 +801,14 @@ class BacktestEngine:
             and _builder.model is not None
         ):
             self.logger.debug(
-                f"[{ticker}] [{model_type.upper()}] Predicting without scaling (tree model)..."
+                f"[{ticker}] [{model_type.upper()}] Tree model path: model exists, using raw data..."
+            )
+            self.logger.debug(
+                f"[{ticker}] [{model_type.upper()}] X_all shape: {X_all.shape}, dtype: {X_all.dtype}"
             )
             preds = _builder.model.predict(X_all).astype(np.float32)
             self.logger.debug(
-                f"[{ticker}] [{model_type.upper()}] Predictions shape: {preds.shape}, non-zero: {np.count_nonzero(preds)}"
+                f"[{ticker}] [{model_type.upper()}] Predictions shape: {preds.shape}, non-zero: {np.count_nonzero(preds)}, min: {preds.min()}, max: {preds.max()}"
             )
             return preds
 
