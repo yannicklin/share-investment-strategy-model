@@ -751,6 +751,10 @@ class BacktestEngine:
                 raw_preds = _builder.target_scaler.inverse_transform(
                     raw_preds.reshape(-1, 1)
                 ).flatten()
+            
+            # Inverse log transform if target was log-normalized during training
+            if _builder.close_was_log_normalized:
+                raw_preds = np.expm1(raw_preds).astype(np.float32)
 
             all_preds = np.zeros(len(df), dtype=np.float32)
             all_preds[seq_len:] = raw_preds
@@ -772,6 +776,11 @@ class BacktestEngine:
             )
             forecast = _builder.model.predict(prophet_df)
             preds = forecast["yhat"].values.astype(np.float32)
+            
+            # Inverse log transform if target was log-normalized during training
+            if _builder.close_was_log_normalized:
+                preds = np.expm1(preds).astype(np.float32)
+            
             return preds
 
         # Tree models (random_forest, catboost, ngboost) use raw data without scaling
@@ -780,11 +789,21 @@ class BacktestEngine:
             and _builder.model is not None
         ):
             preds = _builder.model.predict(X_all).astype(np.float32)
+            
+            # Inverse log transform if target was log-normalized during training
+            if _builder.close_was_log_normalized:
+                preds = np.expm1(preds).astype(np.float32)
+            
             return preds
 
         elif _builder.model is not None and _builder.scaler is not None:
             X_scaled = _builder.scaler.transform(X_all).astype(np.float32)
             preds = _builder.model.predict(X_scaled).astype(np.float32)
+            
+            # Inverse log transform if target was log-normalized during training
+            if _builder.close_was_log_normalized:
+                preds = np.expm1(preds).astype(np.float32)
+            
             return preds
 
         elif _builder.model is not None:
