@@ -719,14 +719,9 @@ class ModelBuilder:
                 if col in df.columns:
                     features.append(col)
 
-        # Log-normalization detection: Apply log1p to Close ONLY for LSTM (other models use raw data)
-        close_min = df["Close"].min()
-        close_max = df["Close"].max()
-        if (
-            self.config.model_type == "lstm"
-            and close_min > 0
-            and (close_max / close_min) > 1.5
-        ):
+        # Log-normalization: Apply log1p to Close ONLY for LSTM (multi-scaler architecture needs it)
+        # Other models (tree, prophet, sklearn) train on raw Close values
+        if self.config.model_type == "lstm":
             df["Close"] = np.log1p(df["Close"])
             self.close_was_log_normalized = True
         else:
