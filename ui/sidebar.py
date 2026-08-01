@@ -185,6 +185,13 @@ def render_sidebar(config: Config):
     )
     config.stop_profit_threshold = tp_val / 100.0
 
+    config.weighting_type = st.sidebar.radio(
+        "Sample Weighting",
+        ["normal", "recency"],
+        index=0 if config.weighting_type == "normal" else 1,
+        help="Normal: Uniform weights. Recency: Exponential decay favoring recent data (half-life = backtest_years × multiplier set in config).",
+    )
+
     # --- 2. MODE-SPECIFIC CONFIGURATION ---
     st.sidebar.header(f"{analysis_mode} Settings")
 
@@ -294,6 +301,10 @@ def render_sidebar(config: Config):
             help="Extra profit margin required after fees and tax to trigger a BUY.",
         )
         config.hurdle_risk_buffer = buffer_val / 100.0
+
+    # --- 4. MODEL MANAGEMENT ---
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🧹 Model & Ledger Management")
 
     # Delete models & ledgers button
     if st.sidebar.button(
