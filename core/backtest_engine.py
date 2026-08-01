@@ -856,13 +856,14 @@ class BacktestEngine:
         if (
             model_type == "lstm"
             and self.model_builder.model is not None
-            and self.model_builder.scaler is not None
+            and self.model_builder.price_scaler is not None
         ):
-            # LSTM still needs float32 for most backends
+            # LSTM uses multi-scaler architecture (price, volume, technical)
+            # Apply the same multi-scaler transform used during training
             X_all_f32 = X_all.astype(np.float32)
             # Use sequence_length from model_builder for consistency
             seq_len = self.model_builder.sequence_length
-            X_scaled = self.model_builder.scaler.transform(X_all_f32).astype(np.float32)
+            X_scaled = self.model_builder._apply_multi_scalers_transform(X_all_f32).astype(np.float32)
 
             # Create sequences: at time i, use [i-seq_len:i] to predict i+1
             # This matches training where [i:i+seq_len] predicts target[i+seq_len]=Close[i+seq_len+1]
@@ -906,8 +907,12 @@ class BacktestEngine:
             self.model_builder.model is not None
             and self.model_builder.scaler is not None
         ):
-            # Standard SKLearn-like models
+            # Standard SKLearn-like models with single scaler
             X_scaled = self.model_builder.scaler.transform(X_all).astype(np.float32)
             return self.model_builder.model.predict(X_scaled).astype(np.float32)
+
+        elif self.model_builder.model is not None:
+            # Tree models (random_forest, catboost, ngboost) use raw data without scaling
+            return self.model_builder.model.predict(X_all).astype(np.float32)
 
         return np.zeros(len(df), dtype=np.float32)
