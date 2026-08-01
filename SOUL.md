@@ -9,35 +9,46 @@
 
 ## 🎯 Project Essence
 
-This model is a manifestation of the belief that individual investors deserve access to professional-grade, data-driven analysis tools. It is designed to be a cold, objective filter for the emotional chaos of the stock market—providing a grounded framework for research and strategy validation.
+This project represents a journey from curiosity about algorithmic trading to a fully-functional AI-powered investment analysis system. It's not just code—it's a manifestation of the belief that democratized, data-driven investment tools can level the playing field for individual investors. The system is designed to be a cold, objective filter for the emotional chaos of the stock market—providing a grounded framework for research and strategy validation across multiple markets (Taiwan, Australia, USA).
 
 ---
 
-## 💡 Core Personalities & Values
+## 💡 Core Values
 
-### 1. **Data-Driven Objectivity**
-Markets are emotional; this system is not. It operates on the philosophy that patterns found in data are more reliable than human intuition. It seeks to remove bias through:
-- Statistical validation over anecdotal evidence.
-- Multi-model consensus to avoid single-algorithm "blind spots."
-- Standardized performance reporting.
+### 1. **Data-Driven Decision Making**
+Markets are emotional. This system is not. Every recommendation is backed by:
+- Historical backtesting with realistic constraints
+- Multi-model consensus to reduce bias
+- Transparent performance metrics
 
-### 2. **Grounded Realism**
-This system rejects "theoretical" returns. If a strategy cannot survive real-world friction, it is not a strategy. The model's personality is defined by its obsession with:
-- **Brokerage Fees**: Counting every cent spent on execution.
+**Philosophy**: Trust data, not intuition. Let algorithms find patterns humans miss.
+
+### 2. **Realism Over Fantasy**
+Many trading simulators ignore the harsh realities of:
+- **Brokerage Fees**: Every trade costs money.
 - **Tax Implications**: Understanding that net profit is the only metric that matters.
-- **Market Mechanics**: Respecting slippage, gaps, and settlement delays.
+- **Market Gaps**: Stop-loss orders don't always execute at your price.
+- **Settlement Delays**: T+1 or T+2 depending on market—cash takes time to clear.
 
-### 3. **Radical Transparency**
-No "black boxes" allowed. To trust an AI, you must be able to audit its logic. The system is designed to be:
-- **Interpretable**: Clear connections between data and predictions.
-- **Auditable**: Fully traceable backtesting logic.
-- **Honest**: Clear disclaimers about the limitations of historical data.
+**Philosophy**: If it doesn't work with real-world constraints, it doesn't work.
 
-### 4. **Adaptive Flexibility**
-The model does not dictate *how* to trade, but provides the *infrastructure* to do so. It is built to be:
-- **Market-Agnostic**: Capable of adapting to any index or asset class.
-- **Strategy-Agnostic**: Supporting short-term, long-term, and hybrid approaches.
-- **Extensible**: Allowing for the easy integration of new algorithms and data sources.
+### 3. **Transparency & Explainability**
+No black boxes. Every decision can be traced:
+- Model predictions are interpretable
+- Backtesting logic is auditable
+- Performance metrics are standardized
+- Consensus scoring is clearly defined
+
+**Philosophy**: Users should understand *why* the system makes recommendations, not just *what* they are.
+
+### 4. **Flexibility & Extensibility**
+The system adapts to different:
+- Market indices (customizable for any exchange)
+- Trading strategies (short-term, long-term, hybrid)
+- Risk profiles (conservative, aggressive)
+- Model preferences (Random Forest, LSTM, Prophet, CatBoost, NGBoost)
+
+**Philosophy**: One size does not fit all. Provide options, not mandates.
 
 ---
 
@@ -52,7 +63,7 @@ The system is organized into clear layers:
 **Why?** Separation of concerns makes testing easier and components reusable.
 
 ### Factory Pattern for Models
-Five different AI models are supported through a unified interface:
+Multiple AI models are supported through a unified interface:
 ```python
 ModelBuilder.build(algorithm="Random Forest")
 ModelBuilder.build(algorithm="LSTM")
@@ -83,27 +94,106 @@ Every "BUY" signal is filtered through a financial friction check:
 - **Purpose**: Prevents "death by a thousand cuts" from brokerage fees and ensures returns are meaningful even after taxes.
 - **Independence**: The AI predicts market moves, while the Decision Layer enforces financial sanity based on the user's personal tax profile.
 
+### Market Calendar Compliance
+Realistic backtesting requires respecting real-world trading constraints:
+- **Dynamic Calendar Fetching**: Integration with market-specific trading calendars
+- **Market Half-Days**: Treated as off-days (no trading)
+- **Holding Period Precision**:
+  - "Day" = TRADING DAYS (excludes weekends + holidays)
+  - "Week/Month/Year" = CALENDAR DAYS
+- **Portfolio Validation**: Pre-checks cash availability before generating signals
+
+**Why?** If backtests ignore market calendars, they produce unrealistic results.
+
+### Memory-Optimized Audit Trails
+Large-scale analysis requires efficient data management:
+- Keep minimal state in RAM (~2 KB per backtest)
+- Batch writes to disk after completion (not streaming I/O)
+- Machine-parseable transaction ledgers for script analysis
+
+**Why?** Enables 1,000+ backtests (200 stocks × 5 models) without performance degradation.
+
 ---
 
-## 🛡️ Integrity Manifesto
+## 🛡️ Security & Safety Manifesto
 
-### Ethical Guardrails:
-1. **API Key Protection**: Never commit credentials to version control.
-2. **Data Privacy**: No unnecessary storage of personal or financial data.
-3. **Traceability**: All model versions and research results must be auditable.
-4. **Safety Defaults**: Conservative thresholds as the baseline for all research.
+### Never Compromise on:
+1. **API Key Protection**: Never commit keys to Git
+2. **Data Privacy**: No user financial data stored unnecessarily
+3. **Code Integrity**: All models are versioned and traceable
+4. **Safe Defaults**: Conservative stop-loss thresholds unless user overrides
 
-### Scientific Honesty:
-- Backtesting is a research tool, not a crystal ball.
-- Past performance is never a guarantee of future results.
-- Transparency about survivorship bias and data limitations.
+### Testing Philosophy:
+- Backtesting is **NOT** a guarantee of future performance
+- Historical data can have survivorship bias
+- Always display disclaimers about investment risks
 
-**This system empowers the user; it does not replace human judgment.**
+**Remember**: This is a **research tool**, not financial advice.
+
+---
+
+## 🎓 Technical Principles
+
+### Model Selection & Ensemble Approach
+
+1. **Single Models Overfit - Use Consensus**
+   - Different models excel in different market conditions
+   - Consensus voting reduces bias and increases robustness
+   - Tie-breaker rules ensure decisive recommendations
+
+2. **Sequential Models Need Warm-Up**
+   - LSTM requires sufficient historical data (5+ years minimum)
+   - 90-day warm-up buffer ensures fair comparison with simpler models
+   - Prevents sequential models from missing early trading opportunities
+
+3. **Portability Matters**
+   - Prefer native Scikit-Learn implementations (Random Forest, Gradient Boosting)
+   - Avoid external C-library dependencies (e.g., `libomp` for XGBoost)
+   - Ensures code runs natively on any hardware without installation friction
+
+4. **Prophet Excels at Seasonality**
+   - Best for stocks with predictable cycles
+   - Struggles with highly volatile tech stocks
+   - Valuable as complementary model in consensus
+
+### Data Handling & Preprocessing
+
+1. **RobustScaler Over StandardScaler**
+   - Handles outliers better in volatile stock data
+   - Prevents extreme values from skewing normalization
+
+2. **Always Validate Feature Arrays**
+   - Check array lengths before scaling
+   - Prevents crashes on "thin data" tickers (newly listed stocks)
+   - Graceful error handling for insufficient data
+
+3. **Multi-Scaler Architecture for LSTM**
+   - Different feature types require different scaling strategies
+   - Price data: MinMaxScaler(feature_range=(0.1, 0.9))
+   - Volume data: QuantileTransformer with adaptive n_quantiles
+   - Technical indicators: RobustScaler for bounded values
+   - Prevents loss of information through uniform scaling
+
+### Backtesting Realism
+
+1. **Fees and Taxes DRAMATICALLY Impact ROI**
+   - Simulations ignoring brokerage fees are misleading
+   - Tax implications vary by jurisdiction and holding period
+   - Short-term trading often underperforms due to transaction costs
+
+2. **Market Calendar Constraints Are Non-Negotiable**
+   - Real-world backtesting must exclude weekends and public holidays
+   - Market half-days treated as off-days
+   - Holding period units matter: "Day" = trading days, "Month" = calendar days
+
+3. **Visual Context Matters**
+   - Dual-axis charts (portfolio vs share price) reveal AI behavior
+   - Helps distinguish "fear" (market dip) from "greed" (price surge)
+   - Realized equity curves show actual capital growth, not theoretical gains
 
 ---
 
 ## 📜 Code Ownership & Attribution
-
 
 All source code in this repository is:
 - **Copyright (c) 2026 Yannick**
@@ -149,7 +239,7 @@ See `CODE_HEADERS.md` for complete templates.
 **Cross-Branch Development Standards:**
 
 8. ✅ **Never use cherry-pick or lazy-copy across branches**
-   - Each branch (twn, asx, usa) has unique structural differences (T+2 vs T+1 settlement, FinMind data, institutional logic, fee structures)
+   - Each branch (twn, asx, usa) has unique structural differences (T+2 vs T+1 settlement, market-specific data sources, institutional logic, fee structures)
    - Always recheck the code and apply accurate, branch-specific fixes
    - Lazy copying breaks branch-specific logic and introduces bugs
    - Require explicit verification that each branch's unique elements are preserved after changes
@@ -165,6 +255,6 @@ See `CODE_HEADERS.md` for complete templates.
 
 ---
 
-*Last Updated: February 1, 2026*  
+*Last Updated: August 1, 2026*  
 *Copyright (c) 2026 Yannick*  
 *Licensed under MIT License*
