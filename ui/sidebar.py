@@ -344,6 +344,23 @@ def render_sidebar(config: Config):
             st.session_state.show_model_cleanup_confirm = False
             st.rerun()
 
+    # --- 5. DEBUG & LOGGING ---
+    st.sidebar.markdown("---")
+    with st.sidebar.expander("📋 Debug Logs"):
+        log_file = "data/logs/dashboard.log"
+        try:
+            if os.path.exists(log_file):
+                with open(log_file, "r") as f:
+                    lines = f.readlines()
+                # Show last 30 lines, most recent at bottom
+                recent_logs = "".join(lines[-30:])
+                st.code(recent_logs, language="log")
+                st.caption(f"📄 Full log at: {log_file}")
+            else:
+                st.info("No logs yet - run analysis to generate logs")
+        except Exception as e:
+            st.error(f"Cannot read logs: {e}")
+
     st.sidebar.markdown("---")
     run_analysis = st.sidebar.button("🚀 Run Analysis", use_container_width=True)
 

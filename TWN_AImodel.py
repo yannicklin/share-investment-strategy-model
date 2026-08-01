@@ -22,8 +22,17 @@ import os
 import pandas as pd
 import streamlit as st
 
-# Set logging level to WARNING to reduce terminal noise
-logging.basicConfig(level=logging.WARNING)
+# --- Enhanced Logging Setup ---
+os.makedirs("data/logs", exist_ok=True)
+logging_config = logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
+    handlers=[logging.FileHandler("data/logs/dashboard.log"), logging.StreamHandler()],
+)
+logger = logging.getLogger(__name__)
+logger.info("=" * 80)
+logger.info("Dashboard started")
+logger.info("=" * 80)
 
 # 2. Suppress TensorFlow noise and load
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -415,9 +424,10 @@ def render_app():
             if not isinstance(r, dict):
                 continue
             is_valid = False
-            if any(isinstance(m_res, dict) and "roi" in m_res for m_res in r.values()):
-                is_valid = True
-            elif "roi" in r:
+            if (
+                any(isinstance(m_res, dict) and "roi" in m_res for m_res in r.values())
+                or "roi" in r
+            ):
                 is_valid = True
 
             if is_valid:
