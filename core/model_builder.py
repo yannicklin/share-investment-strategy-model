@@ -8,13 +8,14 @@ Author: Yannick
 Copyright (c) 2026 Yannick
 """
 
+import logging
 import os
+import time
+
 import joblib
 import numpy as np
 import pandas as pd
 import yfinance as yf
-import time
-import logging
 
 # Suppress heavy logging and warnings from backends
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -33,9 +34,10 @@ except ImportError:
 logging.getLogger("cmdstanpy").setLevel(logging.ERROR)
 logging.getLogger("prophet").setLevel(logging.ERROR)
 
-from typing import Optional, Any, Dict, List
-from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
-from sklearn.preprocessing import StandardScaler, RobustScaler
+from typing import Any
+
+from sklearn.ensemble import RandomForestRegressor
+
 from core.config import Config
 
 
@@ -44,15 +46,21 @@ class ModelBuilder:
 
     def __init__(self, config: Config):
         self.config = config
-        self.model: Optional[Any] = None
-        self.scaler: Optional[Any] = None
-        self.target_scaler: Optional[Any] = None  # For LSTM target scaling
+        self.model: Any | None = None
+        self.scaler: Any | None = None
+        self.price_scaler: Any | None = None
+        self.volume_scaler: Any | None = None
+        self.technical_scaler: Any | None = None
+        self.target_scaler: Any | None = None
         self.sequence_length = 30
-        self._data_cache: Dict[str, pd.DataFrame] = {}
-        self._market_data: Optional[pd.DataFrame] = None
+        self._data_cache: dict[str, pd.DataFrame] = {}
+        self._market_data: pd.DataFrame | None = None
+        self._price_feature_indices: list[int] = []
+        self._volume_feature_indices: list[int] = []
+        self._technical_feature_indices: list[int] = []
 
     @classmethod
-    def get_available_models(cls) -> List[str]:
+    def get_available_models(cls) -> list[str]:
         """Returns a list of models that have their dependencies installed."""
         available = ["random_forest"]
 
@@ -85,6 +93,92 @@ class ModelBuilder:
             pass
 
         return available
+
+    def _init_scalers(self, n_samples: int | None = None) -> dict[str, Any]:
+        """Initialize multi-scaler groups. See docs for architecture."""
+        if n_samples is not None:
+            n_quantiles = max(10, min(1000, n_samples - 1))
+        else:
+            n_quantiles = 500
+
+        return {
+            "price_scaler": MinMaxScaler(feature_range=(0.1, 0.9)),
+            "volume_scaler": QuantileTransformer(
+                output_distribution="normal", n_quantiles=n_quantiles, random_state=42
+            ),
+            "technical_scaler": RobustScaler(),
+            "target_scaler": MinMaxScaler(feature_range=(0.1, 0.9)),
+        }
+
+    def _get_feature_group_indices(self, feature_list: list[str]) -> None:
+        """Map feature columns to scaler groups."""
+        price_features = {"Open", "High", "Low", "Close", "BB_Upper", "BB_Lower"}
+        volume_features = {"Volume"}
+        technical_features = {
+            "MA5",
+            "MA20",
+            "MA50",
+            "RSI",
+            "MACD",
+            "Signal_Line",
+            "BB_Width",
+            "ATR",
+            "Daily_Return",
+        }
+
+        self._price_feature_indices = [
+            i for i, f in enumerate(feature_list) if f in price_features
+        ]
+        self._volume_feature_indices = [
+            i for i, f in enumerate(feature_list) if f in volume_features
+        ]
+        self._technical_feature_indices = [
+            i for i, f in enumerate(feature_list) if f in technical_features
+        ]
+
+    def _apply_multi_scalers_fit(self, X: np.ndarray) -> np.ndarray:
+        """Fit scalers on respective feature groups."""
+        X_scaled = X.copy()
+
+        if self._price_feature_indices:
+            X_scaled[:, self._price_feature_indices] = self.price_scaler.fit_transform(
+                X[:, self._price_feature_indices]
+            )
+
+        if self._volume_feature_indices:
+            X_scaled[:, self._volume_feature_indices] = (
+                self.volume_scaler.fit_transform(X[:, self._volume_feature_indices])
+            )
+
+        if self._technical_feature_indices:
+            X_scaled[:, self._technical_feature_indices] = (
+                self.technical_scaler.fit_transform(
+                    X[:, self._technical_feature_indices]
+                )
+            )
+
+        return X_scaled
+
+    def _apply_multi_scalers_transform(self, X: np.ndarray) -> np.ndarray:
+        """Transform feature matrix using fitted scalers."""
+        X_scaled = X.copy()
+
+        if self._price_feature_indices:
+            X_scaled[:, self._price_feature_indices] = self.price_scaler.transform(
+                X[:, self._price_feature_indices]
+            )
+
+        if self._volume_feature_indices:
+            X_scaled[:, self._volume_feature_indices] = self.volume_scaler.transform(
+                X[:, self._volume_feature_indices]
+            )
+
+        if self._technical_feature_indices:
+            X_scaled[:, self._technical_feature_indices] = (
+                self.technical_scaler.transform(X[:, self._technical_feature_indices])
+            )
+
+        return X_scaled
 
     def _init_model(self, input_dim: int = 0) -> Any:
         m_type = self.config.model_type
@@ -120,9 +214,8 @@ class ModelBuilder:
             return Prophet(daily_seasonality=True, yearly_seasonality=True)
 
         elif m_type == "lstm":
-            import tensorflow as tf
-            from tensorflow.keras.models import Sequential
             from tensorflow.keras.layers import LSTM, Dense, Dropout, Input
+            from tensorflow.keras.models import Sequential
 
             logging.info("Initialized LSTM model.")
             model = Sequential(
@@ -249,7 +342,7 @@ class ModelBuilder:
                 pass
         return pd.DataFrame()
 
-    def prefetch_data_batch(self, tickers: List[str], years: int):
+    def prefetch_data_batch(self, tickers: list[str], years: int):
         if not tickers:
             return
         end_date = pd.Timestamp.now()
@@ -424,6 +517,10 @@ class ModelBuilder:
 
         X = df[features].values
         y = df["Target"].values
+
+        # Map features to scaler groups for multi-scaler training
+        self._get_feature_group_indices(features)
+
         return X, y
 
     def _create_sequences(self, data_scaled, target):
@@ -444,10 +541,16 @@ class ModelBuilder:
                 f"Insufficient data rows for {ticker} after feature engineering."
             )
 
-        self.scaler = self._init_scaler()
-        X_scaled = self.scaler.fit_transform(X)
-
+        # Conditional scaling based on model type
         m_type = self.config.model_type
+        if m_type == "lstm":
+            scalers = self._init_scalers(len(X))
+            self.price_scaler = scalers["price_scaler"]
+            self.volume_scaler = scalers["volume_scaler"]
+            self.technical_scaler = scalers["technical_scaler"]
+            X_scaled = self._apply_multi_scalers_fit(X)
+        else:
+            X_scaled = X  # Tree models use raw data
 
         # For LSTM, also scale the target
         target_scaler = None
@@ -576,7 +679,7 @@ class ModelBuilder:
             return "retrained_error"
 
     def predict(
-        self, current_data: np.ndarray, date: Optional[pd.Timestamp] = None
+        self, current_data: np.ndarray, date: pd.Timestamp | None = None
     ) -> float:
         if self.model is None:
             raise ValueError("Model not loaded.")
@@ -607,7 +710,7 @@ class ModelBuilder:
         X_scaled = self.scaler.transform(X_input)
         return float(self.model.predict(X_scaled)[0])
 
-    def get_latest_features(self, ticker: str) -> Optional[np.ndarray]:
+    def get_latest_features(self, ticker: str) -> np.ndarray | None:
         data = self.fetch_data(ticker, 1)
         if data.empty:
             return None

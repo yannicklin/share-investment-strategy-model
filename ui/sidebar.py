@@ -9,7 +9,7 @@ Copyright (c) 2026 Yannick
 """
 
 import streamlit as st
-import yfinance as yf
+
 from core.config import Config
 from core.index_manager import load_index_constituents, update_index_data
 from core.model_builder import ModelBuilder
