@@ -524,15 +524,15 @@ class BacktestEngine:
             hurdle = self.get_hurdle_rate(current_cap)
             pred = all_buy_preds[i]
             pred_return = (pred - current_price) / current_price
-            
+
             # Log first 5 bars for diagnosis
             if i < 5:
                 self.logger.debug(
                     f"[{ticker}] [BUY] Bar {i}: price={current_price:.2f}, pred={pred:.2f}, "
-                    f"pred_return={pred_return:.4f} ({pred_return*100:.2f}%), hurdle={hurdle:.4f} ({hurdle*100:.2f}%), "
+                    f"pred_return={pred_return:.4f} ({pred_return * 100:.2f}%), hurdle={hurdle:.4f} ({hurdle * 100:.2f}%), "
                     f"signal={pred_return > hurdle}, capital={current_cap:.2f}"
                 )
-            
+
             return pred_return > hurdle
 
         def signal_exit(i, df_inner, features_inner, current_cap):
@@ -582,7 +582,9 @@ class BacktestEngine:
         committee_buy_preds = {}
         for m_type in models:
             self.config.model_type = m_type
-            load_status = self.model_builder.load_or_build(ticker, target_horizon_days=horizon_days)
+            load_status = self.model_builder.load_or_build(
+                ticker, target_horizon_days=horizon_days
+            )
             self.logger.info(
                 f"[{ticker}] Loaded BUY {m_type} model (horizon={horizon_days}d): status={load_status}, "
                 f"model exists={self.model_builder.model is not None}"
@@ -608,7 +610,7 @@ class BacktestEngine:
             hurdle = self.get_hurdle_rate(current_cap)
             tie_breaker_bullish = False
             tb_model = tie_breaker if tie_breaker else models[0]
-            
+
             # For logging first 5 bars
             model_votes_debug = {}
 
@@ -619,18 +621,18 @@ class BacktestEngine:
                 model_votes_debug[m_type] = {
                     "pred": pred,
                     "pred_return": pred_return,
-                    "is_bullish": is_m_bullish
+                    "is_bullish": is_m_bullish,
                 }
 
                 if is_m_bullish:
                     votes += 1
                 if m_type == tb_model:
                     tie_breaker_bullish = is_m_bullish
-            
+
             # Log first 5 bars for diagnosis
             if i < 5:
                 self.logger.debug(
-                    f"[{ticker}] [CONSENSUS BUY] Bar {i}: price={current_price:.2f}, hurdle={hurdle:.4f} ({hurdle*100:.2f}%), "
+                    f"[{ticker}] [CONSENSUS BUY] Bar {i}: price={current_price:.2f}, hurdle={hurdle:.4f} ({hurdle * 100:.2f}%), "
                     f"votes={votes}/{len(models)}, details={model_votes_debug}"
                 )
 
