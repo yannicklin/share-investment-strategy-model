@@ -38,7 +38,7 @@ def run_super_star_worker(
     """
     try:
         _worker_logger.info(f"[WORKER] Starting analysis for {ticker}")
-        
+
         worker_config = deepcopy(config)
         worker_config.target_stock_codes = [ticker]
         worker_config.model_types = list(models)
@@ -55,7 +55,9 @@ def run_super_star_worker(
             tie_breaker=tie_breaker,
             mode_prefix="ranking",
         )
-        _worker_logger.info(f"[WORKER] Completed {ticker}, result keys: {list(result.keys()) if isinstance(result, dict) else 'N/A'}")
+        _worker_logger.info(
+            f"[WORKER] Completed {ticker}, result keys: {list(result.keys()) if isinstance(result, dict) else 'N/A'}"
+        )
 
         # ── Cleanup ───────────────────────────────────────────────────────────────
         # Runs AFTER result is fully computed and stored in the local variable above.
@@ -84,19 +86,7 @@ def run_super_star_worker(
 
         _worker_logger.info(f"[WORKER] Finished cleanup for {ticker}")
         return ticker, result
-    
+
     except Exception as e:
         _worker_logger.error(f"[WORKER] Error processing {ticker}: {e}", exc_info=True)
         return ticker, {"error": str(e)}
-            pass
-
-    if "prophet" in models:
-        try:
-            import gc
-
-            gc.collect()  # releases cmdstanpy CmdStanModel objects and temp file refs
-        except Exception:
-            pass
-    # ─────────────────────────────────────────────────────────────────────────
-
-    return ticker, result
