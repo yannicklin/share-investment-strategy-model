@@ -476,9 +476,11 @@ class BacktestEngine:
         # BUY bulk predictions — horizon=N model (already loaded above)
         all_buy_preds = self._get_bulk_predictions(df, features, model_type)
 
-        # EXIT bulk predictions — horizon=1 model from the same bundle
-        self.model_builder.load_exit_model(ticker, buy_horizon_days=horizon_days)
-        all_exit_preds = self._get_bulk_predictions(df, features, model_type)
+        # EXIT bulk predictions — horizon=1 model from the same bundle (only if horizon > 1)
+        all_exit_preds = None
+        if horizon_days > 1:
+            self.model_builder.load_exit_model(ticker, buy_horizon_days=horizon_days)
+            all_exit_preds = self._get_bulk_predictions(df, features, model_type)
 
         def signal(i, df_inner, _features_inner, current_cap):
             current_price = float(df_inner.iloc[i]["Close"])
@@ -486,9 +488,13 @@ class BacktestEngine:
             return (all_buy_preds[i] - current_price) / current_price > hurdle
 
         def exit_signal(i, df_inner, _features_inner, current_cap):
+            if all_exit_preds is None or i >= len(all_exit_preds):
+                return True  # No exit model → default to bullish (don't exit)
             current_price = float(df_inner.iloc[i]["Close"])
             hurdle = self.get_hurdle_rate(current_cap)
-            return (all_exit_preds[i] - current_price) / current_price > hurdle
+            pred = all_exit_preds[i]
+            pred_return = (pred - current_price) / current_price
+            return pred_return > hurdle  # True = bullish (don't exit), False = bearish (exit)
 
         result = self._core_run(
             ticker, signal, df, features, exit_signal_func=exit_signal
@@ -546,13 +552,16 @@ class BacktestEngine:
             )
 
         # EXIT bulk predictions — load models for 1-day exit check (separate horizon)
+        # Only load EXIT models if buy_horizon > 1 (avoid redundant loading for 1-day holds)
         committee_exit_preds = {}
-        for m_type in models:
-            self.config.model_type = m_type
-            self.model_builder.load_or_build(ticker, target_horizon_days=exit_horizon)
-            committee_exit_preds[m_type] = self._get_bulk_predictions(
-                df, features, m_type
-            )
+        if buy_horizon > 1:
+            for m_type in models:
+                self.config.model_type = m_type
+                exit_builder = ModelBuilder(self.config)
+                exit_builder.load_exit_model(ticker, buy_horizon_days=buy_horizon)
+                committee_exit_preds[m_type] = self._get_bulk_predictions(
+                    df, features, m_type, builder=exit_builder
+                )
 
         consensus_stats = {
             "model_count": len(models),
@@ -614,6 +623,10 @@ class BacktestEngine:
                 trend_data_for_consensus[idx] = "RANGEBOUND"
 
         def exit_signal(i, df_inner, _features_inner, current_cap):
+            # Safety check: if no exit models loaded (horizon=1), default to bullish (don't exit)
+            if not committee_exit_preds or i >= len(df_inner):
+                return True
+
             votes = 0
             current_price = float(df_inner.iloc[i]["Close"])
             hurdle = self.get_hurdle_rate(current_cap)
@@ -630,6 +643,9 @@ class BacktestEngine:
             sell_friction = TREND_MULTIPLIERS.get(trend, 3.0)
 
             for m_type in models:
+                # Skip if this model's exit predictions are missing or index is out of bounds
+                if m_type not in committee_exit_preds or i >= len(committee_exit_preds[m_type]):
+                    continue
                 pred = committee_exit_preds[m_type][i]
                 pred_return = (pred - current_price) / current_price
                 # WP-7.6: Apply dynamic friction multiplier
@@ -665,22 +681,24 @@ class BacktestEngine:
         return result
 
     def _get_bulk_predictions(
-        self, df: pd.DataFrame, features: list[str], model_type: str
+        self, df: pd.DataFrame, features: list[str], model_type: str,
+        builder: 'ModelBuilder | None' = None
     ) -> np.ndarray:
         """Helper to get predictions for all rows in one go with memory safety."""
+        _builder = builder if builder is not None else self.model_builder
         X_all = df[features].values.astype(np.float32)
 
         if (
             model_type == "lstm"
-            and self.model_builder.model is not None
-            and self.model_builder.price_scaler is not None
+            and _builder.model is not None
+            and _builder.price_scaler is not None
         ):
             # LSTM uses multi-scaler architecture (price, volume, technical)
             # Apply the same multi-scaler transform used during training
             X_all_f32 = X_all.astype(np.float32)
             # Use sequence_length from model_builder for consistency
-            seq_len = self.model_builder.sequence_length
-            X_scaled = self.model_builder._apply_multi_scalers_transform(
+            seq_len = _builder.sequence_length
+            X_scaled = _builder._apply_multi_scalers_transform(
                 X_all_f32
             ).astype(np.float32)
 
@@ -698,13 +716,13 @@ class BacktestEngine:
                 return np.zeros(len(df), dtype=np.float32)
 
             # Batch predict with a smaller batch size to avoid GPU memory overflow on M3
-            raw_preds = self.model_builder.model.predict(
+            raw_preds = _builder.model.predict(
                 X_seq, batch_size=64, verbose=0
             ).flatten()
 
             # Inverse transform LSTM predictions if target was scaled
-            if self.model_builder.target_scaler is not None:
-                raw_preds = self.model_builder.target_scaler.inverse_transform(
+            if _builder.target_scaler is not None:
+                raw_preds = _builder.target_scaler.inverse_transform(
                     raw_preds.reshape(-1, 1)
                 ).flatten()
 
@@ -713,25 +731,25 @@ class BacktestEngine:
             all_preds[seq_len:] = raw_preds
             return all_preds
 
-        elif model_type == "prophet" and self.model_builder.model is not None:
+        elif model_type == "prophet" and _builder.model is not None:
             # Prophet bulk predict
             prophet_df = pd.DataFrame({"ds": df.index}).copy()
             prophet_df["ds"] = prophet_df["ds"].dt.tz_localize(None)
             prophet_df["ds"] = prophet_df["ds"] + pd.DateOffset(days=1)
 
-            forecast = self.model_builder.model.predict(prophet_df)
+            forecast = _builder.model.predict(prophet_df)
             return forecast["yhat"].values.astype(np.float32)
 
         elif (
-            self.model_builder.model is not None
-            and self.model_builder.scaler is not None
+            _builder.model is not None
+            and _builder.scaler is not None
         ):
             # Standard SKLearn-like models with single scaler
-            X_scaled = self.model_builder.scaler.transform(X_all).astype(np.float32)
-            return self.model_builder.model.predict(X_scaled).astype(np.float32)
+            X_scaled = _builder.scaler.transform(X_all).astype(np.float32)
+            return _builder.model.predict(X_scaled).astype(np.float32)
 
-        elif self.model_builder.model is not None:
+        elif _builder.model is not None:
             # Tree models (random_forest, catboost, ngboost) use raw data without scaling
-            return self.model_builder.model.predict(X_all).astype(np.float32)
+            return _builder.model.predict(X_all).astype(np.float32)
 
         return np.zeros(len(df), dtype=np.float32)
