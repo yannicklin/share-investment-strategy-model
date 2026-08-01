@@ -158,6 +158,7 @@ def render_app():
         ticker_failures = {}  # {ticker: {"issue": "...", "models": [...]}}
 
         prog_placeholder = st.empty()
+        status_placeholder = st.empty()
 
         if mode == "Find Super Stars" and len(tickers) > 1:
             shared_data_cache = builder.get_data_cache_snapshot()
@@ -168,6 +169,9 @@ def render_app():
 
             st.info(
                 f"🚀 Running {max_workers} parallel workers for Super Stars analysis..."
+            )
+            logger.info(
+                f"[MAIN] Spawning {max_workers} workers for {len(tickers)} tickers"
             )
             executor = ProcessPoolExecutor(max_workers=max_workers)
             try:
@@ -184,18 +188,22 @@ def render_app():
                     ): ticker
                     for ticker in tickers
                 }
+                logger.info(f"[MAIN] Submitted {len(future_map)} futures to executor")
 
                 for future in as_completed(future_map, timeout=300):
                     ticker = future_map[future]
                     completed += 1
                     try:
+                        logger.info(f"[MAIN] Future completed for {ticker}")
                         ticker_name, ticker_results = future.result(timeout=300)
                     except TimeoutError:
+                        logger.error(f"[MAIN] Timeout for {ticker}")
                         ticker_name = ticker
                         ticker_results = {
                             "error": f"Worker timeout for {ticker} (exceeded 300s)"
                         }
                     except Exception as e:
+                        logger.error(f"[MAIN] Exception for {ticker}: {e}")
                         ticker_name = ticker
                         ticker_results = {"error": str(e)}
 
@@ -215,6 +223,15 @@ def render_app():
                             f"### 🔍 Analyzing Super Stars ({completed}/{len(tickers)})"
                         )
                         st.progress(completed / len(tickers))
+
+                    with status_placeholder.container():
+                        status_text = f"✅ Completed: {ticker_name}"
+                        if (
+                            isinstance(ticker_results, dict)
+                            and "error" in ticker_results
+                        ):
+                            status_text = f"❌ Failed: {ticker_name}"
+                        st.caption(status_text)
             finally:
                 # shutdown(wait=False) returns immediately instead of blocking on
                 # worker processes that hold lingering ML threads (Prophet/LSTM/TF).
