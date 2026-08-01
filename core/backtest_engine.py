@@ -9,7 +9,8 @@ Copyright (c) 2026 Yannick
 """
 
 import logging
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from collections.abc import Callable
+from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
@@ -32,7 +33,8 @@ class BacktestEngine:
         self.config = config
         self.model_builder = model_builder
         self.ledger = TransactionLedger()
-        self.trading_days: Optional[pd.DatetimeIndex] = None
+        self.trading_days: pd.DatetimeIndex | None = None
+        self.logger = logging.getLogger(__name__)
 
     def calculate_fees(self, trade_value: float, is_sell: bool = False) -> float:
         """
@@ -83,7 +85,7 @@ class BacktestEngine:
 
     def _prepare_data(
         self, ticker: str
-    ) -> Tuple[Optional[pd.DataFrame], Optional[List[str]], Optional[Dict[str, str]]]:
+    ) -> tuple[pd.DataFrame | None, list[str] | None, dict[str, str] | None]:
         """Prepare and filter dataframe for backtesting."""
         raw_data = self.model_builder.fetch_data(ticker, self.config.backtest_years)
         if raw_data.empty:
@@ -217,9 +219,9 @@ class BacktestEngine:
         i: int,
         df: pd.DataFrame,
         buy_price: float,
-        buy_date: Optional[pd.Timestamp],
+        buy_date: pd.Timestamp | None,
         current_date: pd.Timestamp,
-    ) -> Tuple[Optional[str], float]:
+    ) -> tuple[str | None, float]:
         """Return an early risk exit before consensus voting, if one applies."""
         if buy_date is None:
             return None, 0.0
@@ -260,13 +262,12 @@ class BacktestEngine:
     def _core_run(
         self,
         ticker: str,
-        signal_func: Callable[[int, pd.DataFrame, List[str], float], bool],
+        signal_func: Callable[[int, pd.DataFrame, list[str], float], bool],
         df: pd.DataFrame,
-        features: List[str],
-        exit_signal_func: Optional[
-            Callable[[int, pd.DataFrame, List[str], float], bool]
-        ] = None,
-    ) -> Dict[str, Any]:
+        features: list[str],
+        exit_signal_func: Callable[[int, pd.DataFrame, list[str], float], bool]
+        | None = None,
+    ) -> dict[str, Any]:
         capital = self.config.init_capital
         position, buy_price, buy_date, buy_fees = 0.0, 0.0, None, 0.0
         trades = []
@@ -482,18 +483,32 @@ class BacktestEngine:
             "execution_summary": execution_stats,
         }
 
-    def run_model_mode(self, ticker: str, model_type: str) -> Dict[str, Any]:
+    def run_model_mode(self, ticker: str, model_type: str) -> dict[str, Any]:
+        self.logger.info(
+            f"[{ticker}] ========== Starting {model_type.upper()} Model Run =========="
+        )
         self.ledger.clear()
         self.config.model_type = model_type
         horizon_days = self._resolve_prediction_horizon_days()
+        self.logger.debug(f"[{ticker}] Horizon days: {horizon_days}")
+
         self.model_builder.load_or_build(ticker, target_horizon_days=horizon_days)
         df_tuple = self._prepare_data(ticker)
         df, features, error = df_tuple
         if error or df is None or features is None:
+            self.logger.error(f"[{ticker}] Data preparation failed: {error}")
             return error if error else {"error": "Failed to prepare data"}
 
+        self.logger.debug(
+            f"[{ticker}] Data prepared: {len(df)} rows, {len(features)} features"
+        )
+
         # Bulk predictions for BUY signal (horizon=N)
+        self.logger.debug(f"[{ticker}] Generating BUY predictions for {model_type}...")
         all_buy_preds = self._get_bulk_predictions(df, features, model_type)
+        self.logger.debug(
+            f"[{ticker}] BUY predictions shape: {all_buy_preds.shape}, non-zero: {np.count_nonzero(all_buy_preds)}"
+        )
 
         # Load exit model (horizon=1) if buy_horizon > 1
         all_exit_preds = None
@@ -526,18 +541,31 @@ class BacktestEngine:
             ticker, signal_buy, df, features, exit_signal_func=signal_exit
         )
         if "error" not in result:
+            trade_count = (
+                len(self.ledger.ledger_df)
+                if self.ledger.ledger_df is not None and len(self.ledger.ledger_df) > 0
+                else 0
+            )
+            roi = result.get("roi", 0.0)
+            self.logger.info(
+                f"[{ticker}] {model_type.upper()} Results: Trades={trade_count}, ROI={roi:.2f}%"
+            )
             result["ledger_path"] = self.ledger.save_to_file(
                 filename=f"{ticker}_algorithm_{model_type}_h{horizon_days}d_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
+            )
+        else:
+            self.logger.error(
+                f"[{ticker}] {model_type.upper()} failed: {result.get('error', 'unknown error')}"
             )
         return result
 
     def run_strategy_mode(
         self,
         ticker: str,
-        models: List[str],
-        tie_breaker: Optional[str] = None,
+        models: list[str],
+        tie_breaker: str | None = None,
         mode_prefix: str = "consensus",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         self.ledger.clear()
         horizon_days = self._resolve_prediction_horizon_days()
         df_tuple = self._prepare_data(ticker)
@@ -630,12 +658,13 @@ class BacktestEngine:
     def _get_bulk_predictions(
         self,
         df: pd.DataFrame,
-        features: List[str],
+        features: list[str],
         model_type: str,
         builder: Optional["ModelBuilder"] = None,
     ) -> np.ndarray:
         """Helper to get predictions for all rows in one go with memory safety."""
         _builder = builder if builder is not None else self.model_builder
+        ticker = self.config.ticker
 
         # Ensure data is clean and use float64 to prevent overflow/inf during cast
         X_all = (
@@ -650,50 +679,97 @@ class BacktestEngine:
             and _builder.model is not None
             and _builder.price_scaler is not None
         ):
+            self.logger.debug(
+                f"[{ticker}] [LSTM] Multi-scaler transform: price_scaler={_builder.price_scaler is not None}, volume_scaler={_builder.volume_scaler is not None}, technical_scaler={_builder.technical_scaler is not None}"
+            )
             # LSTM uses multi-scaler architecture (price, volume, technical)
             # Apply the same multi-scaler transform used during training
             X_all_f32 = X_all.astype(np.float32)
-            X_scaled = _builder._apply_multi_scalers_transform(X_all_f32).astype(np.float32)
+            X_scaled = _builder._apply_multi_scalers_transform(X_all_f32).astype(
+                np.float32
+            )
             seq_len = _builder.sequence_length
+            self.logger.debug(f"[{ticker}] [LSTM] Sequence length: {seq_len}")
             valid_indices = np.arange(seq_len, len(df))
             X_seq = np.array(
                 [X_scaled[i - seq_len : i] for i in valid_indices], dtype=np.float32
             )
 
             if len(X_seq) == 0:
+                self.logger.warning(f"[{ticker}] [LSTM] No valid sequences generated")
                 return np.zeros(len(df), dtype=np.float32)
 
             raw_preds = _builder.model.predict(
                 X_seq, batch_size=64, verbose=0
             ).flatten()
+            self.logger.debug(
+                f"[{ticker}] [LSTM] Raw predictions shape: {raw_preds.shape}"
+            )
 
             if _builder.target_scaler is not None:
                 raw_preds = _builder.target_scaler.inverse_transform(
                     raw_preds.reshape(-1, 1)
                 ).flatten()
+                self.logger.debug(
+                    f"[{ticker}] [LSTM] Inverse-transformed predictions shape: {raw_preds.shape}"
+                )
 
             all_preds = np.zeros(len(df), dtype=np.float32)
             all_preds[seq_len:] = raw_preds
+            self.logger.debug(
+                f"[{ticker}] [LSTM] Final predictions shape: {all_preds.shape}, non-zero: {np.count_nonzero(all_preds)}"
+            )
             return all_preds
 
+        elif model_type == "lstm" and (
+            _builder.model is None or _builder.price_scaler is None
+        ):
+            self.logger.error(
+                f"[{ticker}] [LSTM] Model or price_scaler is None! model={_builder.model is not None}, price_scaler={_builder.price_scaler is not None}"
+            )
+            return np.zeros(len(df), dtype=np.float32)
+
         elif model_type == "prophet" and _builder.model is not None:
+            self.logger.debug(f"[{ticker}] [PROPHET] Generating forecast...")
             prophet_df = pd.DataFrame({"ds": df.index}).copy()
             prophet_df["ds"] = prophet_df["ds"].dt.tz_localize(None)
             prophet_df["ds"] = prophet_df["ds"] + pd.DateOffset(
                 days=_builder.target_horizon_days
             )
             forecast = _builder.model.predict(prophet_df)
-            return forecast["yhat"].values.astype(np.float32)
+            preds = forecast["yhat"].values.astype(np.float32)
+            self.logger.debug(
+                f"[{ticker}] [PROPHET] Forecast shape: {preds.shape}, non-zero: {np.count_nonzero(preds)}"
+            )
+            return preds
 
         elif _builder.model is not None and _builder.scaler is not None:
+            self.logger.debug(
+                f"[{ticker}] [{model_type.upper()}] Scaling features and predicting..."
+            )
             X_scaled = _builder.scaler.transform(X_all).astype(np.float32)
-            return _builder.model.predict(X_scaled).astype(np.float32)
+            preds = _builder.model.predict(X_scaled).astype(np.float32)
+            self.logger.debug(
+                f"[{ticker}] [{model_type.upper()}] Predictions shape: {preds.shape}, non-zero: {np.count_nonzero(preds)}"
+            )
+            return preds
 
         elif _builder.model is not None:
             # Tree models (random_forest, catboost, ngboost) use raw data without scaling
-            return _builder.model.predict(X_all).astype(np.float32)
+            self.logger.debug(
+                f"[{ticker}] [{model_type.upper()}] Predicting without scaling (tree model)..."
+            )
+            preds = _builder.model.predict(X_all).astype(np.float32)
+            self.logger.debug(
+                f"[{ticker}] [{model_type.upper()}] Predictions shape: {preds.shape}, non-zero: {np.count_nonzero(preds)}"
+            )
+            return preds
 
-        return np.zeros(len(df), dtype=np.float32)
+        else:
+            self.logger.error(
+                f"[{ticker}] [{model_type.upper()}] Model is None or insufficient configuration"
+            )
+            return np.zeros(len(df), dtype=np.float32)
         # WP-7.6: Phase 7 trend analysis for dynamic sell friction
         trend_data_for_consensus = {}
         for idx in range(len(df)):
