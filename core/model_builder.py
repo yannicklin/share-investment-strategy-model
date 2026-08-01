@@ -50,6 +50,11 @@ except ImportError:
 
 logging.getLogger("cmdstanpy").setLevel(logging.ERROR)
 logging.getLogger("prophet").setLevel(logging.ERROR)
+logging.getLogger("FinMind").setLevel(logging.ERROR)
+logging.getLogger("FinMind.data").setLevel(logging.ERROR)
+logging.getLogger("FinMind.data.finmind_api").setLevel(logging.ERROR)
+logging.getLogger("requests").setLevel(logging.ERROR)
+logging.getLogger("urllib3").setLevel(logging.ERROR)
 
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import (
@@ -676,13 +681,10 @@ class ModelBuilder:
                 logging.warning(f"Failed to fetch market data {name} ({ticker}): {e}")
                 failed_tickers.append(f"{name}({ticker})")
 
-        # Log summary
-        logging.info(
-            f"✅ Successfully fetched {len(successful_tickers)} market features: {', '.join(successful_tickers)}"
-        )
+        # Log summary (only warnings for failures, suppress success info)
         if failed_tickers:
             logging.warning(
-                f"❌ Failed to fetch {len(failed_tickers)} market features: {', '.join(failed_tickers)}"
+                f"⚠️ Failed to fetch {len(failed_tickers)} market features: {', '.join(failed_tickers)}"
             )
 
         # Clean up market data (handle inf/nan)
@@ -797,11 +799,7 @@ class ModelBuilder:
                 logging.warning(f"Failed to fetch revenue data for {stock_id}: {e}")
                 failed_features.append("Revenue")
 
-            # Log summary
-            if successful_features:
-                logging.info(
-                    f"✅ FinMind: Fetched {len(successful_features)} features for {stock_id}: {', '.join(successful_features)}"
-                )
+            # Log summary (only warnings, suppress info)
             if failed_features:
                 logging.warning(
                     f"⚠️ FinMind: Failed features for {stock_id}: {', '.join(failed_features)}"
