@@ -8,55 +8,14 @@ Author: Yannick
 Copyright (c) 2026 Yannick
 """
 
-import os
-
 import streamlit as st
-
+import yfinance as yf
 from core.config import Config
 from core.index_manager import load_index_constituents, update_index_data
 from core.model_builder import ModelBuilder
 
 
-def clean_all_models(model_path: str) -> bool:
-    """
-    Remove all model files and ledger data.
-
-    Args:
-        model_path: Path to model directory
-
-    Returns:
-        True if successful, False otherwise
-    """
-    try:
-        # Clean model files
-        if os.path.exists(model_path):
-            for filename in os.listdir(model_path):
-                if filename.endswith((".joblib", ".h5", ".keras", ".json", ".pkl")):
-                    file_path = os.path.join(model_path, filename)
-                    if os.path.isfile(file_path):
-                        os.remove(file_path)
-
-        # Clean ledger data
-        ledger_path = "data/ledgers"
-        if os.path.exists(ledger_path):
-            for filename in os.listdir(ledger_path):
-                if filename.endswith(".csv"):
-                    file_path = os.path.join(ledger_path, filename)
-                    if os.path.isfile(file_path):
-                        os.remove(file_path)
-
-        return True
-    except Exception as e:
-        st.error(f"Error cleaning models and ledgers: {str(e)}")
-        return False
-
-
 def render_sidebar(config: Config):
-    """Renders all sidebar inputs and returns the selected analysis mode."""
-
-    # Initialize session state
-    if "show_model_cleanup_confirm" not in st.session_state:
-        st.session_state.show_model_cleanup_confirm = False
     """Renders all sidebar inputs and returns the selected analysis mode."""
 
     # Inject custom CSS for a friendlier Dark Mode sidebar
@@ -70,7 +29,7 @@ def render_sidebar(config: Config):
             
             /* Sidebar Headers */
             [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
-                color: #B22234 !important;
+                color: #3d85c6 !important;
                 font-weight: 700 !important;
                 letter-spacing: -0.5px !important;
             }
@@ -83,9 +42,9 @@ def render_sidebar(config: Config):
             }
             
             [data-testid="stSidebar"] button:hover {
-                border-color: #B22234 !important;
-                color: #B22234 !important;
-                box-shadow: 0 0 10px rgba(178, 34, 52, 0.2) !important;
+                border-color: #3d85c6 !important;
+                color: #3d85c6 !important;
+                box-shadow: 0 0 10px rgba(61, 133, 198, 0.2) !important;
             }
 
             /* Horizontal dividers */
@@ -148,7 +107,7 @@ def render_sidebar(config: Config):
         index_choice = st.sidebar.selectbox(
             "Select Index to Scan",
             list(index_data.keys()),
-            help="Dow 30: Industrial Giants. Nasdaq 100: Tech & Growth. S&P 100: Top 100 Blue Chips.",
+            help="USA Stock 50: Blue Chips. USA Stock 200: Benchmark index.",
         )
 
         if st.sidebar.button("🔄 Update Index Constituents"):
@@ -279,20 +238,8 @@ def render_sidebar(config: Config):
         index=0 if config.scaler_type == "standard" else 1,
     )
 
-    config.weighting_type = st.sidebar.radio(
-        "Sample Weighting",
-        ["normal", "recency"],
-        index=0 if config.weighting_type == "normal" else 1,
-        help="Normal: Uniform weights. Recency: Exponential decay favoring recent data (half-life = backtest_years × multiplier set in config).",
-    )
-
     with st.sidebar.expander("Costs & Taxes"):
-        # USA Market Broker Profiles
-        profile_options = [
-            "Saxo / Global Prime (Classic)",
-            "Stake (Standard)",
-            "Interactive Brokers (Pro Fixed)",
-        ]
+        profile_options = ["default", "cmc_markets", "tiger_au"]
         config.cost_profile = st.selectbox(
             "Broker Profile",
             profile_options,
@@ -318,42 +265,12 @@ def render_sidebar(config: Config):
         )
         config.hurdle_risk_buffer = buffer_val / 100.0
 
-    # --- 4. MODEL MANAGEMENT ---
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("🧹 Model & Ledger Management")
-
-    # Clean models and ledgers button
-    if st.sidebar.button(
-        "🗑️ Clean out all models & ledgers",
-        key="clean_models_btn",
-        help="Remove all trained model files and transaction ledgers (force retraining on next run)",
-        use_container_width=True,
-    ):
-        st.session_state.show_model_cleanup_confirm = True
-
-    # Show confirmation dialog if user clicked clean button
-    if st.session_state.get("show_model_cleanup_confirm", False):
-        st.sidebar.warning("⚠️ This will delete all model files and ledger data!")
-
-        confirm_clicked = st.sidebar.button(
-            "✅ Confirm Delete", key="confirm_cleanup", use_container_width=True
-        )
-        cancel_clicked = st.sidebar.button(
-            "❌ Cancel", key="cancel_cleanup", use_container_width=True
-        )
-
-        if confirm_clicked:
-            if clean_all_models(config.model_path):
-                st.session_state.show_model_cleanup_confirm = False
-                st.sidebar.success("✅ Models & ledgers cleaned!")
-                st.rerun()
-
-        if cancel_clicked:
-            st.session_state.show_model_cleanup_confirm = False
-            st.rerun()
+    config.rebuild_model = st.sidebar.checkbox(
+        "Force Rebuild AI Models", value=config.rebuild_model
+    )
 
     st.sidebar.markdown("---")
-    run_analysis = st.sidebar.button("🚀 Run Analysis", use_container_width=True)
+    run_analysis = st.sidebar.button("🚀 Run Analysis", width="stretch")
 
     return (
         analysis_mode,

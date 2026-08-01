@@ -8,21 +8,21 @@ Author: Yannick
 Copyright (c) 2026 Yannick
 """
 
-import logging
-from typing import Any, Callable, Dict, List, Optional, Tuple
-
-import numpy as np
 import pandas as pd
-
-from core.config import BROKERS, Config, get_tax_profile
+import numpy as np
+import os
+import joblib
+import logging
+from typing import List, Dict, Any, Callable, Optional, Tuple, Union
+from core.config import Config, BROKERS, get_tax_profile
 from core.model_builder import ModelBuilder
-from core.transaction_ledger import TransactionLedger
-from core.trend_detector import detect_trend
 from core.utils import (
-    calculate_trading_days_ahead,
+    format_date_with_weekday,
     get_usa_trading_days,
+    calculate_trading_days_ahead,
     validate_buy_capacity,
 )
+from core.transaction_ledger import TransactionLedger
 
 
 class BacktestEngine:
@@ -110,29 +110,13 @@ class BacktestEngine:
         delta = df["Close"].diff()
         gain = (delta.where(delta > 0, 0)).rolling(14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-        rs = gain / (loss + 1e-9)
-        df["RSI"] = 100 - (100 / (1 + rs))
+        df["RSI"] = 100 - (100 / (1 + (gain / loss)))
         df["MA5"], df["MA20"] = (
             df["Close"].rolling(5).mean(),
             df["Close"].rolling(20).mean(),
         )
         df["Daily_Return"] = df["Close"].pct_change(fill_method=None)
         return df.dropna()
-
-    def _resolve_prediction_horizon_days(self) -> int:
-        """Map the configured holding period to a BUY prediction horizon in days."""
-        unit = self.config.hold_period_unit.lower()
-        value = max(1, int(self.config.hold_period_value))
-
-        if unit == "day":
-            return value
-        if unit == "week":
-            return value * 7
-        if unit == "month":
-            return value * 30
-        if unit == "year":
-            return value * 365
-        return value
 
     def _prepare_data(
         self, ticker: str
@@ -248,71 +232,20 @@ class BacktestEngine:
 
         return df, features, None
 
-    def _get_pre_consensus_exit(
-        self,
-        i: int,
-        df: pd.DataFrame,
-        buy_price: float,
-        buy_date: Optional[pd.Timestamp],
-        current_date: pd.Timestamp,
-    ) -> Tuple[Optional[str], float]:
-        """Return an early risk exit before consensus voting, if one applies."""
-        if buy_date is None:
-            return None, 0.0
-
-        low_p, high_p = float(df.iloc[i]["Low"]), float(df.iloc[i]["High"])
-        sl_p, tp_p = (
-            buy_price * (1 - self.config.stop_loss_threshold),
-            buy_price * (1 + self.config.stop_profit_threshold),
-        )
-
-        if low_p <= sl_p:
-            return "stop-loss", min(sl_p, float(df.iloc[i]["Open"]))
-
-        if buy_date is not None and self.trading_days is not None:
-            if self.config.hold_period_unit.lower() == "day":
-                target_date = calculate_trading_days_ahead(
-                    buy_date, self.config.hold_period_value, self.trading_days
-                )
-                min_hold_passed = (
-                    target_date is not None and current_date >= target_date
-                )
-            else:
-                unit_map = {
-                    "week": "weeks",
-                    "month": "months",
-                    "year": "years",
-                }
-                unit = unit_map.get(self.config.hold_period_unit.lower(), "months")
-                min_hold_passed = current_date >= (
-                    buy_date + pd.DateOffset(**{unit: self.config.hold_period_value})
-                )
-
-            if min_hold_passed and high_p >= tp_p:
-                return "take-profit", max(tp_p, float(df.iloc[i]["Open"]))
-
-        return None, 0.0
-
     def _core_run(
         self,
         ticker: str,
         signal_func: Callable[[int, pd.DataFrame, List[str], float], bool],
         df: pd.DataFrame,
         features: List[str],
-        exit_signal_func: Optional[
-            Callable[[int, pd.DataFrame, List[str], float], bool]
-        ] = None,
     ) -> Dict[str, Any]:
         """The shared engine logic for both modes.
 
         Args:
             ticker: Stock symbol
-            signal_func: Function(i, df, features, capital) -> bool — BUY entry signal
+            signal_func: Function(i, df, features, capital) -> bool
             df: Pre-filtered dataframe (trading days only)
             features: Feature columns list
-            exit_signal_func: Optional Function(i, df, features, capital) -> bool —
-                exit confirmation signal using the horizon=1 model. Falls back to
-                signal_func when None (backward compatible).
         """
 
         capital = self.config.init_capital
@@ -320,25 +253,11 @@ class BacktestEngine:
         trades = []
         settlement_queue = []  # List of (available_date, amount)
 
-        # Execution diagnostics tracking
-        execution_stats = {
-            "buy_capacity_checks": 0,
-            "buy_capacity_blocks": 0,
-            "buy_fee_blocks": 0,
-            "buy_signals": 0,
-            "buy_executions": 0,
-            "sell_stop_loss": 0,
-            "sell_take_profit": 0,
-            "sell_model_exit": 0,
-        }
-
         for i in range(len(df) - 1):
             date = pd.Timestamp(df.index[i])
             current_price = float(df.iloc[i]["Close"])
 
-            # Safety check: avoid division by zero or negative prices
-            if current_price <= 0:
-                continue
+            # Process Settlement Queue: Check if any cash has cleared today
             new_settlement_queue = []
             for avail_date, amount in settlement_queue:
                 if date >= avail_date:
@@ -351,10 +270,8 @@ class BacktestEngine:
             if position == 0:
                 # Signal engine needs to know current available capital
                 validation = validate_buy_capacity(capital, {ticker: current_price})
-                execution_stats["buy_capacity_checks"] += 1
                 if not validation["can_trade"]:
                     # Skip signal generation if insufficient cash
-                    execution_stats["buy_capacity_blocks"] += 1
                     continue
 
             is_bullish = signal_func(
@@ -365,12 +282,7 @@ class BacktestEngine:
             )
 
             if position == 0 and is_bullish:
-                execution_stats["buy_signals"] += 1
                 fees = self.calculate_fees(capital)
-                if capital <= fees:
-                    execution_stats["buy_fee_blocks"] += 1
-                    continue
-                execution_stats["buy_executions"] += 1
                 new_position = (capital - fees) / current_price
                 positions_before = {}
                 positions_after = {ticker: new_position}
@@ -395,59 +307,49 @@ class BacktestEngine:
                 capital = 0
 
             elif position > 0:
-                # Check for pre-consensus exits (stop-loss, take-profit)
-                exit_reason, exit_price = self._get_pre_consensus_exit(
-                    i, df, buy_price, buy_date, date
+                # Calculate sell date based on holding period unit
+                min_hold_passed = False
+                if buy_date is not None and self.trading_days is not None:
+                    if self.config.hold_period_unit.lower() == "day":
+                        # "Day" unit = TRADING DAYS (excludes weekends + holidays)
+                        target_date = calculate_trading_days_ahead(
+                            buy_date, self.config.hold_period_value, self.trading_days
+                        )
+                        if target_date is not None:
+                            min_hold_passed = date >= target_date
+                    else:
+                        # Other units (Week/Month/Year) = CALENDAR DAYS
+                        unit_map = {
+                            "week": "weeks",
+                            "month": "months",
+                            "year": "years",
+                        }
+                        unit = unit_map.get(
+                            self.config.hold_period_unit.lower(), "months"
+                        )
+                        offset = {unit: self.config.hold_period_value}
+                        min_hold_passed = date >= (buy_date + pd.DateOffset(**offset))
+
+                low_p, high_p = float(df.iloc[i]["Low"]), float(df.iloc[i]["High"])
+                sl_p, tp_p = (
+                    buy_price * (1 - self.config.stop_loss_threshold),
+                    buy_price * (1 + self.config.stop_profit_threshold),
                 )
 
                 reason, sell_price = None, 0.0
-                if exit_reason:
-                    # Pre-consensus exit triggered (before model vote)
-                    reason, sell_price = exit_reason, exit_price
-                    if reason == "stop-loss":
-                        execution_stats["sell_stop_loss"] += 1
-                    elif reason == "take-profit":
-                        execution_stats["sell_take_profit"] += 1
-                else:
-                    # No pre-consensus exit; check model-driven exit
-                    if buy_date is not None and self.trading_days is not None:
-                        if self.config.hold_period_unit.lower() == "day":
-                            # "Day" unit = TRADING DAYS (excludes weekends + holidays)
-                            target_date = calculate_trading_days_ahead(
-                                buy_date,
-                                self.config.hold_period_value,
-                                self.trading_days,
-                            )
-                            min_hold_passed = (
-                                target_date is not None and date >= target_date
-                            )
-                        else:
-                            # Other units (Week/Month/Year) = CALENDAR DAYS
-                            unit_map = {
-                                "week": "weeks",
-                                "month": "months",
-                                "year": "years",
-                            }
-                            unit = unit_map.get(
-                                self.config.hold_period_unit.lower(), "months"
-                            )
-                            offset = {unit: self.config.hold_period_value}
-                            min_hold_passed = date >= (
-                                buy_date + pd.DateOffset(**offset)
-                            )
-                    else:
-                        min_hold_passed = False
-
-                    if min_hold_passed:
-                        # Use horizon-1 exit model if provided; fall back to BUY signal
-                        _exit_fn = (
-                            exit_signal_func
-                            if exit_signal_func is not None
-                            else signal_func
+                if low_p <= sl_p:
+                    reason, sell_price = (
+                        "stop-loss",
+                        min(sl_p, float(df.iloc[i]["Open"])),
+                    )
+                elif min_hold_passed:
+                    if high_p >= tp_p:
+                        reason, sell_price = (
+                            "take-profit",
+                            max(tp_p, float(df.iloc[i]["Open"])),
                         )
-                        if not _exit_fn(i, df, features, position * current_price):
-                            reason, sell_price = "model-exit", current_price
-                            execution_stats["sell_model_exit"] += 1
+                    elif not is_bullish:
+                        reason, sell_price = "model-exit", current_price
 
                 if reason and buy_date is not None:
                     val = position * sell_price
@@ -538,50 +440,37 @@ class BacktestEngine:
             "win_rate": win_rate,
             "total_trades": len(trades),
             "trades": trades,
-            "execution_summary": execution_stats,
         }
 
     def run_model_mode(self, ticker: str, model_type: str) -> Dict[str, Any]:
         """Mode 1: Evaluate a single specific model."""
         # Clear ledger from previous run (no archiving)
         self.ledger.clear()
-        horizon_days = self._resolve_prediction_horizon_days()
 
         self.config.model_type = model_type
-        self.model_builder.load_or_build(
-            ticker, target_horizon_days=horizon_days
-        )  # Load once
+        self.model_builder.load_or_build(ticker)  # Load once
 
-        # Prepare filtered data (trading days only) — done once, shared for both horizons
+        # Prepare filtered data (trading days only)
         df_tuple = self._prepare_data(ticker)
         df, features, error = df_tuple
         if error or df is None or features is None:
             return error if error else {"error": "Failed to prepare data"}
 
-        # BUY bulk predictions — horizon=N model (already loaded above)
-        all_buy_preds = self._get_bulk_predictions(df, features, model_type)
+        # Bulk pre-calculate predictions on FILTERED data
+        all_preds = self._get_bulk_predictions(df, features, model_type)
 
-        # EXIT bulk predictions — horizon=1 model from the same bundle
-        self.model_builder.load_exit_model(ticker, buy_horizon_days=horizon_days)
-        all_exit_preds = self._get_bulk_predictions(df, features, model_type)
-
-        def signal(i, df_inner, _features_inner, current_cap):
+        def signal(i, df_inner, features_inner, current_cap):
             current_price = float(df_inner.iloc[i]["Close"])
             hurdle = self.get_hurdle_rate(current_cap)
-            return (all_buy_preds[i] - current_price) / current_price > hurdle
+            pred = all_preds[i]
+            pred_return = (pred - current_price) / current_price
+            return pred_return > hurdle
 
-        def exit_signal(i, df_inner, _features_inner, current_cap):
-            current_price = float(df_inner.iloc[i]["Close"])
-            hurdle = self.get_hurdle_rate(current_cap)
-            return (all_exit_preds[i] - current_price) / current_price > hurdle
-
-        result = self._core_run(
-            ticker, signal, df, features, exit_signal_func=exit_signal
-        )
+        result = self._core_run(ticker, signal, df, features)
 
         # Save ledger to file and clear from memory
         if "error" not in result:
-            ledger_filename = f"{ticker}_algorithm_{model_type}_h{horizon_days}d_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
+            ledger_filename = f"{ticker}_algorithm_{model_type}_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
             ledger_path = self.ledger.save_to_file(filename=ledger_filename)
             result["ledger_path"] = ledger_path
 
@@ -597,7 +486,6 @@ class BacktestEngine:
         """Mode 2/3: Evaluate strategy sensitivity using multi-model consensus."""
         # Clear ledger from previous run (no archiving)
         self.ledger.clear()
-        horizon_days = self._resolve_prediction_horizon_days()
 
         # Prepare filtered data (trading days only)
         df_tuple = self._prepare_data(ticker)
@@ -605,28 +493,12 @@ class BacktestEngine:
         if error or df is None or features is None:
             return error if error else {"error": "Failed to prepare data"}
 
-        # BUY bulk predictions — horizon=N per model
-        committee_buy_preds = {}
+        # Bulk pre-calculate predictions for all models in the committee on FILTERED data
+        committee_preds = {}
         for m_type in models:
             self.config.model_type = m_type
-            self.model_builder.load_or_build(ticker, target_horizon_days=horizon_days)
-            committee_buy_preds[m_type] = self._get_bulk_predictions(
-                df, features, m_type
-            )
-
-        # EXIT bulk predictions — horizon=1 per model (from the same bundle)
-        committee_exit_preds = {}
-        for m_type in models:
-            self.config.model_type = m_type
-            self.model_builder.load_exit_model(ticker, buy_horizon_days=horizon_days)
-            committee_exit_preds[m_type] = self._get_bulk_predictions(
-                df, features, m_type
-            )
-
-        consensus_stats = {
-            "model_count": len(models),
-            "tie_breaker": tie_breaker if tie_breaker else models[0],
-        }
+            self.model_builder.load_or_build(ticker)
+            committee_preds[m_type] = self._get_bulk_predictions(df, features, m_type)
 
         def signal(i, df_inner, features_inner, current_cap):
             votes = 0
@@ -634,12 +506,9 @@ class BacktestEngine:
             hurdle = self.get_hurdle_rate(current_cap)
             tie_breaker_bullish = False
             tb_model = tie_breaker if tie_breaker else models[0]
-            consensus_stats["signal_checks"] = (
-                consensus_stats.get("signal_checks", 0) + 1
-            )
 
             for m_type in models:
-                pred = committee_buy_preds[m_type][i]
+                pred = committee_preds[m_type][i]
                 pred_return = (pred - current_price) / current_price
                 is_m_bullish = pred_return > hurdle
 
@@ -654,33 +523,11 @@ class BacktestEngine:
                 return tie_breaker_bullish
             return False
 
-        def exit_signal(i, df_inner, features_inner, current_cap):
-            votes = 0
-            current_price = float(df_inner.iloc[i]["Close"])
-            hurdle = self.get_hurdle_rate(current_cap)
-            tb_model = tie_breaker if tie_breaker else models[0]
-            tie_breaker_bullish = False
-            for m_type in models:
-                pred = committee_exit_preds[m_type][i]
-                pred_return = (pred - current_price) / current_price
-                is_m_bullish = pred_return > hurdle
-                if is_m_bullish:
-                    votes += 1
-                if m_type == tb_model:
-                    tie_breaker_bullish = is_m_bullish
-            if votes > (len(models) / 2):
-                return True
-            if votes == (len(models) / 2):
-                return tie_breaker_bullish
-            return False
-
-        result = self._core_run(
-            ticker, signal, df, features, exit_signal_func=exit_signal
-        )
+        result = self._core_run(ticker, signal, df, features)
 
         # Save ledger to file and clear from memory
         if "error" not in result:
-            ledger_filename = f"{ticker}_{mode_prefix}_h{horizon_days}d_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
+            ledger_filename = f"{ticker}_{mode_prefix}_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
             ledger_path = self.ledger.save_to_file(filename=ledger_filename)
             result["ledger_path"] = ledger_path
 
@@ -690,24 +537,16 @@ class BacktestEngine:
         self, df: pd.DataFrame, features: List[str], model_type: str
     ) -> np.ndarray:
         """Helper to get predictions for all rows in one go with memory safety."""
-        # Ensure data is clean and use float64 to prevent overflow/inf during cast
-        X_all = (
-            df[features]
-            .replace([np.inf, -np.inf], np.nan)
-            .fillna(0)
-            .values.astype(np.float64)
-        )
+        X_all = df[features].values.astype(np.float32)
 
         if (
             model_type == "lstm"
             and self.model_builder.model is not None
             and self.model_builder.scaler is not None
         ):
-            # LSTM still needs float32 for most backends
-            X_all_f32 = X_all.astype(np.float32)
             # Use sequence_length from model_builder for consistency
             seq_len = self.model_builder.sequence_length
-            X_scaled = self.model_builder.scaler.transform(X_all_f32).astype(np.float32)
+            X_scaled = self.model_builder.scaler.transform(X_all).astype(np.float32)
 
             # Create sequences: at time i, use [i-seq_len:i] to predict i+1
             # This matches training where [i:i+seq_len] predicts target[i+seq_len]=Close[i+seq_len+1]
@@ -756,36 +595,3 @@ class BacktestEngine:
             return self.model_builder.model.predict(X_scaled).astype(np.float32)
 
         return np.zeros(len(df), dtype=np.float32)
-        # WP-7.6: Phase 7 trend analysis for dynamic sell friction
-        trend_data_for_consensus = {}
-        for idx in range(len(df)):
-            df_window = df.iloc[
-                max(0, idx - 60) : idx + 1
-            ]  # 60 days lookback for indicators
-            if len(df_window) >= 50:
-                trend_result = detect_trend(df_window, ticker)
-                trend_data_for_consensus[idx] = trend_result.get("trend", "RANGEBOUND")
-            else:
-                trend_data_for_consensus[idx] = "RANGEBOUND"
-
-        def exit_signal(i, df_inner, _features_inner, current_cap):
-            votes = 0
-            current_price = float(df_inner.iloc[i]["Close"])
-            hurdle = self.get_hurdle_rate(current_cap)
-            tb_model = tie_breaker if tie_breaker else models[0]
-            tie_breaker_bullish = False
-
-            # WP-7.6: Get dynamic sell_friction based on trend
-            trend = trend_data_for_consensus.get(i, "RANGEBOUND")
-            TREND_MULTIPLIERS = {
-                "UPTREND": 5.0,  # Higher threshold: let winners run
-                "DOWNTREND": 2.0,  # Lower threshold: quick exits
-                "RANGEBOUND": 3.0,  # Neutral
-            }
-            sell_friction = TREND_MULTIPLIERS.get(trend, 3.0)
-
-            for m_type in models:
-                pred = committee_exit_preds[m_type][i]
-                pred_return = (pred - current_price) / current_price
-                # WP-7.6: Apply dynamic friction multiplier
-                is_m_bullish = pred_return > (hurdle * sell_friction)

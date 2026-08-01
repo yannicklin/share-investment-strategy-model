@@ -1,20 +1,20 @@
-"""USA AI Trading System - Model Builder
+"""
+USA AI Trading System - Model Builder
 
-Factory for ML models with multi-scaler groups, log-normalization, and feature mapping.
-See docs/MULTI_SCALER_AND_LOG_NORMALIZATION_ARCHITECTURE.md for architecture details.
+Purpose: Factory for creating and training machine learning models with
+standardized interfaces for prediction and backtesting for the US market.
 
 Author: Yannick
 Copyright (c) 2026 Yannick
 """
 
-import logging
 import os
-import time
-
 import joblib
 import numpy as np
 import pandas as pd
 import yfinance as yf
+import time
+import logging
 
 # Suppress heavy logging and warnings from backends
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -33,26 +33,10 @@ except ImportError:
 logging.getLogger("cmdstanpy").setLevel(logging.ERROR)
 logging.getLogger("prophet").setLevel(logging.ERROR)
 
-from typing import Any
-
-# Try to use curl-cffi for rate limit bypass
-try:
-    from curl_cffi import requests as cf_requests
-
-    CURL_CFFI_AVAILABLE = True
-except ImportError:
-    CURL_CFFI_AVAILABLE = False
-
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.preprocessing import (
-    MinMaxScaler,
-    QuantileTransformer,
-    RobustScaler,
-    StandardScaler,
-)
-
+from typing import Optional, Any, Dict, List
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.preprocessing import StandardScaler, RobustScaler
 from core.config import Config
-from core.data_helpers import get_data_helper
 
 
 class ModelBuilder:
@@ -60,227 +44,20 @@ class ModelBuilder:
 
     def __init__(self, config: Config):
         self.config = config
-        self.model: Any | None = None
-        self.price_scaler: Any | None = None
-        self.volume_scaler: Any | None = None
-        self.technical_scaler: Any | None = None
-        self.scaler: Any | None = None
-        self.target_scaler: Any | None = None
-        self.close_was_log_normalized: bool = False
+        self.model: Optional[Any] = None
+        self.scaler: Optional[Any] = None
+        self.target_scaler: Optional[Any] = None  # For LSTM target scaling
         self.sequence_length = 30
-        self.target_horizon_days = 1
-        self._data_cache: dict[str, pd.DataFrame] = {}
-        self._market_data: pd.DataFrame | None = None
-        self._company_name_cache: dict[str, str] = {}
-        self._etf_cache: dict[str, bool] = {}
-        self._price_feature_indices: list[int] = []
-        self._volume_feature_indices: list[int] = []
-        self._technical_feature_indices: list[int] = []
+        self._data_cache: Dict[str, pd.DataFrame] = {}
+        self._market_data: Optional[pd.DataFrame] = None
 
     def _init_scaler(self) -> Any:
         if self.config.scaler_type == "robust":
             return RobustScaler()
         return StandardScaler()
 
-    def _init_scalers(self, n_samples: int | None = None) -> dict[str, Any]:
-        """Initialize multi-scaler groups. See docs for architecture."""
-        if n_samples is not None:
-            n_quantiles = max(10, min(1000, n_samples - 1))
-        else:
-            n_quantiles = 500
-
-        return {
-            "price_scaler": MinMaxScaler(feature_range=(0.1, 0.9)),
-            "volume_scaler": QuantileTransformer(
-                output_distribution="normal", n_quantiles=n_quantiles, random_state=42
-            ),
-            "technical_scaler": RobustScaler(),
-            "target_scaler": MinMaxScaler(feature_range=(0.1, 0.9)),
-        }
-
-    def _get_feature_group_indices(self, feature_list: list[str]) -> None:
-        """Map feature columns to scaler groups."""
-        price_features = {"Open", "High", "Low", "Close", "BB_Upper", "BB_Lower"}
-        volume_features = {"Volume"}
-        technical_features = {
-            "MA5",
-            "MA20",
-            "MA50",
-            "RSI",
-            "MACD",
-            "Signal_Line",
-            "BB_Width",
-            "ATR",
-            "Daily_Return",
-        }
-
-        self._price_feature_indices = [
-            i for i, f in enumerate(feature_list) if f in price_features
-        ]
-        self._volume_feature_indices = [
-            i for i, f in enumerate(feature_list) if f in volume_features
-        ]
-        self._technical_feature_indices = [
-            i for i, f in enumerate(feature_list) if f in technical_features
-        ]
-
-    def _apply_multi_scalers_fit(self, X: np.ndarray) -> np.ndarray:
-        """Fit scalers on respective feature groups."""
-        X_scaled = X.copy()
-
-        if self._price_feature_indices:
-            X_scaled[:, self._price_feature_indices] = self.price_scaler.fit_transform(
-                X[:, self._price_feature_indices]
-            )
-
-        if self._volume_feature_indices:
-            X_scaled[:, self._volume_feature_indices] = (
-                self.volume_scaler.fit_transform(X[:, self._volume_feature_indices])
-            )
-
-        if self._technical_feature_indices:
-            X_scaled[:, self._technical_feature_indices] = (
-                self.technical_scaler.fit_transform(
-                    X[:, self._technical_feature_indices]
-                )
-            )
-
-        return X_scaled
-
-    def _apply_multi_scalers_transform(self, X: np.ndarray) -> np.ndarray:
-        """Transform feature matrix using fitted scalers."""
-        X_scaled = X.copy()
-
-        if self._price_feature_indices:
-            X_scaled[:, self._price_feature_indices] = self.price_scaler.transform(
-                X[:, self._price_feature_indices]
-            )
-
-        if self._volume_feature_indices:
-            X_scaled[:, self._volume_feature_indices] = self.volume_scaler.transform(
-                X[:, self._volume_feature_indices]
-            )
-
-        if self._technical_feature_indices:
-            X_scaled[:, self._technical_feature_indices] = (
-                self.technical_scaler.transform(X[:, self._technical_feature_indices])
-            )
-
-        return X_scaled
-
-    def _calculate_sample_weights(self, n_samples: int) -> np.ndarray:
-        """
-        Calculate sample weights based on weighting type.
-        For recency weighting: exponential decay with half-life = backtest_years * recency_half_life_multiplier
-        """
-        if self.config.weighting_type == "normal":
-            # Uniform weights
-            return np.ones(n_samples)
-
-        # Recency weighting with exponential decay
-        half_life = (
-            self.config.backtest_years * self.config.recency_half_life_multiplier
-        )
-        lambda_decay = np.log(2) / half_life  # Decay constant
-
-        # Time indices: 0 (oldest) to n_samples-1 (newest)
-        time_indices = np.arange(n_samples)
-        max_time = n_samples - 1
-
-        # Exponential decay: w_i = exp(-lambda * (t_max - t_i))
-        weights = np.exp(-lambda_decay * (max_time - time_indices))
-
-        # Normalize to [0, 1] range with max weight = 1
-        weights = weights / np.max(weights)
-
-        return weights
-
-    def _download_with_retry(
-        self, ticker: str, start_date, max_retries: int = 3, base_delay: float = 2.0
-    ) -> pd.DataFrame:
-        """Download data with exponential backoff retry and Alpaca/yfinance support."""
-
-        # Try Alpaca first for USA market
-        try:
-            data_helper = get_data_helper("USA")
-            df = data_helper.fetch_historical_data(
-                ticker, pd.Timestamp(start_date), pd.Timestamp.now()
-            )
-            if df is not None and not df.empty:
-                logging.info(f"✅ Successfully fetched {ticker} via Alpaca")
-                return df
-        except Exception as e:
-            logging.debug(f"Alpaca fetch failed for {ticker}: {e}, trying yfinance")
-
-        # Fallback to yfinance with retry logic
-        # Create curl-cffi session if available
-        session = None
-        if CURL_CFFI_AVAILABLE:
-            try:
-                # Use environment CURL_IMPERSONATE or default to chrome131
-                impersonate = os.environ.get("CURL_IMPERSONATE", "chrome131")
-                session = cf_requests.Session(impersonate=impersonate)
-            except Exception as e:
-                logging.warning(f"Failed to create curl-cffi session: {e}")
-
-        for attempt in range(max_retries):
-            try:
-                # Add small delay between attempts to avoid rate limits
-                if attempt > 0:
-                    delay = base_delay * (2**attempt) + (
-                        0.5 * attempt
-                    )  # Exponential backoff
-                    logging.info(
-                        f"Retry {attempt + 1}/{max_retries} for {ticker} after {delay:.1f}s delay..."
-                    )
-                    time.sleep(delay)
-
-                # Download with optional curl-cffi session
-                df = yf.download(
-                    ticker,
-                    start=start_date,
-                    progress=False,
-                    auto_adjust=True,
-                    threads=False,
-                    session=session if session else None,
-                )
-
-                if not df.empty:
-                    logging.info(
-                        f"✅ Successfully downloaded data for {ticker} (Attempt {attempt + 1}/{max_retries})"
-                    )
-                    return df
-                else:
-                    logging.warning(
-                        f"Downloaded empty DataFrame for {ticker} (Attempt {attempt + 1}/{max_retries})"
-                    )
-
-            except Exception as e:
-                error_msg = str(e)
-                logging.error(
-                    f"Download attempt {attempt + 1}/{max_retries} failed for {ticker}: {e}"
-                )
-                if "Rate limit" in error_msg or "Too Many Requests" in error_msg:
-                    if attempt < max_retries - 1:
-                        logging.warning(f"Rate limit hit for {ticker}, will retry...")
-                        continue
-                    else:
-                        logging.error(
-                            f"Rate limit exceeded for {ticker} after {max_retries} attempts"
-                        )
-                else:
-                    logging.error(
-                        f"Download failed for {ticker} non-rate-limit reason: {e}"
-                    )
-                    break
-
-        logging.error(
-            f"❌ Failed to download data for {ticker} after {max_retries} attempts."
-        )
-        return pd.DataFrame()
-
     @classmethod
-    def get_available_models(cls) -> list[str]:
+    def get_available_models(cls) -> List[str]:
         """Returns a list of models that have their dependencies installed."""
         available = ["random_forest"]
 
@@ -348,8 +125,9 @@ class ModelBuilder:
             return Prophet(daily_seasonality=True, yearly_seasonality=True)
 
         elif m_type == "lstm":
-            from tensorflow.keras.layers import LSTM, Dense, Dropout, Input
+            import tensorflow as tf
             from tensorflow.keras.models import Sequential
+            from tensorflow.keras.layers import LSTM, Dense, Dropout, Input
 
             logging.info("Initialized LSTM model.")
             model = Sequential(
@@ -430,44 +208,22 @@ class ModelBuilder:
 
     def get_company_name(self, ticker: str) -> str:
         """Fetches the long name of the company from yfinance."""
-        if ticker in self._company_name_cache:
-            return self._company_name_cache[ticker]
-
         try:
             info = yf.Ticker(ticker).info
-            company_name = info.get("longName", ticker)
-            self._company_name_cache[ticker] = company_name
-            return company_name
+            return info.get("longName", ticker)
         except Exception:
             return ticker
 
     def is_etf(self, ticker: str) -> bool:
         """Determines if a ticker is an ETF using yfinance info."""
-        if ticker in self._etf_cache:
-            return self._etf_cache[ticker]
-
         try:
             # We don't want to call .info for every run, so we might want a small cache
             # or just rely on the quoteType if we had it.
             # For now, a quick fetch is fine as it's only called during rendering once per ticker.
             info = yf.Ticker(ticker).info
-            is_etf = info.get("quoteType") == "ETF"
-            self._etf_cache[ticker] = is_etf
-            return is_etf
+            return info.get("quoteType") == "ETF"
         except Exception:
             return False
-
-    def get_data_cache_snapshot(self) -> dict[str, pd.DataFrame]:
-        """Return a shallow copy of the current data cache for worker reuse."""
-        return dict(self._data_cache)
-
-    def set_data_cache_snapshot(self, data_cache: dict[str, pd.DataFrame]) -> None:
-        """Replace the local cache with a shallow copy of a shared snapshot."""
-        self._data_cache = dict(data_cache)
-
-    def set_cached_market_data(self, market_data: pd.DataFrame | None) -> None:
-        """Prime the market data cache from an existing DataFrame snapshot."""
-        self._market_data = market_data
 
     def fetch_data(self, ticker: str, years: int) -> pd.DataFrame:
         cache_key = f"{ticker}_{years}"
@@ -479,29 +235,34 @@ class ModelBuilder:
         # so that indicators and LSTM sequences are ready on the actual start date.
         start_date = end_date - pd.DateOffset(years=years) - pd.DateOffset(days=90)
 
-        data = self._download_with_retry(ticker, start_date)
-        if not data.empty:
-            logging.info(f"✅ Successfully fetched yfinance data for {ticker}.")
-            norm = self._normalize_df(data, ticker)
-            self._data_cache[cache_key] = norm
-            return norm
-        else:
-            logging.error(f"❌ yfinance returned empty data for {ticker}.")
-
+        for attempt in range(3):
+            try:
+                data = yf.download(
+                    ticker,
+                    start=start_date,
+                    end=end_date,
+                    auto_adjust=True,
+                    progress=False,
+                    threads=False,
+                )
+                if not data.empty:
+                    norm = self._normalize_df(data, ticker)
+                    self._data_cache[cache_key] = norm
+                    return norm
+                time.sleep(1)
+            except Exception:
+                pass
         return pd.DataFrame()
 
-    def prefetch_data_batch(self, tickers: list[str], years: int):
+    def prefetch_data_batch(self, tickers: List[str], years: int):
         if not tickers:
             return
         end_date = pd.Timestamp.now()
-        # Match the same 90-day warm-up buffer used by fetch_data so that
-        # batch-prefetched tickers have sufficient history for indicators/LSTM.
-        start_date = end_date - pd.DateOffset(years=years) - pd.DateOffset(days=90)
+        start_date = end_date - pd.DateOffset(years=years)
         to_fetch = [t for t in tickers if f"{t}_{years}" not in self._data_cache]
         if not to_fetch:
             return
 
-        # Phase 1: batch download — one HTTP call per 20 tickers (fast path)
         for i in range(0, len(to_fetch), 20):
             batch = to_fetch[i : i + 20]
             try:
@@ -536,35 +297,12 @@ class ModelBuilder:
             except Exception:
                 pass
 
-        # Phase 2: individually retry any tickers still missing after the batch.
-        # Done serially in the main process so that workers never need to make
-        # network calls — eliminating parallel-download race conditions entirely.
-        still_missing = [t for t in to_fetch if f"{t}_{years}" not in self._data_cache]
-        if still_missing:
-            logging.info(
-                f"Retrying {len(still_missing)} tickers individually "
-                f"after batch prefetch miss: {still_missing}"
-            )
-            for t in still_missing:
-                df = self._download_with_retry(t, start_date)
-                if not df.empty:
-                    norm = self._normalize_df(df, t)
-                    if not norm.empty:
-                        self._data_cache[f"{t}_{years}"] = norm
-                else:
-                    logging.warning(
-                        f"⚠️ {t}: could not fetch data — will be skipped in analysis."
-                    )
-                    # Insert an empty-DataFrame sentinel so that fetch_data() returns
-                    # immediately (cache hit) instead of retrying inside worker processes,
-                    # which would produce duplicate error logs and unnecessary network calls.
-                    self._data_cache[f"{t}_{years}"] = pd.DataFrame()
-
     def _ensure_market_data(self):
         """Fetches and caches market/macro data if not already present."""
         if self._market_data is not None:
             return
 
+        logging.info("Fetching market and macro data...")
         market_tickers = {
             **self.config.market_indices,
             **self.config.macro_indicators,
@@ -574,81 +312,40 @@ class ModelBuilder:
         start_date = pd.Timestamp.now() - pd.DateOffset(years=10)
 
         market_df = pd.DataFrame()
-        successful_tickers = []
-        failed_tickers = []
 
         for name, ticker in market_tickers.items():
             try:
-                df = self._download_with_retry(ticker, start_date)
+                # Use history for cleaner single-ticker fetch
+                # or download. we need daily close.
+                df = yf.download(
+                    ticker,
+                    start=start_date,
+                    progress=False,
+                    auto_adjust=True,
+                    threads=False,
+                )
 
                 if df.empty:
-                    logging.warning(f"No data returned for {name} ({ticker})")
-                    failed_tickers.append(f"{name}({ticker})")
                     continue
 
+                # Clean and normalize
                 df = self._normalize_df(df, ticker)
 
                 if "Close" in df.columns:
+                    # Rename to prevent collision and identify source
                     col_name = f"MKT_{name}"
                     market_df[col_name] = df["Close"]
-                    successful_tickers.append(f"{name}({ticker})")
-                else:
-                    logging.warning(f"No 'Close' column for {name} ({ticker})")
-                    failed_tickers.append(f"{name}({ticker})")
+
+                    # Also add Returns for indices/macro (optional but useful)
+                    # market_df[f"{col_name}_Ret"] = df["Close"].pct_change()
             except Exception as e:
                 logging.warning(f"Failed to fetch market data {name} ({ticker}): {e}")
-                failed_tickers.append(f"{name}({ticker})")
 
-        logging.info(
-            f"✅ Successfully fetched {len(successful_tickers)} market features: {', '.join(successful_tickers)}"
-        )
-        if failed_tickers:
-            logging.warning(
-                f"❌ Failed to fetch {len(failed_tickers)} market features: {', '.join(failed_tickers)}"
-            )
-
-        # Clean up market data (handle inf/nan)
-        market_df.replace([np.inf, -np.inf], np.nan, inplace=True)
+        # Forward fill to handle different trading calendars (e.g. US holidays vs AU)
         self._market_data = market_df.ffill().fillna(0)
 
-        logging.info(
-            f"📈 Total market data columns: {len(self._market_data.columns)} - {list(self._market_data.columns)}"
-        )
-
-    def ensure_market_data(self):
-        """Public wrapper for market data initialization."""
-        self._ensure_market_data()
-
-    @property
-    def market_data(self) -> pd.DataFrame | None:
-        """Public read-only access to cached market data."""
-        return self._market_data
-
-    def _build_horizon_target(
-        self, close_series: pd.Series, horizon_days: int
-    ) -> pd.Series:
-        """Build a future-close target aligned to the requested horizon."""
-        horizon_days = max(1, int(horizon_days))
-        close_index = pd.DatetimeIndex(close_series.index)
-        close_values = close_series.to_numpy(dtype=float)
-        target_values = np.full(len(close_values), np.nan, dtype=float)
-
-        for i, current_date in enumerate(close_index):
-            target_date = current_date + pd.DateOffset(days=horizon_days)
-            target_pos = close_index.searchsorted(target_date, side="left")
-            if target_pos < len(close_values):
-                target_values[i] = close_values[target_pos]
-
-        return pd.Series(target_values, index=close_index)
-
-    def prepare_features(
-        self,
-        data: pd.DataFrame,
-        ticker: str = None,
-        target_horizon_days: int | None = None,
-    ):
+    def prepare_features(self, data: pd.DataFrame):
         df = data.copy()
-        horizon_days = max(1, int(target_horizon_days or self.target_horizon_days))
 
         # Double check Close is a Series
         if "Close" not in df.columns:
@@ -701,13 +398,8 @@ class ModelBuilder:
 
         df["Daily_Return"] = df["Close"].pct_change(fill_method=None)
 
-        df["Target"] = self._build_horizon_target(df["Close"], horizon_days)
+        df["Target"] = df["Close"].shift(-1)
         df = df.dropna()
-
-        # Final safety cleanup for all features (including indicators and market data)
-        df.replace([np.inf, -np.inf], np.nan, inplace=True)
-        df.ffill(inplace=True)
-        df.fillna(0, inplace=True)
 
         # Update features list
         features = [
@@ -735,27 +427,8 @@ class ModelBuilder:
                 if col in df.columns:
                     features.append(col)
 
-        # Log feature details for debugging
-        logging.debug(f"Total features prepared: {len(features)} - {features}")
-        logging.debug(
-            f"Market features included: {[f for f in features if f.startswith('MKT_')]}"
-        )
-
         X = df[features].values
         y = df["Target"].values
-
-        # Detect log-normalization: if Close max/min ratio > 1.5, apply log transformation
-        close_min = df["Close"].min()
-        close_max = df["Close"].max()
-        if close_min > 0 and (close_max / close_min) > 1.5:
-            self.close_was_log_normalized = True
-            y = np.log1p(y)
-        else:
-            self.close_was_log_normalized = False
-
-        # Map features to scaler groups for multi-scaler training
-        self._get_feature_group_indices(features)
-
         return X, y
 
     def _create_sequences(self, data_scaled, target):
@@ -765,390 +438,185 @@ class ModelBuilder:
             y_seq.append(target[i + self.sequence_length])
         return np.array(X_seq), np.array(y_seq)
 
-    @staticmethod
-    def _get_lstm_horizon_path(bundle_path: str, target_horizon_days: int) -> str:
-        """Return the horizon-specific Keras sidecar path for a bundle file."""
-        return bundle_path.replace(".joblib", f"_h{int(target_horizon_days)}.keras")
-
-    @staticmethod
-    def _extract_horizon_entry(data_bundle: dict, target_horizon_days: int) -> dict:
-        """Extract a single horizon entry from a bundle dict.
-
-        Handles both the new multi-horizon format (bundle["horizons"][N])
-        and the legacy flat format (bundle["target_horizon_days"] == N).
-
-        Raises:
-            FileNotFoundError: If the requested horizon is not found in the bundle.
-        """
-        horizons = data_bundle.get("horizons")
-        if horizons is not None:
-            entry = horizons.get(int(target_horizon_days))
-            if entry is None:
-                raise FileNotFoundError(
-                    f"Horizon {target_horizon_days} not found in bundle. "
-                    f"Available horizons: {list(horizons.keys())}. Re-run training."
-                )
-            return entry
-        # Legacy flat bundle — target_horizon_days stored at top level
-        stored_horizon = int(data_bundle.get("target_horizon_days", 1))
-        if stored_horizon != int(target_horizon_days):
-            raise FileNotFoundError(
-                f"Legacy bundle stores horizon={stored_horizon}, "
-                f"requested horizon={target_horizon_days}. Re-run training."
-            )
-        return data_bundle
-
-    def train(self, ticker: str, target_horizon_days: int | None = None):
-        if target_horizon_days is not None:
-            self.target_horizon_days = max(1, int(target_horizon_days))
-
-        buy_horizon = max(1, int(self.target_horizon_days))
-        required_horizons = sorted({1, buy_horizon})
-
+    def train(self, ticker: str):
         data = self.fetch_data(ticker, self.config.backtest_years)
         if data.empty:
             raise ValueError(f"No data for {ticker}")
 
+        X, y = self.prepare_features(data)
+        if len(X) < 1:
+            raise ValueError(
+                f"Insufficient data rows for {ticker} after feature engineering."
+            )
+
+        self.scaler = self._init_scaler()
+        X_scaled = self.scaler.fit_transform(X)
+
         m_type = self.config.model_type
-        weighting_suffix = self.config.weighting_type
-        horizon_suffix = f"h{buy_horizon}d"
+
+        # For LSTM, also scale the target
+        target_scaler = None
+        y_scaled = y
+        if m_type == "lstm":
+            from sklearn.preprocessing import StandardScaler
+
+            target_scaler = StandardScaler()
+            y_scaled = target_scaler.fit_transform(y.reshape(-1, 1)).flatten()
+
+        if m_type == "lstm":
+            try:
+                X_seq, y_seq = self._create_sequences(X_scaled, y_scaled)
+                self.model = self._init_model(input_dim=X.shape[1])
+                self.model.fit(X_seq, y_seq, batch_size=32, epochs=10, verbose=0)
+                self.target_scaler = target_scaler  # Save for inverse transform
+            except Exception:
+                self.model = self._init_model()
+                self.model.fit(X_scaled, y)
+                self.target_scaler = None
+        elif m_type == "prophet":
+            try:
+                prophet_df = pd.DataFrame(
+                    {"ds": data.index, "y": data["Close"].values.flatten()}
+                )
+                prophet_df["ds"] = pd.to_datetime(prophet_df["ds"]).dt.tz_localize(None)
+                prophet_df = prophet_df.dropna()
+                self.model = self._init_model()
+                self.model.fit(prophet_df)
+            except Exception:
+                self.model = self._init_model()
+                self.model.fit(X_scaled, y)
+        else:
+            self.model = self._init_model()
+            self.model.fit(X_scaled, y)
+
         os.makedirs(self.config.model_path, exist_ok=True)
         model_filename = os.path.join(
-            self.config.model_path,
-            f"{ticker}_{m_type}_{weighting_suffix}_{horizon_suffix}_model.joblib",
+            self.config.model_path, f"{ticker}_{m_type}_model.joblib"
         )
-
-        # Read-modify-write: preserve any existing horizons already in the bundle
-        if os.path.exists(model_filename):
-            try:
-                existing = joblib.load(model_filename)
-                bundle_payload = {
-                    "model_type": m_type,
-                    "weighting_type": self.config.weighting_type,
-                    "horizons": dict(existing.get("horizons", {})),
-                }
-            except Exception:
-                bundle_payload = {
-                    "model_type": m_type,
-                    "weighting_type": self.config.weighting_type,
-                    "horizons": {},
-                }
+        if m_type == "lstm" and hasattr(self.model, "save"):
+            keras_path = model_filename.replace(".joblib", ".keras")
+            self.model.save(keras_path)
+            joblib.dump(
+                {
+                    "scaler": self.scaler,
+                    "target_scaler": self.target_scaler,  # Save target scaler
+                    "keras_path": keras_path,
+                    "model_class": self.model.__class__.__name__,
+                },
+                model_filename,
+            )
         else:
-            bundle_payload = {
-                "model_type": m_type,
-                "weighting_type": self.config.weighting_type,
-                "horizons": {},
-            }
+            joblib.dump(
+                {
+                    "model": self.model,
+                    "scaler": self.scaler,
+                    "target_scaler": getattr(
+                        self, "target_scaler", None
+                    ),  # Include if exists
+                    "model_class": self.model.__class__.__name__,
+                },
+                model_filename,
+            )
 
-        for h in required_horizons:
-            X, y = self.prepare_features(data, ticker, target_horizon_days=h)
-            if len(X) < 1:
-                raise ValueError(
-                    f"Insufficient data rows for {ticker} (horizon={h}) after feature engineering."
-                )
-
-            # Conditional scaling based on model type
-            if m_type == "lstm":
-                scalers = self._init_scalers(len(X))
-                self.price_scaler = scalers["price_scaler"]
-                self.volume_scaler = scalers["volume_scaler"]
-                self.technical_scaler = scalers["technical_scaler"]
-                X_scaled = self._apply_multi_scalers_fit(X)
-            else:
-                X_scaled = X  # Tree models use raw data
-
-            # Calculate sample weights based on weighting strategy
-            sample_weights = self._calculate_sample_weights(len(X_scaled))
-
-            # For LSTM, also scale the target
-            target_scaler = None
-            y_scaled = y
-            if m_type == "lstm":
-                target_scaler = StandardScaler()
-                y_scaled = target_scaler.fit_transform(y.reshape(-1, 1)).flatten()
-
-            if m_type == "lstm":
-                try:
-                    X_seq, y_seq = self._create_sequences(X_scaled, y_scaled)
-                    seq_sample_weights = self._calculate_sample_weights(len(X_seq))
-                    self.model = self._init_model(input_dim=X.shape[1])
-                    self.model.fit(
-                        X_seq,
-                        y_seq,
-                        sample_weight=seq_sample_weights,
-                        batch_size=32,
-                        epochs=10,
-                        verbose=0,
-                    )
-                    self.target_scaler = target_scaler
-                except Exception as e:
-                    logging.warning(
-                        f"⚠️ LSTM sequence training failed for {ticker} (h={h}): {e}. "
-                        f"Falling back to standard training."
-                    )
-                    self.model = self._init_model()
-                    self.model.fit(X_scaled, y, sample_weight=sample_weights)
-                    self.target_scaler = None
-            elif m_type == "prophet":
-                try:
-                    prophet_df = pd.DataFrame(
-                        {"ds": data.index, "y": data["Close"].values.flatten()}
-                    )
-                    prophet_df["ds"] = pd.to_datetime(prophet_df["ds"]).dt.tz_localize(
-                        None
-                    )
-                    prophet_df = prophet_df.dropna()
-                    self.model = self._init_model()
-                    self.model.fit(prophet_df)
-                except Exception as e:
-                    logging.warning(
-                        f"⚠️ Prophet training failed for {ticker} (h={h}): {e}. "
-                        f"Falling back to standard training."
-                    )
-                    self.model = self._init_model()
-                    self.model.fit(X_scaled, y, sample_weight=sample_weights)
-            else:
-                self.model = self._init_model()
-                self.model.fit(X_scaled, y, sample_weight=sample_weights)
-
-            horizon_entry = {
-                "scaler": self.scaler,
-                "target_scaler": getattr(self, "target_scaler", None),
-                "price_scaler": getattr(self, "price_scaler", None),
-                "volume_scaler": getattr(self, "volume_scaler", None),
-                "technical_scaler": getattr(self, "technical_scaler", None),
-                "close_was_log_normalized": self.close_was_log_normalized,
-                "model_class": self.model.__class__.__name__,
-                "weighting_type": self.config.weighting_type,
-                "target_horizon_days": h,
-            }
-
-            if m_type == "lstm" and hasattr(self.model, "save"):
-                keras_path = self._get_lstm_horizon_path(model_filename, h)
-                self.model.save(keras_path)
-                horizon_entry["keras_path"] = keras_path
-            else:
-                horizon_entry["model"] = self.model
-
-            bundle_payload["horizons"][h] = horizon_entry
-
-        # After the loop self.model / self.scaler hold the BUY horizon (last iteration)
-        joblib.dump(bundle_payload, model_filename)
-
-    def load_or_build(self, ticker: str, target_horizon_days: int | None = None) -> str:
-        if target_horizon_days is not None:
-            self.target_horizon_days = max(1, int(target_horizon_days))
-
-        # Bundle filename is keyed by the BUY horizon
-        weighting_suffix = self.config.weighting_type
-        horizon_suffix = f"h{self.target_horizon_days}d"
+    def load_or_build(self, ticker: str) -> str:
         model_filename = os.path.join(
-            self.config.model_path,
-            f"{ticker}_{self.config.model_type}_{weighting_suffix}_{horizon_suffix}_model.joblib",
+            self.config.model_path, f"{ticker}_{self.config.model_type}_model.joblib"
         )
 
-        # Train if bundle missing
-        if not os.path.exists(model_filename):
-            self.train(ticker, target_horizon_days=self.target_horizon_days)
+        # 1. Force train if requested or missing
+        if self.config.rebuild_model or not os.path.exists(model_filename):
+            self.train(ticker)
             return "trained"
 
         try:
+            # 2. Try loading bundle
             data_bundle = joblib.load(model_filename)
+            loaded_scaler = data_bundle["scaler"]
 
-            # Extract the requested horizon entry (supports new multi-horizon and legacy bundles)
-            try:
-                horizon_entry = self._extract_horizon_entry(
-                    data_bundle, self.target_horizon_days
-                )
-            except FileNotFoundError:
-                # Horizon not in bundle → retrain to populate it
-                self.train(ticker, target_horizon_days=self.target_horizon_days)
-                return "retrained_missing_horizon"
-
-            loaded_scaler = horizon_entry["scaler"]
-
-            # Feature dimension check
+            # 3. Check for feature mismatch
+            # We fetch a tiny slice of data to check current feature dimensions
             sample_data = self.fetch_data(ticker, self.config.backtest_years)
             if sample_data.empty:
-                self.train(ticker, target_horizon_days=self.target_horizon_days)
+                self.train(ticker)
                 return "trained_fallback"
 
-            X_sample, _ = self.prepare_features(
-                sample_data, ticker, target_horizon_days=self.target_horizon_days
-            )
+            X_sample, _ = self.prepare_features(sample_data)
             current_dim = X_sample.shape[1]
 
+            # Scaler feature count check
             if (
                 hasattr(loaded_scaler, "n_features_in_")
                 and loaded_scaler.n_features_in_ != current_dim
             ):
                 logging.warning(
-                    f"Feature mismatch for {ticker}: expected {current_dim}, "
-                    f"found {loaded_scaler.n_features_in_}. Retraining..."
+                    f"Feature mismatch for {ticker}: expected {current_dim}, found {loaded_scaler.n_features_in_}. Retraining..."
                 )
-                self.train(ticker, target_horizon_days=self.target_horizon_days)
+                self.train(ticker)
                 return "retrained"
 
             self.scaler = loaded_scaler
-            self.price_scaler = horizon_entry.get("price_scaler", None)
-            self.volume_scaler = horizon_entry.get("volume_scaler", None)
-            self.technical_scaler = horizon_entry.get("technical_scaler", None)
-            self.close_was_log_normalized = horizon_entry.get(
-                "close_was_log_normalized", False
-            )
-            bundle_horizon = horizon_entry.get("target_horizon_days")
-            if bundle_horizon is not None:
-                self.target_horizon_days = max(1, int(bundle_horizon))
-            self.target_scaler = horizon_entry.get("target_scaler", None)
+            self.target_scaler = data_bundle.get(
+                "target_scaler", None
+            )  # Load target scaler for LSTM
 
-            if "keras_path" in horizon_entry or "lstm_h5" in horizon_entry:
+            # 4. Load Model
+            if "keras_path" in data_bundle or "lstm_h5" in data_bundle:
                 from tensorflow.keras.models import load_model
 
-                keras_path = self._get_lstm_horizon_path(
-                    model_filename, self.target_horizon_days
-                )
-                if not os.path.exists(keras_path):
-                    stored_path = horizon_entry.get("keras_path") or horizon_entry.get(
-                        "lstm_h5"
-                    )
-                    if stored_path and os.path.exists(stored_path):
-                        keras_path = stored_path
-                    else:
-                        self.train(ticker, target_horizon_days=self.target_horizon_days)
-                        return "retrained_keras_missing"
+                path = data_bundle.get("keras_path") or data_bundle.get("lstm_h5")
+                # Final safety check: load_model might fail if architecture changed
                 try:
-                    self.model = load_model(keras_path)
+                    self.model = load_model(path)
                 except Exception:
-                    self.train(ticker, target_horizon_days=self.target_horizon_days)
+                    self.train(ticker)
                     return "retrained_keras_error"
             else:
-                self.model = horizon_entry.get("model")
+                self.model = data_bundle.get("model")
 
             return "loaded"
 
         except Exception as e:
             logging.error(f"Failed to load model for {ticker}: {e}. Retraining...")
-            self.train(ticker, target_horizon_days=self.target_horizon_days)
+            self.train(ticker)
             return "retrained_error"
 
-    def load_exit_model(self, ticker: str, buy_horizon_days: int) -> None:
-        """Load the horizon=1 exit-confirmation model from the h{N}d bundle.
-
-        For a 1-day strategy (buy_horizon_days=1), the BUY and EXIT models are
-        identical so this simply delegates to load_or_build.
-        """
-        buy_horizon_days = max(1, int(buy_horizon_days))
-        if buy_horizon_days == 1:
-            self.load_or_build(ticker, target_horizon_days=1)
-            return
-
-        weighting_suffix = self.config.weighting_type
-        model_filename = os.path.join(
-            self.config.model_path,
-            f"{ticker}_{self.config.model_type}_{weighting_suffix}_h{buy_horizon_days}d_model.joblib",
-        )
-
-        if not os.path.exists(model_filename):
-            raise FileNotFoundError(
-                f"Bundle not found for {ticker} exit model: {model_filename}. "
-                f"Run training with holding_period={buy_horizon_days} first."
-            )
-
-        try:
-            data_bundle = joblib.load(model_filename)
-            horizon_entry = self._extract_horizon_entry(data_bundle, 1)
-
-            self.scaler = horizon_entry["scaler"]
-            self.price_scaler = horizon_entry.get("price_scaler", None)
-            self.volume_scaler = horizon_entry.get("volume_scaler", None)
-            self.technical_scaler = horizon_entry.get("technical_scaler", None)
-            self.close_was_log_normalized = horizon_entry.get(
-                "close_was_log_normalized", False
-            )
-            self.target_horizon_days = 1
-            self.target_scaler = horizon_entry.get("target_scaler", None)
-
-            if "keras_path" in horizon_entry or "lstm_h5" in horizon_entry:
-                from tensorflow.keras.models import load_model
-
-                keras_path = self._get_lstm_horizon_path(model_filename, 1)
-                if not os.path.exists(keras_path):
-                    stored_path = horizon_entry.get("keras_path") or horizon_entry.get(
-                        "lstm_h5"
-                    )
-                    if stored_path and os.path.exists(stored_path):
-                        keras_path = stored_path
-                    else:
-                        raise FileNotFoundError(
-                            f"Keras exit model (h=1) missing: {keras_path}"
-                        )
-                self.model = load_model(keras_path)
-            else:
-                self.model = horizon_entry.get("model")
-
-            if self.model is None:
-                raise RuntimeError(
-                    f"Exit model is None after loading bundle: {model_filename}"
-                )
-
-        except (FileNotFoundError, RuntimeError):
-            raise
-        except Exception as e:
-            raise RuntimeError(f"Failed to load exit model for {ticker}: {e}") from e
-
     def predict(
-        self, current_data: np.ndarray, date: pd.Timestamp | None = None
+        self, current_data: np.ndarray, date: Optional[pd.Timestamp] = None
     ) -> float:
         if self.model is None:
-            logging.error("❌ Prediction failed: Model not loaded")
             raise ValueError("Model not loaded.")
-
-        try:
-            m_type = self.config.model_type
-            if m_type == "prophet" and hasattr(self.model, "predict"):
-                future = pd.DataFrame(
-                    {"ds": [(date + pd.DateOffset(days=1)).tz_localize(None)]}
-                )
-                pred = float(self.model.predict(future)["yhat"].iloc[0])
-                if self.close_was_log_normalized:
-                    pred = np.expm1(pred)
-                return pred
-            if m_type == "lstm" and hasattr(self.model, "predict"):
-                if len(current_data.shape) == 2:
-                    X_scaled = self._apply_multi_scalers_transform(current_data)
-                    pred = float(
-                        self.model.predict(
-                            X_scaled.reshape(1, self.sequence_length, -1), verbose=0
-                        )[0][0]
-                    )
-                    # Sigmoid output (0-1) -> rescale to training range (0.1-0.9)
-                    if self.target_scaler is not None:
-                        pred = pred * 0.8 + 0.1
-                        pred = float(
-                            self.target_scaler.inverse_transform([[pred]])[0][0]
-                        )
-                    if self.close_was_log_normalized:
-                        pred = np.expm1(pred)
-                    return pred
-                return 0.0
-            X_input = (
-                current_data[-1].reshape(1, -1)
-                if len(current_data.shape) == 2
-                else current_data.reshape(1, -1)
+        m_type = self.config.model_type
+        if m_type == "prophet" and hasattr(self.model, "predict"):
+            future = pd.DataFrame(
+                {"ds": [(date + pd.DateOffset(days=1)).tz_localize(None)]}
             )
-            pred = float(self.model.predict(X_input)[0])
-            if self.close_was_log_normalized:
-                pred = np.expm1(pred)
-            return pred
-        except Exception as e:
-            logging.error(f"❌ Prediction error: {e}", exc_info=True)
-            raise
+            return float(self.model.predict(future)["yhat"].iloc[0])
+        if m_type == "lstm" and hasattr(self.model, "predict"):
+            if len(current_data.shape) == 2:
+                X = self.scaler.transform(current_data)
+                pred = float(
+                    self.model.predict(
+                        X.reshape(1, self.sequence_length, -1), verbose=0
+                    )[0][0]
+                )
+                # Inverse transform if target was scaled
+                if self.target_scaler is not None:
+                    pred = float(self.target_scaler.inverse_transform([[pred]])[0][0])
+                return pred
+            return 0.0
+        X_input = (
+            current_data[-1].reshape(1, -1)
+            if len(current_data.shape) == 2
+            else current_data.reshape(1, -1)
+        )
+        X_scaled = self.scaler.transform(X_input)
+        return float(self.model.predict(X_scaled)[0])
 
-    def get_latest_features(self, ticker: str) -> np.ndarray | None:
+    def get_latest_features(self, ticker: str) -> Optional[np.ndarray]:
         data = self.fetch_data(ticker, 1)
         if data.empty:
             return None
-        X, y = self.prepare_features(data, ticker)
+        X, y = self.prepare_features(data)
         if len(X) < self.sequence_length:
             return None
         return X[-self.sequence_length :]

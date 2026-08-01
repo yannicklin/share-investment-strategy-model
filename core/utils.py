@@ -139,16 +139,7 @@ def validate_buy_capacity(available_cash: float, price_dict: dict) -> dict:
             "reason": "No tickers provided",
         }
 
-    # Filter out zero or negative prices to avoid division by zero
-    valid_prices = {t: p for t, p in price_dict.items() if p > 0}
-    if not valid_prices:
-        return {
-            "can_trade": False,
-            "affordable_tickers": {},
-            "reason": "No valid stock prices available for calculation (prices <= 0)",
-        }
-
-    min_price = min(valid_prices.values())
+    min_price = min(price_dict.values())
 
     if available_cash < min_price:
         return {
@@ -158,7 +149,7 @@ def validate_buy_capacity(available_cash: float, price_dict: dict) -> dict:
         }
 
     affordable = {}
-    for ticker, price in valid_prices.items():
+    for ticker, price in price_dict.items():
         if available_cash >= price:
             max_units = int(available_cash / price)
             affordable[ticker] = max_units
