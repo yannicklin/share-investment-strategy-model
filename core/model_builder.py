@@ -56,7 +56,6 @@ from sklearn.preprocessing import (
     MinMaxScaler,
     QuantileTransformer,
     RobustScaler,
-    StandardScaler,
 )
 
 from core.config import Config
@@ -95,11 +94,6 @@ class ModelBuilder:
         self._price_feature_indices: list[int] = []
         self._volume_feature_indices: list[int] = []
         self._technical_feature_indices: list[int] = []
-
-    def _init_scaler(self) -> Any:
-        if self.config.scaler_type == "robust":
-            return RobustScaler()
-        return StandardScaler()
 
     def _init_scalers(self, n_samples: int | None = None) -> dict[str, Any]:
         """Initialize multi-scaler groups. See docs for architecture."""

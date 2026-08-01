@@ -9,14 +9,13 @@ Copyright (c) 2026 Yannick
 """
 
 from dataclasses import dataclass, field
-from typing import List
 
 
 @dataclass
 class Config:
     """System configuration parameters."""
 
-    target_stock_codes: List[str] = field(
+    target_stock_codes: list[str] = field(
         default_factory=lambda: [
             "2330.TW",  # TSMC (台積電)
             "2317.TW",  # Hon Hai (鴻海)
@@ -42,7 +41,6 @@ class Config:
     brokerage_rate: float = 0.001425  # 0.1425% (Standard)
     stt_rate: float = 0.003  # 0.3% STT (Sell-side only)
 
-    scaler_type: str = "robust"
     weighting_type: str = "normal"  # "normal" or "recency"
     # Recency weighting multiplier: half_life = backtest_years * multiplier
     # Controls decay aggressiveness in exponential weighting for recent data emphasis:
@@ -54,7 +52,7 @@ class Config:
     recency_half_life_multiplier: float = 1.0
     model_type: str = "random_forest"
     # Available: ["random_forest", "ngboost", "catboost", "prophet", "lstm"]
-    model_types: List[str] = field(
+    model_types: list[str] = field(
         default_factory=lambda: ["random_forest", "catboost"]
     )
 
