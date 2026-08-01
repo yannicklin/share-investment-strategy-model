@@ -631,7 +631,16 @@ class ModelBuilder:
                 model_filename,
             )
 
-    def load_or_build(self, ticker: str) -> str:
+    def load_or_build(self, ticker: str, target_horizon_days: int = 1) -> str:
+        """Load or build a model, optionally for a specific prediction horizon.
+        
+        Args:
+            ticker: Stock ticker symbol
+            target_horizon_days: Prediction horizon in days (1 for exit, N for buy)
+        
+        Returns:
+            Status string: "loaded", "trained", etc.
+        """
         model_filename = os.path.join(
             self.config.model_path, f"{ticker}_{self.config.model_type}_model.joblib"
         )
@@ -644,7 +653,10 @@ class ModelBuilder:
         try:
             # 2. Try loading bundle
             data_bundle = joblib.load(model_filename)
-            loaded_scaler = data_bundle["scaler"]
+            
+            # 2.5. Extract horizon entry if multi-horizon bundle
+            horizon_entry = self._extract_horizon_entry(data_bundle, target_horizon_days)
+            loaded_scaler = horizon_entry["scaler"]
 
             # 3. Check for feature mismatch
             # We fetch a tiny slice of data to check current feature dimensions
@@ -671,8 +683,8 @@ class ModelBuilder:
             # For LSTM, check if multi-scalers are available (required for prediction)
             if self.config.model_type == "lstm":
                 if (
-                    "price_scaler" not in data_bundle
-                    or data_bundle["price_scaler"] is None
+                    "price_scaler" not in horizon_entry
+                    or horizon_entry["price_scaler"] is None
                 ):
                     logging.warning(
                         f"LSTM multi-scalers missing for {ticker}. Retraining..."
@@ -681,21 +693,21 @@ class ModelBuilder:
                     return "retrained_missing_scalers"
 
             self.scaler = loaded_scaler
-            self.target_scaler = data_bundle.get(
+            self.target_scaler = horizon_entry.get(
                 "target_scaler", None
             )  # Load target scaler for LSTM
 
             # Load multi-scalers for LSTM
             if self.config.model_type == "lstm":
-                self.price_scaler = data_bundle.get("price_scaler", None)
-                self.volume_scaler = data_bundle.get("volume_scaler", None)
-                self.technical_scaler = data_bundle.get("technical_scaler", None)
+                self.price_scaler = horizon_entry.get("price_scaler", None)
+                self.volume_scaler = horizon_entry.get("volume_scaler", None)
+                self.technical_scaler = horizon_entry.get("technical_scaler", None)
 
             # 4. Load Model
-            if "keras_path" in data_bundle or "lstm_h5" in data_bundle:
+            if "keras_path" in horizon_entry or "lstm_h5" in horizon_entry:
                 from tensorflow.keras.models import load_model
 
-                path = data_bundle.get("keras_path") or data_bundle.get("lstm_h5")
+                path = horizon_entry.get("keras_path") or horizon_entry.get("lstm_h5")
                 # Final safety check: load_model might fail if architecture changed
                 try:
                     self.model = load_model(path)
@@ -703,7 +715,7 @@ class ModelBuilder:
                     self.train(ticker)
                     return "retrained_keras_error"
             else:
-                self.model = data_bundle.get("model")
+                self.model = horizon_entry.get("model")
 
             return "loaded"
 
@@ -711,6 +723,45 @@ class ModelBuilder:
             logging.error(f"Failed to load model for {ticker}: {e}. Retraining...")
             self.train(ticker)
             return "retrained_error"
+
+    def _extract_horizon_entry(
+        self, data_bundle: Dict[str, Any], target_horizon_days: int
+    ) -> Dict[str, Any]:
+        """Extract the requested horizon entry from a bundle.
+        
+        Supports both multi-horizon bundles (new) and single-horizon legacy bundles.
+        
+        Args:
+            data_bundle: Loaded model bundle
+            target_horizon_days: Requested horizon (typically 1 for exit, N for buy)
+        
+        Returns:
+            Dictionary containing model, scalers, and metadata for this horizon
+        """
+        # Try multi-horizon format first
+        horizons = data_bundle.get("horizons")
+        if horizons is not None:
+            resolved_horizon = int(target_horizon_days)
+            entry = horizons.get(resolved_horizon)
+            if entry is not None:
+                return entry
+            # Fallback to closest available horizon if exact match not found
+            available = sorted(int(h) for h in horizons.keys())
+            if available:
+                closest = min(available, key=lambda x: abs(x - resolved_horizon))
+                logging.warning(
+                    f"Horizon {resolved_horizon} not found in bundle. Using closest: {closest}. "
+                    f"Available: {available}"
+                )
+                return horizons[closest]
+            # No horizons at all - shouldn't happen
+            raise FileNotFoundError(
+                f"Requested horizon {resolved_horizon} not found in bundle. "
+                f"Available horizons: {available}"
+            )
+        
+        # Fallback for legacy single-entry bundles (entire bundle is the entry)
+        return data_bundle
 
     def predict(
         self, current_data: np.ndarray, date: pd.Timestamp | None = None

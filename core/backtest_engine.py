@@ -23,6 +23,7 @@ from core.utils import (
     validate_buy_capacity,
 )
 from core.transaction_ledger import TransactionLedger
+from core.trend_detector import detect_trend
 
 
 class BacktestEngine:
@@ -447,8 +448,18 @@ class BacktestEngine:
         # Clear ledger from previous run (no archiving)
         self.ledger.clear()
 
+        # Calculate prediction horizon from hold period (same as BUY in strategy mode)
+        if self.config.hold_period_unit == "day":
+            buy_horizon = self.config.hold_period_value
+        elif self.config.hold_period_unit == "week":
+            buy_horizon = self.config.hold_period_value * 5  # ~5 trading days/week
+        elif self.config.hold_period_unit == "month":
+            buy_horizon = self.config.hold_period_value * 21  # ~21 trading days/month
+        else:
+            buy_horizon = 1
+
         self.config.model_type = model_type
-        self.model_builder.load_or_build(ticker)  # Load once
+        self.model_builder.load_or_build(ticker, target_horizon_days=buy_horizon)  # Load once
 
         # Prepare filtered data (trading days only)
         df_tuple = self._prepare_data(ticker)
@@ -470,7 +481,7 @@ class BacktestEngine:
 
         # Save ledger to file and clear from memory
         if "error" not in result:
-            ledger_filename = f"{ticker}_algorithm_{model_type}_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
+            ledger_filename = f"{ticker}_algorithm_{model_type}_h{buy_horizon}d_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
             ledger_path = self.ledger.save_to_file(filename=ledger_filename)
             result["ledger_path"] = ledger_path
 
@@ -487,47 +498,144 @@ class BacktestEngine:
         # Clear ledger from previous run (no archiving)
         self.ledger.clear()
 
+        # Calculate prediction horizons from hold period
+        # BUY: predict for full holding period (e.g., 14 days for 2-week hold)
+        # EXIT: predict for 1 day (quick exit check)
+        if self.config.hold_period_unit == "day":
+            buy_horizon = self.config.hold_period_value
+        elif self.config.hold_period_unit == "week":
+            buy_horizon = self.config.hold_period_value * 5  # ~5 trading days/week
+        elif self.config.hold_period_unit == "month":
+            buy_horizon = self.config.hold_period_value * 21  # ~21 trading days/month
+        else:
+            buy_horizon = 1
+        exit_horizon = 1  # Always 1-day for exit signals
+
         # Prepare filtered data (trading days only)
         df_tuple = self._prepare_data(ticker)
         df, features, error = df_tuple
         if error or df is None or features is None:
             return error if error else {"error": "Failed to prepare data"}
 
-        # Bulk pre-calculate predictions for all models in the committee on FILTERED data
-        committee_preds = {}
+        # BUY bulk predictions — load models for full holding period
+        committee_buy_preds = {}
         for m_type in models:
             self.config.model_type = m_type
-            self.model_builder.load_or_build(ticker)
-            committee_preds[m_type] = self._get_bulk_predictions(df, features, m_type)
+            self.model_builder.load_or_build(ticker, target_horizon_days=buy_horizon)
+            committee_buy_preds[m_type] = self._get_bulk_predictions(df, features, m_type)
 
-        def signal(i, df_inner, features_inner, current_cap):
+        # EXIT bulk predictions — load models for 1-day exit check (separate horizon)
+        committee_exit_preds = {}
+        for m_type in models:
+            self.config.model_type = m_type
+            self.model_builder.load_or_build(ticker, target_horizon_days=exit_horizon)
+            committee_exit_preds[m_type] = self._get_bulk_predictions(df, features, m_type)
+
+        consensus_stats = {
+            "model_count": len(models),
+            "tie_breaker": tie_breaker if tie_breaker else models[0],
+            "signal_checks": 0,
+            "prediction_checks": 0,
+            "bullish_votes": 0,
+            "bearish_votes": 0,
+            "buy_signals": 0,
+            "tie_signals": 0,
+            "hurdle_passes": 0,
+            "hurdle_fails": 0,
+        }
+
+        def signal(i, df_inner, _features_inner, current_cap):
             votes = 0
             current_price = float(df_inner.iloc[i]["Close"])
             hurdle = self.get_hurdle_rate(current_cap)
             tie_breaker_bullish = False
             tb_model = tie_breaker if tie_breaker else models[0]
 
+            consensus_stats["signal_checks"] += 1
+
             for m_type in models:
-                pred = committee_preds[m_type][i]
+                pred = committee_buy_preds[m_type][i]
                 pred_return = (pred - current_price) / current_price
                 is_m_bullish = pred_return > hurdle
 
+                consensus_stats["prediction_checks"] += 1
+
+                if is_m_bullish:
+                    votes += 1
+                    consensus_stats["bullish_votes"] += 1
+                    consensus_stats["hurdle_passes"] += 1
+                else:
+                    consensus_stats["bearish_votes"] += 1
+                    consensus_stats["hurdle_fails"] += 1
+                if m_type == tb_model:
+                    tie_breaker_bullish = is_m_bullish
+
+            if votes > (len(models) / 2):
+                consensus_stats["buy_signals"] += 1
+                return True
+            if votes == (len(models) / 2):
+                consensus_stats["tie_signals"] += 1
+                return tie_breaker_bullish
+            return False
+
+        # WP-7.6: Phase 7 trend analysis for dynamic sell friction
+        trend_data_for_consensus = {}
+        for idx in range(len(df)):
+            df_window = df.iloc[
+                max(0, idx - 60) : idx + 1
+            ]  # 60 days lookback for indicators
+            if len(df_window) >= 50:
+                trend_result = detect_trend(df_window, ticker)
+                trend_data_for_consensus[idx] = trend_result.get("trend", "RANGEBOUND")
+            else:
+                trend_data_for_consensus[idx] = "RANGEBOUND"
+
+        def exit_signal(i, df_inner, _features_inner, current_cap):
+            votes = 0
+            current_price = float(df_inner.iloc[i]["Close"])
+            hurdle = self.get_hurdle_rate(current_cap)
+            tb_model = tie_breaker if tie_breaker else models[0]
+            tie_breaker_bullish = False
+
+            # WP-7.6: Get dynamic sell_friction based on trend
+            trend = trend_data_for_consensus.get(i, "RANGEBOUND")
+            TREND_MULTIPLIERS = {
+                "UPTREND": 5.0,  # Higher threshold: let winners run
+                "DOWNTREND": 2.0,  # Lower threshold: quick exits
+                "RANGEBOUND": 3.0,  # Neutral
+            }
+            sell_friction = TREND_MULTIPLIERS.get(trend, 3.0)
+
+            for m_type in models:
+                pred = committee_exit_preds[m_type][i]
+                pred_return = (pred - current_price) / current_price
+                # WP-7.6: Apply dynamic friction multiplier
+                is_m_bullish = pred_return > (hurdle * sell_friction)
                 if is_m_bullish:
                     votes += 1
                 if m_type == tb_model:
                     tie_breaker_bullish = is_m_bullish
-
             if votes > (len(models) / 2):
                 return True
             if votes == (len(models) / 2):
                 return tie_breaker_bullish
             return False
 
-        result = self._core_run(ticker, signal, df, features)
+        result = self._core_run(
+            ticker, signal, df, features, exit_signal_func=exit_signal
+        )
 
         # Save ledger to file and clear from memory
         if "error" not in result:
-            ledger_filename = f"{ticker}_{mode_prefix}_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
+            if consensus_stats["signal_checks"] > 0:
+                consensus_stats["bullish_vote_ratio"] = consensus_stats[
+                    "bullish_votes"
+                ] / max(consensus_stats["prediction_checks"], 1)
+                consensus_stats["buy_signal_ratio"] = consensus_stats[
+                    "buy_signals"
+                ] / max(consensus_stats["signal_checks"], 1)
+            result["consensus_summary"] = consensus_stats
+            ledger_filename = f"{ticker}_{mode_prefix}_h{buy_horizon}d_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
             ledger_path = self.ledger.save_to_file(filename=ledger_filename)
             result["ledger_path"] = ledger_path
 
