@@ -33,6 +33,11 @@ except ImportError:
 
 logging.getLogger("cmdstanpy").setLevel(logging.ERROR)
 logging.getLogger("prophet").setLevel(logging.ERROR)
+logging.getLogger("FinMind").setLevel(logging.ERROR)
+logging.getLogger("FinMind.data").setLevel(logging.ERROR)
+logging.getLogger("FinMind.data.finmind_api").setLevel(logging.ERROR)
+logging.getLogger("requests").setLevel(logging.ERROR)
+logging.getLogger("urllib3").setLevel(logging.ERROR)
 
 from typing import Any
 
