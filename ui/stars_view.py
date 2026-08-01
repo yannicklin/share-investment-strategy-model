@@ -144,20 +144,32 @@ def render_super_stars(
 
         # Drill-down for winners
         st.subheader("Detailed Look at Winners")
-        # Ensure labels are strings for Streamlit tabs and match the sorted top 10
-        tab_labels = [str(ticker) for ticker in df_top10["Ticker"]]
+        # Build tab labels with company names
+        tab_display_names = []
+        ticker_to_name_map = {}
 
-        tabs = st.tabs(tab_labels)
-        for i in range(len(tab_labels)):
+        for ticker in df_top10["Ticker"]:
+            ticker_str = str(ticker)
+            display_name = ticker_str  # Default to ticker
+
+            if builder is not None:
+                try:
+                    # Fetch company name (with market-specific logic)
+                    company_name = builder.get_company_name(ticker_str)
+                    if company_name:
+                        display_name = company_name
+                    ticker_to_name_map[ticker_str] = company_name
+                except Exception:
+                    pass
+
+            tab_display_names.append(display_name)
+
+        tabs = st.tabs(tab_display_names)
+        for i in range(len(tab_display_names)):
             with tabs[i]:
-                ticker_symbol = tab_labels[i]
+                ticker_symbol = str(df_top10["Ticker"].iloc[i])
                 res = all_ticker_res[ticker_symbol]
-                company_name = res.get("company_name", "")
-                if not company_name and builder is not None:
-                    try:
-                        company_name = builder.get_company_name(ticker_symbol)
-                    except Exception:
-                        company_name = ""
+                company_name = ticker_to_name_map.get(ticker_symbol, "")
                 if company_name:
                     st.subheader(f"{company_name}")
                 render_trade_details(ticker_symbol, res)
