@@ -726,6 +726,55 @@ class ModelBuilder:
             self.train(ticker)
             return "retrained_error"
 
+    def load_exit_model(self, ticker: str, buy_horizon_days: int) -> None:
+        """Load the horizon=1 exit-confirmation model from the h{N}d bundle.
+
+        For a 1-day strategy (buy_horizon_days=1), the BUY and EXIT models are
+        identical so this simply delegates to load_or_build.
+        """
+        buy_horizon_days = max(1, int(buy_horizon_days))
+        if buy_horizon_days == 1:
+            self.load_or_build(ticker, target_horizon_days=1)
+            return
+
+        model_filename = os.path.join(
+            self.config.model_path,
+            f"{ticker}_{self.config.model_type}_h{buy_horizon_days}d_model.joblib",
+        )
+
+        if not os.path.exists(model_filename):
+            raise FileNotFoundError(
+                f"Bundle not found for {ticker} exit model: {model_filename}. "
+                f"Run training with holding_period={buy_horizon_days} first."
+            )
+
+        try:
+            data_bundle = joblib.load(model_filename)
+            horizon_entry = self._extract_horizon_entry(data_bundle, 1)
+
+            self.scaler = horizon_entry["scaler"]
+            self.target_horizon_days = 1
+            self.target_scaler = horizon_entry.get("target_scaler", None)
+
+            if "keras_path" in horizon_entry or "lstm_h5" in horizon_entry:
+                from tensorflow.keras.models import load_model
+
+                keras_path = horizon_entry.get(
+                    "keras_path", horizon_entry.get("lstm_h5")
+                )
+                self.model = load_model(keras_path)
+            else:
+                self.model = horizon_entry["model"]
+
+            logging.debug(
+                f"Loaded exit model (h1d) from bundle h{buy_horizon_days}d for {ticker}"
+            )
+        except Exception as e:
+            logging.error(
+                f"Failed to load exit model for {ticker} from h{buy_horizon_days}d bundle: {e}"
+            )
+            raise
+
     def _extract_horizon_entry(
         self, data_bundle: Dict[str, Any], target_horizon_days: int
     ) -> Dict[str, Any]:

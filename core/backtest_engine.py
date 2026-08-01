@@ -119,6 +119,21 @@ class BacktestEngine:
         df["Daily_Return"] = df["Close"].pct_change(fill_method=None)
         return df.dropna()
 
+    def _resolve_prediction_horizon_days(self) -> int:
+        """Map the configured holding period to a BUY prediction horizon in days."""
+        unit = self.config.hold_period_unit.lower()
+        value = max(1, int(self.config.hold_period_value))
+
+        if unit == "day":
+            return value
+        if unit == "week":
+            return value * 7
+        if unit == "month":
+            return value * 30
+        if unit == "year":
+            return value * 365
+        return value
+
     def _prepare_data(
         self, ticker: str
     ) -> tuple[pd.DataFrame | None, list[str] | None, dict[str, str] | None]:
@@ -447,43 +462,45 @@ class BacktestEngine:
         """Mode 1: Evaluate a single specific model."""
         # Clear ledger from previous run (no archiving)
         self.ledger.clear()
-
-        # Calculate prediction horizon from hold period (same as BUY in strategy mode)
-        if self.config.hold_period_unit == "day":
-            buy_horizon = self.config.hold_period_value
-        elif self.config.hold_period_unit == "week":
-            buy_horizon = self.config.hold_period_value * 5  # ~5 trading days/week
-        elif self.config.hold_period_unit == "month":
-            buy_horizon = self.config.hold_period_value * 21  # ~21 trading days/month
-        else:
-            buy_horizon = 1
+        horizon_days = self._resolve_prediction_horizon_days()
 
         self.config.model_type = model_type
-        self.model_builder.load_or_build(
-            ticker, target_horizon_days=buy_horizon
-        )  # Load once
+        self.model_builder.load_or_build(ticker, target_horizon_days=horizon_days)
 
-        # Prepare filtered data (trading days only)
+        # Prepare filtered data (trading days only) — done once, shared for both horizons
         df_tuple = self._prepare_data(ticker)
         df, features, error = df_tuple
         if error or df is None or features is None:
             return error if error else {"error": "Failed to prepare data"}
 
-        # Bulk pre-calculate predictions on FILTERED data
-        all_preds = self._get_bulk_predictions(df, features, model_type)
+        # BUY bulk predictions — horizon=N model (already loaded above)
+        all_buy_preds = self._get_bulk_predictions(df, features, model_type)
 
-        def signal(i, df_inner, features_inner, current_cap):
+        # EXIT bulk predictions — horizon=1 model from the same bundle
+        self.model_builder.load_exit_model(ticker, buy_horizon_days=horizon_days)
+        all_exit_preds = self._get_bulk_predictions(df, features, model_type)
+
+        def signal(i, df_inner, _features_inner, current_cap):
             current_price = float(df_inner.iloc[i]["Close"])
             hurdle = self.get_hurdle_rate(current_cap)
-            pred = all_preds[i]
-            pred_return = (pred - current_price) / current_price
-            return pred_return > hurdle
+            return (all_buy_preds[i] - current_price) / current_price > hurdle
 
-        result = self._core_run(ticker, signal, df, features)
+        def exit_signal(i, df_inner, _features_inner, current_cap):
+            current_price = float(df_inner.iloc[i]["Close"])
+            hurdle = self.get_hurdle_rate(current_cap)
+            return (all_exit_preds[i] - current_price) / current_price > hurdle
+
+        result = self._core_run(
+            ticker, signal, df, features, exit_signal_func=exit_signal
+        )
 
         # Save ledger to file and clear from memory
         if "error" not in result:
-            ledger_filename = f"{ticker}_algorithm_{model_type}_h{buy_horizon}d_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
+            result["ledger_path"] = self.ledger.save_to_file(
+                filename=f"{ticker}_algorithm_{model_type}_h{horizon_days}d_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
+            )
+        if "error" not in result:
+            ledger_filename = f"{ticker}_algorithm_{model_type}_{self.config.hold_period_value}{self.config.hold_period_unit}.csv"
             ledger_path = self.ledger.save_to_file(filename=ledger_filename)
             result["ledger_path"] = ledger_path
 
