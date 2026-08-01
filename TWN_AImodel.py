@@ -32,14 +32,14 @@ logging.basicConfig(
     handlers=[logging.FileHandler("data/logs/dashboard.log"), logging.StreamHandler()],
 )
 
-# Set INFO level for OUR modules (bug fixing complete, reducing debug noise)
+# Set WARNING level for OUR modules (production mode, minimal logging)
 for module_name in [
     "core.backtest_engine",
     "core.model_builder",
     "core.config",
     "ui.sidebar",
 ]:
-    logging.getLogger(module_name).setLevel(logging.INFO)
+    logging.getLogger(module_name).setLevel(logging.WARNING)
 
 # Suppress known third-party DEBUG spam
 for noise_logger in ["watchdog.observers.inotify_buffer", "urllib3.connectionpool"]:

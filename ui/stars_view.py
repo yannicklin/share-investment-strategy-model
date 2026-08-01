@@ -106,19 +106,19 @@ def render_super_stars(
 
         if builder is not None:
             for row_idx, ticker in enumerate(df_top10["Ticker"]):
-                if df_display.at[row_idx, "Name"] == ticker:
-                    try:
-                        company_name = builder.get_company_name(ticker)
-                        chinese_name = ""
-                        if hasattr(builder, "get_chinese_name"):
-                            chinese_name = builder.get_chinese_name(ticker)
-                        df_display.at[row_idx, "Name"] = (
-                            f"{chinese_name} ({company_name})"
-                            if chinese_name
-                            else company_name
-                        )
-                    except Exception:
-                        pass
+                try:
+                    # Fetch Traditional Chinese name from FinMind for Taiwan stocks
+                    chinese_name = (
+                        builder.get_chinese_name(ticker)
+                        if ticker.endswith(".TW")
+                        else ""
+                    )
+                    company_name = builder.get_company_name(ticker)
+                    # Display Chinese name primarily, English as fallback
+                    display_name = chinese_name if chinese_name else company_name
+                    df_display.at[row_idx, "Name"] = display_name
+                except Exception:
+                    pass
 
         # 1. Leaderboard Table
         st.subheader("🏆 Top 10 Profit Performers")
