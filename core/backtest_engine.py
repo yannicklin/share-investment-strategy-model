@@ -8,22 +8,22 @@ Author: Yannick
 Copyright (c) 2026 Yannick
 """
 
-import pandas as pd
-import numpy as np
-import os
-import joblib
 import logging
-from typing import List, Dict, Any, Callable, Optional, Tuple, Union
-from core.config import Config, BROKERS, get_tax_profile
+from collections.abc import Callable
+from typing import Any
+
+import numpy as np
+import pandas as pd
+
+from core.config import BROKERS, Config, get_tax_profile
 from core.model_builder import ModelBuilder
-from core.utils import (
-    format_date_with_weekday,
-    get_usa_trading_days,
-    calculate_trading_days_ahead,
-    validate_buy_capacity,
-)
 from core.transaction_ledger import TransactionLedger
 from core.trend_detector import detect_trend
+from core.utils import (
+    calculate_trading_days_ahead,
+    get_usa_trading_days,
+    validate_buy_capacity,
+)
 
 
 class BacktestEngine:
@@ -33,7 +33,7 @@ class BacktestEngine:
         self.config = config
         self.model_builder = model_builder
         self.ledger = TransactionLedger()
-        self.trading_days: Optional[pd.DatetimeIndex] = None
+        self.trading_days: pd.DatetimeIndex | None = None
 
     def calculate_fees(
         self, trade_value: float, shares: float = 0, is_sell: bool = False
@@ -121,7 +121,7 @@ class BacktestEngine:
 
     def _prepare_data(
         self, ticker: str
-    ) -> Tuple[Optional[pd.DataFrame], Optional[List[str]], Optional[Dict[str, str]]]:
+    ) -> tuple[pd.DataFrame | None, list[str] | None, dict[str, str] | None]:
         """Prepare and filter dataframe for backtesting.
 
         Returns:
@@ -236,10 +236,10 @@ class BacktestEngine:
     def _core_run(
         self,
         ticker: str,
-        signal_func: Callable[[int, pd.DataFrame, List[str], float], bool],
+        signal_func: Callable[[int, pd.DataFrame, list[str], float], bool],
         df: pd.DataFrame,
-        features: List[str],
-    ) -> Dict[str, Any]:
+        features: list[str],
+    ) -> dict[str, Any]:
         """The shared engine logic for both modes.
 
         Args:
@@ -443,7 +443,7 @@ class BacktestEngine:
             "trades": trades,
         }
 
-    def run_model_mode(self, ticker: str, model_type: str) -> Dict[str, Any]:
+    def run_model_mode(self, ticker: str, model_type: str) -> dict[str, Any]:
         """Mode 1: Evaluate a single specific model."""
         # Clear ledger from previous run (no archiving)
         self.ledger.clear()
@@ -459,7 +459,9 @@ class BacktestEngine:
             buy_horizon = 1
 
         self.config.model_type = model_type
-        self.model_builder.load_or_build(ticker, target_horizon_days=buy_horizon)  # Load once
+        self.model_builder.load_or_build(
+            ticker, target_horizon_days=buy_horizon
+        )  # Load once
 
         # Prepare filtered data (trading days only)
         df_tuple = self._prepare_data(ticker)
@@ -490,10 +492,10 @@ class BacktestEngine:
     def run_strategy_mode(
         self,
         ticker: str,
-        models: List[str],
-        tie_breaker: Optional[str] = None,
+        models: list[str],
+        tie_breaker: str | None = None,
         mode_prefix: str = "consensus",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Mode 2/3: Evaluate strategy sensitivity using multi-model consensus."""
         # Clear ledger from previous run (no archiving)
         self.ledger.clear()
@@ -522,14 +524,18 @@ class BacktestEngine:
         for m_type in models:
             self.config.model_type = m_type
             self.model_builder.load_or_build(ticker, target_horizon_days=buy_horizon)
-            committee_buy_preds[m_type] = self._get_bulk_predictions(df, features, m_type)
+            committee_buy_preds[m_type] = self._get_bulk_predictions(
+                df, features, m_type
+            )
 
         # EXIT bulk predictions — load models for 1-day exit check (separate horizon)
         committee_exit_preds = {}
         for m_type in models:
             self.config.model_type = m_type
             self.model_builder.load_or_build(ticker, target_horizon_days=exit_horizon)
-            committee_exit_preds[m_type] = self._get_bulk_predictions(df, features, m_type)
+            committee_exit_preds[m_type] = self._get_bulk_predictions(
+                df, features, m_type
+            )
 
         consensus_stats = {
             "model_count": len(models),
@@ -642,7 +648,7 @@ class BacktestEngine:
         return result
 
     def _get_bulk_predictions(
-        self, df: pd.DataFrame, features: List[str], model_type: str
+        self, df: pd.DataFrame, features: list[str], model_type: str
     ) -> np.ndarray:
         """Helper to get predictions for all rows in one go with memory safety."""
         X_all = df[features].values.astype(np.float32)
@@ -657,7 +663,9 @@ class BacktestEngine:
             X_all_f32 = X_all.astype(np.float32)
             # Use sequence_length from model_builder for consistency
             seq_len = self.model_builder.sequence_length
-            X_scaled = self.model_builder._apply_multi_scalers_transform(X_all_f32).astype(np.float32)
+            X_scaled = self.model_builder._apply_multi_scalers_transform(
+                X_all_f32
+            ).astype(np.float32)
 
             # Create sequences: at time i, use [i-seq_len:i] to predict i+1
             # This matches training where [i:i+seq_len] predicts target[i+seq_len]=Close[i+seq_len+1]

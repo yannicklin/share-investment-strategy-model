@@ -633,11 +633,11 @@ class ModelBuilder:
 
     def load_or_build(self, ticker: str, target_horizon_days: int = 1) -> str:
         """Load or build a model, optionally for a specific prediction horizon.
-        
+
         Args:
             ticker: Stock ticker symbol
             target_horizon_days: Prediction horizon in days (1 for exit, N for buy)
-        
+
         Returns:
             Status string: "loaded", "trained", etc.
         """
@@ -653,9 +653,11 @@ class ModelBuilder:
         try:
             # 2. Try loading bundle
             data_bundle = joblib.load(model_filename)
-            
+
             # 2.5. Extract horizon entry if multi-horizon bundle
-            horizon_entry = self._extract_horizon_entry(data_bundle, target_horizon_days)
+            horizon_entry = self._extract_horizon_entry(
+                data_bundle, target_horizon_days
+            )
             loaded_scaler = horizon_entry["scaler"]
 
             # 3. Check for feature mismatch
@@ -728,13 +730,13 @@ class ModelBuilder:
         self, data_bundle: Dict[str, Any], target_horizon_days: int
     ) -> Dict[str, Any]:
         """Extract the requested horizon entry from a bundle.
-        
+
         Supports both multi-horizon bundles (new) and single-horizon legacy bundles.
-        
+
         Args:
             data_bundle: Loaded model bundle
             target_horizon_days: Requested horizon (typically 1 for exit, N for buy)
-        
+
         Returns:
             Dictionary containing model, scalers, and metadata for this horizon
         """
@@ -759,7 +761,7 @@ class ModelBuilder:
                 f"Requested horizon {resolved_horizon} not found in bundle. "
                 f"Available horizons: {available}"
             )
-        
+
         # Fallback for legacy single-entry bundles (entire bundle is the entry)
         return data_bundle
 
