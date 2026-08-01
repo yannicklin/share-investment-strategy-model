@@ -146,6 +146,21 @@ See `CODE_HEADERS.md` for complete templates.
 6. ✅ Preserve multi-model consensus approach
 7. ✅ Never compromise on data security
 
+**Cross-Branch Development Standards:**
+
+8. ✅ **Never use cherry-pick or lazy-copy across branches**
+   - Each branch (twn, asx, usa) has unique structural differences (T+2 vs T+1 settlement, FinMind data, institutional logic, fee structures)
+   - Always recheck the code and apply accurate, branch-specific fixes
+   - Lazy copying breaks branch-specific logic and introduces bugs
+   - Require explicit verification that each branch's unique elements are preserved after changes
+
+9. ✅ **Let human do the commit submit**
+   - AI can prepare code changes and generate commit messages with clear context
+   - AI must STOP before running `git commit` or `git push`
+   - Always wait for human review and explicit approval before committing
+   - Human should verify: (a) code correctness, (b) branch integrity, (c) no unintended changes
+   - Only after human confirms should commits be submitted to version control
+
 **Non-compliance will result in rejected contributions.**
 
 ---
