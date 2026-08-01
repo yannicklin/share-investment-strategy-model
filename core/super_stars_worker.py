@@ -9,6 +9,7 @@ import streamlit, which registers an atexit handler that prints "Stopping..." wh
 the worker process exits. Moving the function here eliminates that noise entirely.
 """
 
+import logging
 from copy import deepcopy
 
 import pandas as pd
@@ -16,6 +17,9 @@ import pandas as pd
 from core.backtest_engine import BacktestEngine
 from core.config import Config
 from core.model_builder import ModelBuilder
+
+# Configure logging for worker processes
+_worker_logger = logging.getLogger(__name__)
 
 
 def run_super_star_worker(
@@ -32,37 +36,58 @@ def run_super_star_worker(
     worker processes started by ProcessPoolExecutor never register Streamlit's
     atexit handler, which would print "Stopping..." on process exit.
     """
-    worker_config = deepcopy(config)
-    worker_config.target_stock_codes = [ticker]
-    worker_config.model_types = list(models)
+    try:
+        _worker_logger.info(f"[WORKER] Starting analysis for {ticker}")
+        
+        worker_config = deepcopy(config)
+        worker_config.target_stock_codes = [ticker]
+        worker_config.model_types = list(models)
 
-    worker_builder = ModelBuilder(worker_config)
-    worker_builder.set_data_cache_snapshot(data_cache)
-    worker_builder.set_cached_market_data(market_data)
+        worker_builder = ModelBuilder(worker_config)
+        worker_builder.set_data_cache_snapshot(data_cache)
+        worker_builder.set_cached_market_data(market_data)
 
-    worker_engine = BacktestEngine(worker_config, worker_builder)
-    result = worker_engine.run_strategy_mode(
-        ticker,
-        worker_config.model_types,
-        tie_breaker=tie_breaker,
-        mode_prefix="ranking",
-    )
+        _worker_logger.info(f"[WORKER] Running backtest for {ticker}")
+        worker_engine = BacktestEngine(worker_config, worker_builder)
+        result = worker_engine.run_strategy_mode(
+            ticker,
+            worker_config.model_types,
+            tie_breaker=tie_breaker,
+            mode_prefix="ranking",
+        )
+        _worker_logger.info(f"[WORKER] Completed {ticker}, result keys: {list(result.keys()) if isinstance(result, dict) else 'N/A'}")
 
-    # ── Cleanup ───────────────────────────────────────────────────────────────
-    # Runs AFTER result is fully computed and stored in the local variable above.
-    # result is a plain Python dict of numbers/strings — completely decoupled
-    # from worker_builder and worker_engine at this point.
-    # Deleting the ML objects here reduces atexit work so the process exits fast.
-    worker_builder.model = None
-    del worker_engine
-    del worker_builder
+        # ── Cleanup ───────────────────────────────────────────────────────────────
+        # Runs AFTER result is fully computed and stored in the local variable above.
+        # result is a plain Python dict of numbers/strings — completely decoupled
+        # from worker_builder and worker_engine at this point.
+        # Deleting the ML objects here reduces atexit work so the process exits fast.
+        worker_builder.model = None
+        del worker_engine
+        del worker_builder
 
-    if "lstm" in models:
-        try:
-            import tensorflow as tf
+        if "lstm" in models:
+            try:
+                import tensorflow as tf
 
-            tf.keras.backend.clear_session()
-        except Exception:
+                tf.keras.backend.clear_session()
+            except Exception:
+                pass
+
+        if "prophet" in models:
+            try:
+                import gc
+
+                gc.collect()
+            except Exception:
+                pass
+
+        _worker_logger.info(f"[WORKER] Finished cleanup for {ticker}")
+        return ticker, result
+    
+    except Exception as e:
+        _worker_logger.error(f"[WORKER] Error processing {ticker}: {e}", exc_info=True)
+        return ticker, {"error": str(e)}
             pass
 
     if "prophet" in models:
