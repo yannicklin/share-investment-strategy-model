@@ -633,8 +633,8 @@ class ModelBuilder:
             self.config.model_path, f"{ticker}_{self.config.model_type}_model.joblib"
         )
 
-        # 1. Force train if requested or missing
-        if self.config.rebuild_model or not os.path.exists(model_filename):
+        # 1. Train if model file is missing
+        if not os.path.exists(model_filename):
             self.train(ticker)
             return "trained"
 
