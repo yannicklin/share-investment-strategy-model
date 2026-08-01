@@ -20,7 +20,7 @@ import logging
 import os
 
 import pandas as pd
-imlit as st
+import streamlit as st
 
 # --- Enhanced Logging Setup (App-Only, No Third-Party Noise) ---
 os.makedirs("data/logs", exist_ok=True)
@@ -33,7 +33,12 @@ logging.basicConfig(
 )
 
 # Enable DEBUG for OUR modules only (core.*, ui.*)
-for module_name in ["core.backtest_engine", "core.model_builder", "core.config", "ui.sidebar"]:
+for module_name in [
+    "core.backtest_engine",
+    "core.model_builder",
+    "core.config",
+    "ui.sidebar",
+]:
     logging.getLogger(module_name).setLevel(logging.DEBUG)
 
 # Suppress known third-party DEBUG spam
