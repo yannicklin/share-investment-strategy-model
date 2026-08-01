@@ -1,4 +1,4 @@
-# The Soul of ASX AI Trading Strategy System
+# The Soul of the AI-Based Trading Strategy Model
 
 > **Author**: Yannick  
 > **Created**: January 2026  
@@ -9,7 +9,7 @@
 
 ## 🎯 Project Essence
 
-This project represents a journey from curiosity about algorithmic trading to a fully-functional AI-powered investment analysis system. It's not just code—it's a manifestation of the belief that democratized, data-driven investment tools can level the playing field for individual investors.
+This project represents a journey from curiosity about algorithmic trading to a fully-functional AI-powered investment analysis system. It's not just code—it's a manifestation of the belief that democratized, data-driven investment tools can level the playing field for individual investors. The system is designed to be a cold, objective filter for the emotional chaos of the stock market—providing a grounded framework for research and strategy validation across multiple markets (Taiwan, Australia, USA).
 
 ---
 
@@ -25,10 +25,10 @@ Markets are emotional. This system is not. Every recommendation is backed by:
 
 ### 2. **Realism Over Fantasy**
 Many trading simulators ignore the harsh realities of:
-- **Brokerage Fees**: Every trade costs money
-- **Tax Implications**: CGT discounts matter for long-term holdings
-- **Market Gaps**: Stop-loss orders don't always execute at your price
-- **T+2 Settlement**: You can't instantly reinvest sale proceeds; cash takes 2 trading days to clear.
+- **Brokerage Fees**: Every trade costs money.
+- **Tax Implications**: Understanding that net profit is the only metric that matters.
+- **Market Gaps**: Stop-loss orders don't always execute at your price.
+- **Settlement Delays**: T+1 or T+2 depending on market—cash takes time to clear.
 
 **Philosophy**: If it doesn't work with real-world constraints, it doesn't work.
 
@@ -43,10 +43,10 @@ No black boxes. Every decision can be traced:
 
 ### 4. **Flexibility & Extensibility**
 The system adapts to different:
-- Market indices (ASX 50, ASX 200, custom)
+- Market indices (customizable for any exchange)
 - Trading strategies (short-term, long-term, hybrid)
 - Risk profiles (conservative, aggressive)
-- Model preferences (Random Forest, LSTM, Prophet, etc.)
+- Model preferences (Random Forest, LSTM, Prophet, CatBoost, NGBoost)
 
 **Philosophy**: One size does not fit all. Provide options, not mandates.
 
@@ -63,7 +63,7 @@ The system is organized into clear layers:
 **Why?** Separation of concerns makes testing easier and components reusable.
 
 ### Factory Pattern for Models
-Five different AI models are supported through a unified interface:
+Multiple AI models are supported through a unified interface:
 ```python
 ModelBuilder.build(algorithm="Random Forest")
 ModelBuilder.build(algorithm="LSTM")
@@ -91,16 +91,16 @@ All performance reporting uses:
 ### Hurdle Rate Decision Layer
 Every "BUY" signal is filtered through a financial friction check:
 - **Calculation**: `Fees_Pct + (Risk_Buffer / (1 - Marginal_Tax_Rate))`
-- **Purpose**: Prevents "death by a thousand cuts" from brokerage fees and ensures returns are meaningful even after the ATO's cut.
+- **Purpose**: Prevents "death by a thousand cuts" from brokerage fees and ensures returns are meaningful even after taxes.
 - **Independence**: The AI predicts market moves, while the Decision Layer enforces financial sanity based on the user's personal tax profile.
 
 ### Market Calendar Compliance
 Realistic backtesting requires respecting real-world trading constraints:
-- **ASX Calendar Integration**: Dynamic fetching of public holidays via `pandas-market-calendars`
+- **Dynamic Calendar Fetching**: Integration with market-specific trading calendars
 - **Market Half-Days**: Treated as off-days (no trading)
 - **Holding Period Precision**:
   - "Day" = TRADING DAYS (excludes weekends + holidays)
-  - "Week/Month/Quarter/Year" = CALENDAR DAYS
+  - "Week/Month/Year" = CALENDAR DAYS
 - **Portfolio Validation**: Pre-checks cash availability before generating signals
 
 **Why?** If backtests ignore market calendars, they produce unrealistic results.
@@ -167,11 +167,18 @@ Large-scale analysis requires efficient data management:
    - Prevents crashes on "thin data" tickers (newly listed stocks)
    - Graceful error handling for insufficient data
 
+3. **Multi-Scaler Architecture for LSTM**
+   - Different feature types require different scaling strategies
+   - Price data: MinMaxScaler(feature_range=(0.1, 0.9))
+   - Volume data: QuantileTransformer with adaptive n_quantiles
+   - Technical indicators: RobustScaler for bounded values
+   - Prevents loss of information through uniform scaling
+
 ### Backtesting Realism
 
 1. **Fees and Taxes DRAMATICALLY Impact ROI**
    - Simulations ignoring brokerage fees are misleading
-   - ATO CGT discount (50% for 12+ month holdings) significantly affects strategy choice
+   - Tax implications vary by jurisdiction and holding period
    - Short-term trading often underperforms due to transaction costs
 
 2. **Market Calendar Constraints Are Non-Negotiable**
@@ -179,18 +186,75 @@ Large-scale analysis requires efficient data management:
    - Market half-days treated as off-days
    - Holding period units matter: "Day" = trading days, "Month" = calendar days
 
-3. **Memory Optimization Enables Scale**
-   - Keep minimal state in RAM (~2 KB per backtest)
-   - Batch writes to disk (not streaming I/O)
-   - Enables 1,000+ backtests without performance degradation
-
-4. **Visual Context Matters**
+3. **Visual Context Matters**
    - Dual-axis charts (portfolio vs share price) reveal AI behavior
    - Helps distinguish "fear" (market dip) from "greed" (price surge)
    - Realized equity curves show actual capital growth, not theoretical gains
 
 ---
 
-*Last Updated: February 6, 2026*
+## 📜 Code Ownership & Attribution
+
+All source code in this repository is:
+- **Copyright (c) 2026 Yannick**
+- **Licensed under MIT License** (see LICENSE file)
+- **Open Source**: Free to use, modify, and distribute with attribution
+
+### Attribution Requirements
+When using this code:
+1. **Preserve copyright notices** in source files
+2. **Include LICENSE file** in distributions
+3. **Credit original author** (Yannick) in derivative works
+4. **Acknowledge AI assistance** if applicable to your changes
+
+### Code Headers
+All Python files include standardized headers:
+```python
+"""
+Trading AI System - [Module Name]
+
+Purpose: [Brief description]
+
+Author: Yannick
+Copyright (c) 2026 Yannick
+"""
+```
+
+See `CODE_HEADERS.md` for complete templates.
+
+---
+
+## 🎯 For AI Agents Working on This Project
+
+**Before making ANY changes, you MUST:**
+
+1. ✅ Read this SOUL.md to understand project philosophy
+2. ✅ Review `AGENTS.md` for technical guidelines
+3. ✅ Update implementation requirements before coding
+4. ✅ Add copyright headers to new files (see `CODE_HEADERS.md`)
+5. ✅ Maintain realism in backtesting (fees, taxes, gaps)
+6. ✅ Preserve multi-model consensus approach
+7. ✅ Never compromise on data security
+
+**Cross-Branch Development Standards:**
+
+8. ✅ **Never use cherry-pick or lazy-copy across branches**
+   - Each branch (twn, asx, usa) has unique structural differences (T+2 vs T+1 settlement, market-specific data sources, institutional logic, fee structures)
+   - Always recheck the code and apply accurate, branch-specific fixes
+   - Lazy copying breaks branch-specific logic and introduces bugs
+   - Require explicit verification that each branch's unique elements are preserved after changes
+
+9. ✅ **Let human do the commit submit**
+   - AI can prepare code changes and generate commit messages with clear context
+   - AI must STOP before running `git commit` or `git push`
+   - Always wait for human review and explicit approval before committing
+   - Human should verify: (a) code correctness, (b) branch integrity, (c) no unintended changes
+   - Only after human confirms should commits be submitted to version control
+
+**Non-compliance will result in rejected contributions.**
+
+---
+
+*Last Updated: August 1, 2026*  
 *Copyright (c) 2026 Yannick*  
 *Licensed under MIT License*
