@@ -450,7 +450,10 @@ class ModelBuilder:
             return ticker
 
     def get_chinese_name(self, ticker: str) -> str:
-        """Fetches the Chinese name of the Taiwan stock from FinMind."""
+        """Fetches the Chinese company name of the Taiwan stock from FinMind.
+
+        Returns the stock_name (e.g., '台積電') not the stock_id (e.g., '2327').
+        """
         if not ticker.endswith(".TW"):
             return ""
 
@@ -465,15 +468,20 @@ class ModelBuilder:
                     return ""
 
             if self._stock_info_cache is not None and not self._stock_info_cache.empty:
+                # Ensure stock_id is string for comparison
+                stock_id_str = str(stock_id).strip()
+                cache_copy = self._stock_info_cache.copy()
+                cache_copy["stock_id"] = cache_copy["stock_id"].astype(str).str.strip()
+
                 # Filter by stock_id
-                match = self._stock_info_cache[
-                    self._stock_info_cache["stock_id"] == stock_id
-                ]
+                match = cache_copy[cache_copy["stock_id"] == stock_id_str]
                 if not match.empty:
-                    return str(match["stock_name"].iloc[0])
+                    company_name = str(match["stock_name"].iloc[0]).strip()
+                    # Ensure we're not returning the stock_id by mistake
+                    if company_name and company_name != stock_id_str:
+                        return company_name
 
         except Exception as e:
-            self._stock_info_cache = pd.DataFrame()
             logging.warning(f"Failed to fetch Chinese name for {ticker}: {e}")
 
         return ""
