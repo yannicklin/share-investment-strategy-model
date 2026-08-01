@@ -22,7 +22,30 @@ import os
 import pandas as pd
 import streamlit as st
 
-logging.basicConfig(level=logging.WARNING)
+# Create logs directory if it doesn't exist
+os.makedirs("data/logs", exist_ok=True)
+
+# Configure logging with file and stream handlers
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
+    handlers=[logging.FileHandler("data/logs/dashboard.log"), logging.StreamHandler()],
+)
+
+# Set WARNING level for OUR modules (production mode, minimal logging)
+for module_name in [
+    "core.backtest_engine",
+    "core.model_builder",
+    "core.config",
+    "ui.sidebar",
+]:
+    logging.getLogger(module_name).setLevel(logging.WARNING)
+
+# Suppress known third-party DEBUG spam
+for noise_logger in ["watchdog.observers.inotify_buffer", "urllib3.connectionpool"]:
+    logging.getLogger(noise_logger).setLevel(logging.WARNING)
+
+logger = logging.getLogger(__name__)
 
 # 2. Suppress TensorFlow noise and load
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
