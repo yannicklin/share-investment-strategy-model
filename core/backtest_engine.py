@@ -505,7 +505,7 @@ class BacktestEngine:
 
         # Bulk predictions for BUY signal (horizon=N)
         self.logger.debug(f"[{ticker}] Generating BUY predictions for {model_type}...")
-        all_buy_preds = self._get_bulk_predictions(df, features, model_type)
+        all_buy_preds = self._get_bulk_predictions(ticker, df, features, model_type)
         self.logger.debug(
             f"[{ticker}] BUY predictions shape: {all_buy_preds.shape}, non-zero: {np.count_nonzero(all_buy_preds)}"
         )
@@ -516,7 +516,7 @@ class BacktestEngine:
             exit_builder = ModelBuilder(self.config)
             exit_builder.load_exit_model(ticker, buy_horizon_days=horizon_days)
             all_exit_preds = self._get_bulk_predictions(
-                df, features, model_type, builder=exit_builder
+                ticker, df, features, model_type, builder=exit_builder
             )
 
         def signal_buy(i, df_inner, features_inner, current_cap):
@@ -579,7 +579,7 @@ class BacktestEngine:
             self.config.model_type = m_type
             self.model_builder.load_or_build(ticker, target_horizon_days=horizon_days)
             committee_buy_preds[m_type] = self._get_bulk_predictions(
-                df, features, m_type
+                ticker, df, features, m_type
             )
 
         # Load EXIT models (horizon=1) if buy_horizon > 1
@@ -590,7 +590,7 @@ class BacktestEngine:
                 exit_builder = ModelBuilder(self.config)
                 exit_builder.load_exit_model(ticker, buy_horizon_days=horizon_days)
                 committee_exit_preds[m_type] = self._get_bulk_predictions(
-                    df, features, m_type, builder=exit_builder
+                    ticker, df, features, m_type, builder=exit_builder
                 )
 
         def signal_buy(i, df_inner, features_inner, current_cap):
@@ -657,6 +657,7 @@ class BacktestEngine:
 
     def _get_bulk_predictions(
         self,
+        ticker: str,
         df: pd.DataFrame,
         features: list[str],
         model_type: str,
@@ -664,7 +665,6 @@ class BacktestEngine:
     ) -> np.ndarray:
         """Helper to get predictions for all rows in one go with memory safety."""
         _builder = builder if builder is not None else self.model_builder
-        ticker = self.config.ticker
 
         # Ensure data is clean and use float64 to prevent overflow/inf during cast
         X_all = (
