@@ -157,17 +157,21 @@ def render_app():
                 }
                 logger.info(f"[MAIN] Submitted {len(future_map)} futures to executor")
 
-                for future in as_completed(future_map, timeout=300):
+                for future in as_completed(
+                    future_map
+                ):  # No timeout here - let futures complete naturally
                     ticker = future_map[future]
                     completed += 1
                     try:
                         logger.info(f"[MAIN] Future completed for {ticker}")
-                        ticker_name, ticker_results = future.result(timeout=300)
+                        ticker_name, ticker_results = future.result(
+                            timeout=600
+                        )  # 10-min timeout per individual future
                     except TimeoutError:
-                        logger.error(f"[MAIN] Timeout for {ticker}")
+                        logger.error(f"[MAIN] Timeout for {ticker} (exceeded 600s)")
                         ticker_name = ticker
                         ticker_results = {
-                            "error": f"Worker timeout for {ticker} (exceeded 300s)"
+                            "error": f"Worker timeout for {ticker} (exceeded 600s)"
                         }
                     except Exception as e:
                         logger.error(f"[MAIN] Exception for {ticker}: {e}")
