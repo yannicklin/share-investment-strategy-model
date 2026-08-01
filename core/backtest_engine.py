@@ -907,13 +907,7 @@ class BacktestEngine:
             prophet_df["ds"] = prophet_df["ds"] + pd.DateOffset(days=1)
 
             forecast = self.model_builder.model.predict(prophet_df)
-            preds = forecast["yhat"].values.astype(np.float32)
-
-            # Inverse log transform if target was log-normalized during training
-            if self.model_builder.close_was_log_normalized:
-                preds = np.expm1(preds).astype(np.float32)
-
-            return preds
+            return forecast["yhat"].values.astype(np.float32)
 
         elif (
             self.model_builder.model is not None
@@ -921,22 +915,10 @@ class BacktestEngine:
         ):
             # Standard SKLearn-like models with single scaler
             X_scaled = self.model_builder.scaler.transform(X_all).astype(np.float32)
-            preds = self.model_builder.model.predict(X_scaled).astype(np.float32)
-
-            # Inverse log transform if target was log-normalized during training
-            if self.model_builder.close_was_log_normalized:
-                preds = np.expm1(preds).astype(np.float32)
-
-            return preds
+            return self.model_builder.model.predict(X_scaled).astype(np.float32)
 
         elif self.model_builder.model is not None:
             # Tree models (random_forest, catboost, ngboost) use raw data without scaling
-            preds = self.model_builder.model.predict(X_all).astype(np.float32)
-
-            # Inverse log transform if target was log-normalized during training
-            if self.model_builder.close_was_log_normalized:
-                preds = np.expm1(preds).astype(np.float32)
-
-            return preds
+            return self.model_builder.model.predict(X_all).astype(np.float32)
 
         return np.zeros(len(df), dtype=np.float32)
