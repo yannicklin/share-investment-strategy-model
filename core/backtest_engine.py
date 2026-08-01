@@ -494,7 +494,9 @@ class BacktestEngine:
             hurdle = self.get_hurdle_rate(current_cap)
             pred = all_exit_preds[i]
             pred_return = (pred - current_price) / current_price
-            return pred_return > hurdle  # True = bullish (don't exit), False = bearish (exit)
+            return (
+                pred_return > hurdle
+            )  # True = bullish (don't exit), False = bearish (exit)
 
         result = self._core_run(
             ticker, signal, df, features, exit_signal_func=exit_signal
@@ -644,7 +646,9 @@ class BacktestEngine:
 
             for m_type in models:
                 # Skip if this model's exit predictions are missing or index is out of bounds
-                if m_type not in committee_exit_preds or i >= len(committee_exit_preds[m_type]):
+                if m_type not in committee_exit_preds or i >= len(
+                    committee_exit_preds[m_type]
+                ):
                     continue
                 pred = committee_exit_preds[m_type][i]
                 pred_return = (pred - current_price) / current_price
@@ -681,8 +685,11 @@ class BacktestEngine:
         return result
 
     def _get_bulk_predictions(
-        self, df: pd.DataFrame, features: list[str], model_type: str,
-        builder: 'ModelBuilder | None' = None
+        self,
+        df: pd.DataFrame,
+        features: list[str],
+        model_type: str,
+        builder: "ModelBuilder | None" = None,
     ) -> np.ndarray:
         """Helper to get predictions for all rows in one go with memory safety."""
         _builder = builder if builder is not None else self.model_builder
@@ -698,9 +705,9 @@ class BacktestEngine:
             X_all_f32 = X_all.astype(np.float32)
             # Use sequence_length from model_builder for consistency
             seq_len = _builder.sequence_length
-            X_scaled = _builder._apply_multi_scalers_transform(
-                X_all_f32
-            ).astype(np.float32)
+            X_scaled = _builder._apply_multi_scalers_transform(X_all_f32).astype(
+                np.float32
+            )
 
             # Create sequences: at time i, use [i-seq_len:i] to predict i+1
             # This matches training where [i:i+seq_len] predicts target[i+seq_len]=Close[i+seq_len+1]
@@ -740,10 +747,7 @@ class BacktestEngine:
             forecast = _builder.model.predict(prophet_df)
             return forecast["yhat"].values.astype(np.float32)
 
-        elif (
-            _builder.model is not None
-            and _builder.scaler is not None
-        ):
+        elif _builder.model is not None and _builder.scaler is not None:
             # Standard SKLearn-like models with single scaler
             X_scaled = _builder.scaler.transform(X_all).astype(np.float32)
             return _builder.model.predict(X_scaled).astype(np.float32)
