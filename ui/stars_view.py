@@ -102,13 +102,12 @@ def render_super_stars(
         )
 
         if builder is not None:
-            for row_idx, ticker in enumerate(df_top10["Ticker"]):
-                if df_display.at[row_idx, "Company"] == ticker:
-                    try:
-                        df_display.at[row_idx, "Company"] = builder.get_company_name(
-                            ticker
-                        )
-                    except Exception:
+            for try:
+                    # Fetch company name with market-specific logic
+                    company_name = builder.get_company_name(ticker)
+                    df_display.at[row_idx, "Company"] = company_name
+                except Exception:
+                except Exception:
                         pass
 
         # 1. Leaderboard Table
