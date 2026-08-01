@@ -10,7 +10,6 @@ Copyright (c) 2026 Yannick
 
 import os
 from dataclasses import dataclass, field
-from typing import Dict, List
 
 
 @dataclass
@@ -32,7 +31,7 @@ class TaxProfile:
 
 
 # Global Constants for USA - Using conservative (worst-case) rates
-BROKERS: Dict[str, BrokerProfile] = {
+BROKERS: dict[str, BrokerProfile] = {
     "Saxo / Global Prime (Classic)": BrokerProfile(
         name="Classic Standard",
         brokerage_fixed=5.00,
@@ -81,7 +80,7 @@ def get_tax_profile(w8ben_filed: bool = True) -> TaxProfile:
 class Config:
     """Central configuration class aligned with USA market API."""
 
-    target_stock_codes: List[str] = field(
+    target_stock_codes: list[str] = field(
         default_factory=lambda: [
             "SPY",
             "QQQ",
@@ -110,14 +109,13 @@ class Config:
 
     # Model Settings
     model_type: str = "random_forest"
-    model_types: List[str] = field(
+    model_types: list[str] = field(
         default_factory=lambda: [
             "random_forest",
             "ngboost",
             "catboost",
         ]
     )
-    scaler_type: str = "robust"
     weighting_type: str = "normal"  # "normal" or "recency"
     # Recency weighting multiplier: half_life = backtest_years * multiplier
     # Controls decay aggressiveness in exponential weighting for recent data emphasis:
