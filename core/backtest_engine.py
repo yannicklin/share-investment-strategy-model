@@ -648,12 +648,13 @@ class BacktestEngine:
         if (
             model_type == "lstm"
             and _builder.model is not None
-            and _builder.scaler is not None
+            and _builder.price_scaler is not None
         ):
-            # LSTM still needs float32 for most backends
+            # LSTM uses multi-scaler architecture (price, volume, technical)
+            # Apply the same multi-scaler transform used during training
             X_all_f32 = X_all.astype(np.float32)
+            X_scaled = _builder._apply_multi_scalers_transform(X_all_f32).astype(np.float32)
             seq_len = _builder.sequence_length
-            X_scaled = _builder.scaler.transform(X_all_f32).astype(np.float32)
             valid_indices = np.arange(seq_len, len(df))
             X_seq = np.array(
                 [X_scaled[i - seq_len : i] for i in valid_indices], dtype=np.float32
