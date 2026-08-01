@@ -711,12 +711,6 @@ class BacktestEngine:
     ) -> np.ndarray:
         """Helper to get predictions for all rows in one go with memory safety."""
         _builder = builder if builder is not None else self.model_builder
-        
-        self.logger.debug(
-            f"[{ticker}] _get_bulk_predictions called: model_type={model_type}, "
-            f"builder is custom={builder is not None}, model={_builder.model is not None}, "
-            f"scaler={_builder.scaler is not None}"
-        )
 
         # Ensure data is clean and use float64 to prevent overflow/inf during cast
         X_all = (
@@ -731,9 +725,6 @@ class BacktestEngine:
             and _builder.model is not None
             and _builder.price_scaler is not None
         ):
-            self.logger.debug(
-                f"[{ticker}] [LSTM] Multi-scaler transform: price_scaler={_builder.price_scaler is not None}, volume_scaler={_builder.volume_scaler is not None}, technical_scaler={_builder.technical_scaler is not None}"
-            )
             # LSTM uses multi-scaler architecture (price, volume, technical)
             # Apply the same multi-scaler transform used during training
             X_all_f32 = X_all.astype(np.float32)
@@ -741,7 +732,6 @@ class BacktestEngine:
                 np.float32
             )
             seq_len = _builder.sequence_length
-            self.logger.debug(f"[{ticker}] [LSTM] Sequence length: {seq_len}")
             valid_indices = np.arange(seq_len, len(df))
             X_seq = np.array(
                 [X_scaled[i - seq_len : i] for i in valid_indices], dtype=np.float32
@@ -754,23 +744,14 @@ class BacktestEngine:
             raw_preds = _builder.model.predict(
                 X_seq, batch_size=64, verbose=0
             ).flatten()
-            self.logger.debug(
-                f"[{ticker}] [LSTM] Raw predictions shape: {raw_preds.shape}"
-            )
 
             if _builder.target_scaler is not None:
                 raw_preds = _builder.target_scaler.inverse_transform(
                     raw_preds.reshape(-1, 1)
                 ).flatten()
-                self.logger.debug(
-                    f"[{ticker}] [LSTM] Inverse-transformed predictions shape: {raw_preds.shape}"
-                )
 
             all_preds = np.zeros(len(df), dtype=np.float32)
             all_preds[seq_len:] = raw_preds
-            self.logger.debug(
-                f"[{ticker}] [LSTM] Final predictions shape: {all_preds.shape}, non-zero: {np.count_nonzero(all_preds)}"
-            )
             return all_preds
 
         elif model_type == "lstm" and (
@@ -782,7 +763,6 @@ class BacktestEngine:
             return np.zeros(len(df), dtype=np.float32)
 
         elif model_type == "prophet" and _builder.model is not None:
-            self.logger.debug(f"[{ticker}] [PROPHET] Generating forecast...")
             prophet_df = pd.DataFrame({"ds": df.index}).copy()
             prophet_df["ds"] = prophet_df["ds"].dt.tz_localize(None)
             prophet_df["ds"] = prophet_df["ds"] + pd.DateOffset(
@@ -790,9 +770,6 @@ class BacktestEngine:
             )
             forecast = _builder.model.predict(prophet_df)
             preds = forecast["yhat"].values.astype(np.float32)
-            self.logger.debug(
-                f"[{ticker}] [PROPHET] Forecast shape: {preds.shape}, non-zero: {np.count_nonzero(preds)}"
-            )
             return preds
 
         # Tree models (random_forest, catboost, ngboost) use raw data without scaling
@@ -800,38 +777,17 @@ class BacktestEngine:
             model_type in ("random_forest", "catboost", "ngboost")
             and _builder.model is not None
         ):
-            self.logger.debug(
-                f"[{ticker}] [{model_type.upper()}] Tree model path: model exists, using raw data..."
-            )
-            self.logger.debug(
-                f"[{ticker}] [{model_type.upper()}] X_all shape: {X_all.shape}, dtype: {X_all.dtype}"
-            )
             preds = _builder.model.predict(X_all).astype(np.float32)
-            self.logger.debug(
-                f"[{ticker}] [{model_type.upper()}] Predictions shape: {preds.shape}, non-zero: {np.count_nonzero(preds)}, min: {preds.min()}, max: {preds.max()}"
-            )
             return preds
 
         elif _builder.model is not None and _builder.scaler is not None:
-            self.logger.debug(
-                f"[{ticker}] [{model_type.upper()}] Scaling features and predicting..."
-            )
             X_scaled = _builder.scaler.transform(X_all).astype(np.float32)
             preds = _builder.model.predict(X_scaled).astype(np.float32)
-            self.logger.debug(
-                f"[{ticker}] [{model_type.upper()}] Predictions shape: {preds.shape}, non-zero: {np.count_nonzero(preds)}"
-            )
             return preds
 
         elif _builder.model is not None:
             # Fallback for any other model type without scaler
-            self.logger.debug(
-                f"[{ticker}] [{model_type.upper()}] Predicting without scaling..."
-            )
             preds = _builder.model.predict(X_all).astype(np.float32)
-            self.logger.debug(
-                f"[{ticker}] [{model_type.upper()}] Predictions shape: {preds.shape}, non-zero: {np.count_nonzero(preds)}"
-            )
             return preds
 
         else:
