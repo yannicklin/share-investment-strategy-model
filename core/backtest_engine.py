@@ -732,7 +732,9 @@ class BacktestEngine:
                 raw_preds = _builder.target_scaler.inverse_transform(
                     raw_preds.reshape(-1, 1)
                 ).flatten()
-
+            # Inverse log transform if target was log-normalized during training
+            if _builder.close_was_log_normalized:
+                raw_preds = np.expm1(raw_preds).astype(np.float32)
             # Pad the beginning with zeros (no predictions for first seq_len days)
             all_preds = np.zeros(len(df), dtype=np.float32)
             all_preds[seq_len:] = raw_preds
@@ -745,15 +747,33 @@ class BacktestEngine:
             prophet_df["ds"] = prophet_df["ds"] + pd.DateOffset(days=1)
 
             forecast = _builder.model.predict(prophet_df)
-            return forecast["yhat"].values.astype(np.float32)
+            preds = forecast["yhat"].values.astype(np.float32)
+
+            # Inverse log transform if target was log-normalized during training
+            if _builder.close_was_log_normalized:
+                preds = np.expm1(preds).astype(np.float32)
+
+            return preds
 
         elif _builder.model is not None and _builder.scaler is not None:
             # Standard SKLearn-like models with single scaler
             X_scaled = _builder.scaler.transform(X_all).astype(np.float32)
-            return _builder.model.predict(X_scaled).astype(np.float32)
+            preds = _builder.model.predict(X_scaled).astype(np.float32)
+
+            # Inverse log transform if target was log-normalized during training
+            if _builder.close_was_log_normalized:
+                preds = np.expm1(preds).astype(np.float32)
+
+            return preds
 
         elif _builder.model is not None:
             # Tree models (random_forest, catboost, ngboost) use raw data without scaling
-            return _builder.model.predict(X_all).astype(np.float32)
+            preds = _builder.model.predict(X_all).astype(np.float32)
+
+            # Inverse log transform if target was log-normalized during training
+            if _builder.close_was_log_normalized:
+                preds = np.expm1(preds).astype(np.float32)
+
+            return preds
 
         return np.zeros(len(df), dtype=np.float32)
