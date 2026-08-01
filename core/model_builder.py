@@ -53,6 +53,8 @@ logging.getLogger("prophet").setLevel(logging.ERROR)
 
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import (
+    MinMaxScaler,
+    QuantileTransformer,
     RobustScaler,
     StandardScaler,
 )
