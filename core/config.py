@@ -41,7 +41,6 @@ class Config:
     clearing_rate: float = 0.0000225  # 0.00225%
     settlement_fee: float = 1.5  # $1.5 fixed
     tax_rate: float = 0.25  # 25% tax
-    scaler_type: str = "robust"  # "standard" or "robust"
     weighting_type: str = "normal"  # "normal" or "recency"
     # Recency weighting multiplier: half_life = backtest_years * multiplier
     # Controls decay aggressiveness in exponential weighting for recent data emphasis:
