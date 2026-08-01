@@ -609,7 +609,10 @@ class ModelBuilder:
             joblib.dump(
                 {
                     "scaler": self.scaler,
-                    "target_scaler": self.target_scaler,  # Save target scaler
+                    "target_scaler": self.target_scaler,
+                    "price_scaler": self.price_scaler,
+                    "volume_scaler": self.volume_scaler,
+                    "technical_scaler": self.technical_scaler,
                     "keras_path": keras_path,
                     "model_class": self.model.__class__.__name__,
                 },
@@ -653,21 +656,40 @@ class ModelBuilder:
             X_sample, _ = self.prepare_features(sample_data)
             current_dim = X_sample.shape[1]
 
-            # Scaler feature count check
-            if (
-                hasattr(loaded_scaler, "n_features_in_")
-                and loaded_scaler.n_features_in_ != current_dim
-            ):
-                logging.warning(
-                    f"Feature mismatch for {ticker}: expected {current_dim}, found {loaded_scaler.n_features_in_}. Retraining..."
-                )
-                self.train(ticker)
-                return "retrained"
+            # Scaler feature count check (skip for LSTM with multi-scalers)
+            if self.config.model_type != "lstm" and loaded_scaler is not None:
+                if (
+                    hasattr(loaded_scaler, "n_features_in_")
+                    and loaded_scaler.n_features_in_ != current_dim
+                ):
+                    logging.warning(
+                        f"Feature mismatch for {ticker}: expected {current_dim}, found {loaded_scaler.n_features_in_}. Retraining..."
+                    )
+                    self.train(ticker)
+                    return "retrained"
+
+            # For LSTM, check if multi-scalers are available (required for prediction)
+            if self.config.model_type == "lstm":
+                if (
+                    "price_scaler" not in data_bundle
+                    or data_bundle["price_scaler"] is None
+                ):
+                    logging.warning(
+                        f"LSTM multi-scalers missing for {ticker}. Retraining..."
+                    )
+                    self.train(ticker)
+                    return "retrained_missing_scalers"
 
             self.scaler = loaded_scaler
             self.target_scaler = data_bundle.get(
                 "target_scaler", None
             )  # Load target scaler for LSTM
+
+            # Load multi-scalers for LSTM
+            if self.config.model_type == "lstm":
+                self.price_scaler = data_bundle.get("price_scaler", None)
+                self.volume_scaler = data_bundle.get("volume_scaler", None)
+                self.technical_scaler = data_bundle.get("technical_scaler", None)
 
             # 4. Load Model
             if "keras_path" in data_bundle or "lstm_h5" in data_bundle:
