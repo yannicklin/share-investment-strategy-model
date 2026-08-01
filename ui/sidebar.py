@@ -12,7 +12,7 @@ import os
 
 import streamlit as st
 
-from core.config import Config
+from core.config import BROKERS, Config
 from core.index_manager import load_index_constituents, update_index_data
 from core.model_builder import ModelBuilder
 
@@ -269,7 +269,7 @@ def render_sidebar(config: Config):
     # --- 3. PREPROCESSING & ACCOUNTING ---
     st.sidebar.markdown("---")
     with st.sidebar.expander("Costs & Taxes"):
-        profile_options = ["default", "cmc_markets", "tiger_au"]
+        profile_options = list(BROKERS.keys())
         config.cost_profile = st.selectbox(
             "Broker Profile",
             profile_options,
