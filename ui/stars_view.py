@@ -102,13 +102,13 @@ def render_super_stars(
         )
 
         if builder is not None:
-            for try:
+            for row_idx, ticker in enumerate(df_top10["Ticker"]):
+                try:
                     # Fetch company name with market-specific logic
                     company_name = builder.get_company_name(ticker)
                     df_display.at[row_idx, "Company"] = company_name
                 except Exception:
-                except Exception:
-                        pass
+                    pass
 
         # 1. Leaderboard Table
         st.subheader("🏆 Top 10 Profit Performers")
@@ -157,7 +157,11 @@ def render_super_stars(
 
             # Store metadata for each ticker
             res = all_ticker_res[ticker_str]
-            company_name = res.get("company_name", "") or builder.get_company_name(ticker_str) if builder else ""
+            company_name = (
+                res.get("company_name", "") or builder.get_company_name(ticker_str)
+                if builder
+                else ""
+            )
 
             ticker_metadata[stock_id] = {
                 "ticker": ticker_str,
