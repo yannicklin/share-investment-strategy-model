@@ -28,7 +28,7 @@ def run_super_star_worker(
     finmind_cache: dict | None,
     market_data: pd.DataFrame | None,
     models: list[str],
-    tie_breaker: str | None,
+    tie_breaker: str | None = None,
 ) -> tuple[str, dict]:
     """Run one Super Stars ticker analysis in an isolated worker process."""
     logger.info(f"[Worker] Starting analysis for {ticker}")
