@@ -544,104 +544,185 @@ class ModelBuilder:
             y_seq.append(target[i + self.sequence_length])
         return np.array(X_seq), np.array(y_seq)
 
-    def train(self, ticker: str):
+    @staticmethod
+    def _get_lstm_horizon_path(bundle_path: str, target_horizon_days: int) -> str:
+        """Return the horizon-specific Keras sidecar path for a bundle file."""
+        return bundle_path.replace(".joblib", f"_h{int(target_horizon_days)}.keras")
+
+    def _calculate_sample_weights(self, n_samples: int) -> np.ndarray:
+        """
+        Calculate sample weights based on weighting type.
+        For recency weighting: exponential decay with half-life = backtest_years * recency_half_life_multiplier
+        """
+        if self.config.weighting_type == "normal":
+            # Uniform weights
+            return np.ones(n_samples)
+
+        # Recency weighting with exponential decay
+        half_life = (
+            self.config.backtest_years * self.config.recency_half_life_multiplier
+        )
+        lambda_decay = np.log(2) / half_life  # Decay constant
+
+        # Time indices: 0 (oldest) to n_samples-1 (newest)
+        time_indices = np.arange(n_samples)
+        max_time = n_samples - 1
+
+        # Exponential decay: w_i = exp(-lambda * (t_max - t_i))
+        weights = np.exp(-lambda_decay * (max_time - time_indices))
+
+        # Normalize to [0, 1] range with max weight = 1
+        weights = weights / np.max(weights)
+
+        return weights
+
+    def train(self, ticker: str, target_horizon_days: int | None = None):
+        if target_horizon_days is not None:
+            self.target_horizon_days = max(1, int(target_horizon_days))
+
+        buy_horizon = max(1, int(self.target_horizon_days))
+        required_horizons = sorted({1, buy_horizon})
+
         data = self.fetch_data(ticker, self.config.backtest_years)
         if data.empty:
             raise ValueError(f"No data for {ticker}")
 
-        # Apply log-normalization ONLY for LSTM (multi-scaler architecture needs it)
-        # Other models (tree, prophet, sklearn) train on raw data
-        if self.config.model_type == "lstm":
-            data["Close"] = np.log1p(data["Close"])
-            self.close_was_log_normalized = True
-        else:
-            self.close_was_log_normalized = False
-
-        X, y = self.prepare_features(data)
-        if len(X) < 1:
-            raise ValueError(
-                f"Insufficient data rows for {ticker} after feature engineering."
-            )
-
-        # Conditional scaling based on model type
         m_type = self.config.model_type
-        if m_type == "lstm":
-            scalers = self._init_scalers(len(X))
-            self.price_scaler = scalers["price_scaler"]
-            self.volume_scaler = scalers["volume_scaler"]
-            self.technical_scaler = scalers["technical_scaler"]
-            X_scaled = self._apply_multi_scalers_fit(X)
-        else:
-            X_scaled = X  # Tree models use raw data
-
-        # For LSTM, also scale the target
-        target_scaler = None
-        y_scaled = y
-        if m_type == "lstm":
-            from sklearn.preprocessing import StandardScaler
-
-            target_scaler = StandardScaler()
-            y_scaled = target_scaler.fit_transform(y.reshape(-1, 1)).flatten()
-
-        if m_type == "lstm":
-            try:
-                X_seq, y_seq = self._create_sequences(X_scaled, y_scaled)
-                self.model = self._init_model(input_dim=X.shape[1])
-                self.model.fit(X_seq, y_seq, batch_size=32, epochs=10, verbose=0)
-                self.target_scaler = target_scaler  # Save for inverse transform
-            except Exception:
-                self.model = self._init_model()
-                self.model.fit(X_scaled, y)
-                self.target_scaler = None
-        elif m_type == "prophet":
-            try:
-                prophet_df = pd.DataFrame(
-                    {"ds": data.index, "y": data["Close"].values.flatten()}
-                )
-                prophet_df["ds"] = pd.to_datetime(prophet_df["ds"]).dt.tz_localize(None)
-                prophet_df = prophet_df.dropna()
-                self.model = self._init_model()
-                self.model.fit(prophet_df)
-            except Exception:
-                self.model = self._init_model()
-                self.model.fit(X_scaled, y)
-        else:
-            self.model = self._init_model()
-            self.model.fit(X_scaled, y)
-
+        weighting_suffix = self.config.weighting_type
+        horizon_suffix = f"h{buy_horizon}d"
         os.makedirs(self.config.model_path, exist_ok=True)
         model_filename = os.path.join(
-            self.config.model_path, f"{ticker}_{m_type}_model.joblib"
+            self.config.model_path,
+            f"{ticker}_{m_type}_{weighting_suffix}_{horizon_suffix}_model.joblib",
         )
-        if m_type == "lstm" and hasattr(self.model, "save"):
-            keras_path = model_filename.replace(".joblib", ".keras")
-            self.model.save(keras_path)
-            joblib.dump(
-                {
-                    "scaler": self.scaler,
-                    "target_scaler": self.target_scaler,
-                    "price_scaler": self.price_scaler,
-                    "volume_scaler": self.volume_scaler,
-                    "technical_scaler": self.technical_scaler,
-                    "keras_path": keras_path,
-                    "model_class": self.model.__class__.__name__,
-                    "close_was_log_normalized": self.close_was_log_normalized,
-                },
-                model_filename,
-            )
+
+        # Read-modify-write: preserve any existing horizons already in the bundle
+        if os.path.exists(model_filename):
+            try:
+                existing = joblib.load(model_filename)
+                bundle_payload = {
+                    "model_type": m_type,
+                    "weighting_type": self.config.weighting_type,
+                    "horizons": dict(existing.get("horizons", {})),
+                }
+            except Exception:
+                bundle_payload = {
+                    "model_type": m_type,
+                    "weighting_type": self.config.weighting_type,
+                    "horizons": {},
+                }
         else:
-            joblib.dump(
-                {
-                    "model": self.model,
-                    "scaler": self.scaler,
-                    "target_scaler": getattr(
-                        self, "target_scaler", None
-                    ),  # Include if exists
-                    "model_class": self.model.__class__.__name__,
-                    "close_was_log_normalized": self.close_was_log_normalized,
-                },
-                model_filename,
-            )
+            bundle_payload = {
+                "model_type": m_type,
+                "weighting_type": self.config.weighting_type,
+                "horizons": {},
+            }
+
+        for h in required_horizons:
+            X, y = self.prepare_features(data, target_horizon_days=h)
+            if len(X) < 1:
+                raise ValueError(
+                    f"Insufficient data rows for {ticker} (horizon={h}) after feature engineering."
+                )
+
+            sample_weights = self._calculate_sample_weights(len(X))
+            target_scaler = None
+            y_scaled = y
+            if m_type == "lstm":
+                scalers_dict = self._init_scalers(n_samples=len(X))
+                self.price_scaler = scalers_dict["price_scaler"]
+                self.volume_scaler = scalers_dict["volume_scaler"]
+                self.technical_scaler = scalers_dict["technical_scaler"]
+                target_scaler = scalers_dict["target_scaler"]
+
+                X_scaled = self._apply_multi_scalers_fit(X)
+                y_scaled = target_scaler.fit_transform(y.reshape(-1, 1)).flatten()
+            else:
+                # Tree models & Prophet: no feature scaling needed
+                X_scaled = X
+                self.price_scaler = None
+                self.volume_scaler = None
+                self.technical_scaler = None
+                target_scaler = None
+
+            if m_type == "lstm":
+                try:
+                    X_seq, y_seq = self._create_sequences(X_scaled, y_scaled)
+
+                    seq_sample_weights = self._calculate_sample_weights(len(X_seq))
+                    self.model = self._init_model(input_dim=X.shape[1])
+                    self.model.fit(
+                        X_seq,
+                        y_seq,
+                        sample_weight=seq_sample_weights,
+                        batch_size=32,
+                        epochs=10,
+                        verbose=0,
+                    )
+                    self.target_scaler = target_scaler  # Save for inverse transform
+                except Exception as e:
+                    logging.warning(
+                        f"⚠️ LSTM sequence training failed for {ticker} (h={h}): {e}. "
+                        f"Falling back to standard training."
+                    )
+                    self.model = self._init_model()
+                    self.model.fit(X_scaled, y_scaled, sample_weight=sample_weights)
+                    self.target_scaler = target_scaler
+            elif m_type == "prophet":
+                try:
+                    prophet_df = pd.DataFrame(
+                        {"ds": data.index, "y": data["Close"].values.flatten()}
+                    )
+                    prophet_df["ds"] = pd.to_datetime(prophet_df["ds"]).dt.tz_localize(
+                        None
+                    )
+                    prophet_df = prophet_df.dropna()
+                    self.model = self._init_model()
+                    self.model.fit(prophet_df)
+                except Exception as e:
+                    logging.warning(
+                        f"⚠️ Prophet training failed for {ticker} (h={h}): {e}. "
+                        f"Falling back to standard training."
+                    )
+                    self.model = self._init_model()
+                    self.model.fit(
+                        X, y, sample_weight=sample_weights
+                    )  # Use raw X, y for fallback
+            else:
+                self.model = self._init_model()
+                self.model.fit(X, y, sample_weight=sample_weights)
+
+            # Determine log-normalization for this horizon
+            if m_type == "lstm":
+                self.close_was_log_normalized = True
+                y_normalized = np.log1p(y)
+            else:
+                self.close_was_log_normalized = False
+                y_normalized = y
+
+            horizon_entry = {
+                "price_scaler": self.price_scaler,
+                "volume_scaler": self.volume_scaler,
+                "technical_scaler": self.technical_scaler,
+                "scaler": self.scaler,
+                "target_scaler": getattr(self, "target_scaler", None),
+                "close_was_log_normalized": self.close_was_log_normalized,
+                "model_class": self.model.__class__.__name__,
+                "weighting_type": self.config.weighting_type,
+                "target_horizon_days": h,
+            }
+
+            if m_type == "lstm" and hasattr(self.model, "save"):
+                keras_path = self._get_lstm_horizon_path(model_filename, h)
+                self.model.save(keras_path)
+                horizon_entry["keras_path"] = keras_path
+            else:
+                horizon_entry["model"] = self.model
+
+            bundle_payload["horizons"][h] = horizon_entry
+
+        # After the loop self.model / self.scaler hold the BUY horizon (last iteration)
+        joblib.dump(bundle_payload, model_filename)
 
     def load_or_build(self, ticker: str, target_horizon_days: int = 1) -> str:
         """Load or build a model, optionally for a specific prediction horizon.
@@ -653,33 +734,46 @@ class ModelBuilder:
         Returns:
             Status string: "loaded", "trained", etc.
         """
+        if target_horizon_days is not None:
+            self.target_horizon_days = max(1, int(target_horizon_days))
+
+        # Bundle filename is keyed by the BUY horizon
+        weighting_suffix = self.config.weighting_type
+        horizon_suffix = f"h{self.target_horizon_days}d"
         model_filename = os.path.join(
-            self.config.model_path, f"{ticker}_{self.config.model_type}_model.joblib"
+            self.config.model_path,
+            f"{ticker}_{self.config.model_type}_{weighting_suffix}_{horizon_suffix}_model.joblib",
         )
 
-        # 1. Train if model file is missing
+        # Train if bundle missing
         if not os.path.exists(model_filename):
-            self.train(ticker)
+            self.train(ticker, target_horizon_days=self.target_horizon_days)
             return "trained"
 
         try:
-            # 2. Try loading bundle
             data_bundle = joblib.load(model_filename)
 
-            # 2.5. Extract horizon entry if multi-horizon bundle
-            horizon_entry = self._extract_horizon_entry(
-                data_bundle, target_horizon_days
-            )
+            # Extract the requested horizon entry (supports new multi-horizon and legacy bundles)
+            try:
+                horizon_entry = self._extract_horizon_entry(
+                    data_bundle, self.target_horizon_days
+                )
+            except FileNotFoundError:
+                # Horizon not in bundle → retrain to populate it
+                self.train(ticker, target_horizon_days=self.target_horizon_days)
+                return "retrained_missing_horizon"
+
             loaded_scaler = horizon_entry["scaler"]
 
-            # 3. Check for feature mismatch
-            # We fetch a tiny slice of data to check current feature dimensions
+            # Feature dimension check
             sample_data = self.fetch_data(ticker, self.config.backtest_years)
             if sample_data.empty:
-                self.train(ticker)
+                self.train(ticker, target_horizon_days=self.target_horizon_days)
                 return "trained_fallback"
 
-            X_sample, _ = self.prepare_features(sample_data)
+            X_sample, _ = self.prepare_features(
+                sample_data, target_horizon_days=self.target_horizon_days
+            )
             current_dim = X_sample.shape[1]
 
             # Scaler feature count check (skip for LSTM with multi-scalers)
@@ -691,7 +785,7 @@ class ModelBuilder:
                     logging.warning(
                         f"Feature mismatch for {ticker}: expected {current_dim}, found {loaded_scaler.n_features_in_}. Retraining..."
                     )
-                    self.train(ticker)
+                    self.train(ticker, target_horizon_days=self.target_horizon_days)
                     return "retrained"
 
             # For LSTM, check if multi-scalers are available (required for prediction)
@@ -703,13 +797,11 @@ class ModelBuilder:
                     logging.warning(
                         f"LSTM multi-scalers missing for {ticker}. Retraining..."
                     )
-                    self.train(ticker)
+                    self.train(ticker, target_horizon_days=self.target_horizon_days)
                     return "retrained_missing_scalers"
 
             self.scaler = loaded_scaler
-            self.target_scaler = horizon_entry.get(
-                "target_scaler", None
-            )  # Load target scaler for LSTM
+            self.target_scaler = horizon_entry.get("target_scaler", None)
             self.close_was_log_normalized = horizon_entry.get(
                 "close_was_log_normalized", False
             )
@@ -724,21 +816,32 @@ class ModelBuilder:
             if "keras_path" in horizon_entry or "lstm_h5" in horizon_entry:
                 from tensorflow.keras.models import load_model
 
-                path = horizon_entry.get("keras_path") or horizon_entry.get("lstm_h5")
-                # Final safety check: load_model might fail if architecture changed
+                keras_path = horizon_entry.get(
+                    "keras_path", horizon_entry.get("lstm_h5")
+                )
+                if not os.path.exists(keras_path):
+                    stored_path = horizon_entry.get("keras_path") or horizon_entry.get(
+                        "lstm_h5"
+                    )
+                    if stored_path and os.path.exists(stored_path):
+                        keras_path = stored_path
+
                 try:
-                    self.model = load_model(path)
+                    self.model = load_model(keras_path)
                 except Exception:
-                    self.train(ticker)
+                    self.train(ticker, target_horizon_days=self.target_horizon_days)
                     return "retrained_keras_error"
             else:
                 self.model = horizon_entry.get("model")
 
+            logging.debug(
+                f"Loaded model (h{self.target_horizon_days}d) for {ticker} from {model_filename}"
+            )
             return "loaded"
 
         except Exception as e:
             logging.error(f"Failed to load model for {ticker}: {e}. Retraining...")
-            self.train(ticker)
+            self.train(ticker, target_horizon_days=self.target_horizon_days)
             return "retrained_error"
 
     def load_exit_model(self, ticker: str, buy_horizon_days: int) -> None:
@@ -754,14 +857,8 @@ class ModelBuilder:
 
         model_filename = os.path.join(
             self.config.model_path,
-            f"{ticker}_{self.config.model_type}_h{buy_horizon_days}d_model.joblib",
+            f"{ticker}_{self.config.model_type}_{self.config.weighting_type}_h{buy_horizon_days}d_model.joblib",
         )
-
-        if not os.path.exists(model_filename):
-            raise FileNotFoundError(
-                f"Bundle not found for {ticker} exit model: {model_filename}. "
-                f"Run training with holding_period={buy_horizon_days} first."
-            )
 
         try:
             data_bundle = joblib.load(model_filename)
