@@ -28,7 +28,7 @@ def run_super_star_worker(
     data_cache: dict,
     market_data: pd.DataFrame | None,
     models: list[str],
-    tie_breaker: str | None,
+    tie_breaker: str | None = None,
 ) -> tuple[str, dict]:
     """Run one Super Stars ticker analysis in an isolated worker process.
 
