@@ -754,6 +754,8 @@ class BacktestEngine:
 
             # Inverse log transform if target was log-normalized during training
             if _builder.close_was_log_normalized:
+                # Clip to safe range for expm1 to avoid overflow
+                raw_preds = np.clip(raw_preds, -1, 700)
                 raw_preds = np.expm1(raw_preds).astype(np.float32)
 
             all_preds = np.zeros(len(df), dtype=np.float32)
