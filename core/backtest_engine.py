@@ -254,14 +254,18 @@ class BacktestEngine:
         signal_func: Callable[[int, pd.DataFrame, list[str], float], bool],
         df: pd.DataFrame,
         features: list[str],
+        exit_signal_func: Callable[[int, pd.DataFrame, list[str], float], bool]
+        | None = None,
     ) -> dict[str, Any]:
         """The shared engine logic for both modes.
 
         Args:
             ticker: Stock symbol
-            signal_func: Function(i, df, features, capital) -> bool
+            signal_func: Function(i, df, features, capital) -> bool for BUY decisions
             df: Pre-filtered dataframe (trading days only)
             features: Feature columns list
+            exit_signal_func: Optional function(i, df, features, capital) -> bool for EXIT decisions
+                            If not provided, fallback to signal_func for exit (original behavior)
         """
 
         capital = self.config.init_capital
@@ -364,7 +368,15 @@ class BacktestEngine:
                             "take-profit",
                             max(tp_p, float(df.iloc[i]["Open"])),
                         )
+                    elif exit_signal_func:
+                        # Dual-horizon strategy: use separate exit signal function
+                        should_hold = exit_signal_func(
+                            i, df, features, position * current_price
+                        )
+                        if not should_hold:
+                            reason, sell_price = "model-exit", current_price
                     elif not is_bullish:
+                        # Fallback: use buy signal for exit (original single-horizon behavior)
                         reason, sell_price = "model-exit", current_price
 
                 if reason and buy_date is not None:
