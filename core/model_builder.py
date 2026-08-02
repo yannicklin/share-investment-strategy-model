@@ -446,7 +446,23 @@ class ModelBuilder:
         # Forward fill to handle different trading calendars (e.g. US holidays vs AU)
         self._market_data = market_df.ffill().fillna(0)
 
-    def prepare_features(self, data: pd.DataFrame):
+    def prepare_features(
+        self, data: pd.DataFrame, target_horizon_days: int | None = None
+    ):
+        """Prepare features and target for model training.
+
+        Args:
+            data: DataFrame with OHLCV columns
+            target_horizon_days: Days ahead for target (default: self.target_horizon_days or 1)
+
+        Returns:
+            X, y tuple for training
+        """
+        if target_horizon_days is None:
+            target_horizon_days = getattr(self, "target_horizon_days", 1)
+
+        target_horizon_days = max(1, int(target_horizon_days))
+
         df = data.copy()
 
         # Double check Close is a Series
@@ -500,7 +516,8 @@ class ModelBuilder:
 
         df["Daily_Return"] = df["Close"].pct_change(fill_method=None)
 
-        df["Target"] = df["Close"].shift(-1)
+        # Target: Close price N days in the future (for multi-horizon training)
+        df["Target"] = df["Close"].shift(-target_horizon_days)
         df = df.dropna()
 
         # Update features list
