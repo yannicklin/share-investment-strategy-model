@@ -71,6 +71,7 @@ class ModelBuilder:
         self._price_feature_indices: list[int] = []
         self._volume_feature_indices: list[int] = []
         self._technical_feature_indices: list[int] = []
+        self.close_was_log_normalized: bool = False
 
     @classmethod
     def get_available_models(cls) -> list[str]:
@@ -624,6 +625,7 @@ class ModelBuilder:
                     "technical_scaler": self.technical_scaler,
                     "keras_path": keras_path,
                     "model_class": self.model.__class__.__name__,
+                    "close_was_log_normalized": self.close_was_log_normalized,
                 },
                 model_filename,
             )
@@ -636,6 +638,7 @@ class ModelBuilder:
                         self, "target_scaler", None
                     ),  # Include if exists
                     "model_class": self.model.__class__.__name__,
+                    "close_was_log_normalized": self.close_was_log_normalized,
                 },
                 model_filename,
             )
@@ -707,6 +710,9 @@ class ModelBuilder:
             self.target_scaler = horizon_entry.get(
                 "target_scaler", None
             )  # Load target scaler for LSTM
+            self.close_was_log_normalized = horizon_entry.get(
+                "close_was_log_normalized", False
+            )
 
             # Load multi-scalers for LSTM
             if self.config.model_type == "lstm":
