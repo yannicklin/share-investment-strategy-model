@@ -28,12 +28,12 @@ def run_super_star_worker(
     finmind_cache: dict | None,
     market_data: pd.DataFrame | None,
     models: list[str],
-    tie_breaker: str | None,
+    tie_breaker: str | None = None,
 ) -> tuple[str, dict]:
     """Run one Super Stars ticker analysis in an isolated worker process."""
     try:
         _worker_logger.info(f"[WORKER] Starting analysis for {ticker}")
-        
+
         worker_config = deepcopy(config)
         worker_config.target_stock_codes = [ticker]
         worker_config.model_types = list(models)
@@ -52,7 +52,9 @@ def run_super_star_worker(
             tie_breaker=tie_breaker,
             mode_prefix="ranking",
         )
-        _worker_logger.info(f"[WORKER] Completed {ticker}, result keys: {list(result.keys()) if isinstance(result, dict) else 'N/A'}")
+        _worker_logger.info(
+            f"[WORKER] Completed {ticker}, result keys: {list(result.keys()) if isinstance(result, dict) else 'N/A'}"
+        )
 
         worker_builder.model = None
         del worker_engine
@@ -76,7 +78,7 @@ def run_super_star_worker(
 
         _worker_logger.info(f"[WORKER] Finished cleanup for {ticker}")
         return ticker, result
-    
+
     except Exception as e:
         _worker_logger.error(f"[WORKER] Error processing {ticker}: {e}", exc_info=True)
         return ticker, {"error": str(e)}
