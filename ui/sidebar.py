@@ -13,7 +13,7 @@ import os
 import streamlit as st
 
 from core.config import Config
-from core.index_manager import load_index_constituents
+from core.index_manager import load_index_constituents, update_index_data
 from core.model_builder import ModelBuilder
 
 
@@ -152,10 +152,15 @@ def render_sidebar(config: Config):
 
         if st.sidebar.button(
             "🔄 Update Index Constituents",
-            disabled=True,
-            help="Online sync is currently undergoing maintenance.",
+            help="Sync latest index constituents from TWSE (Taiwan Stock Exchange)",
         ):
-            pass  # Disabled logic
+            with st.spinner("Fetching latest market data from TWSE..."):
+                results = update_index_data()
+                st.sidebar.success("Updated!")
+                for idx, msg in results.items():
+                    st.sidebar.caption(f"{idx}: {msg}")
+                # Reload data immediately after update
+                index_data = load_index_constituents()
 
         config.target_stock_codes = index_data.get(index_choice, [])
 
