@@ -1033,6 +1033,14 @@ class ModelBuilder:
         if data.empty:
             raise ValueError(f"No data for {ticker}")
 
+        # Validate minimum raw data rows (need at least 150 for rolling window indicators)
+        min_raw_rows = 150
+        if len(data) < min_raw_rows:
+            raise ValueError(
+                f"Insufficient raw data for {ticker}: {len(data)} rows (need ≥{min_raw_rows}). "
+                f"Check data source or extend lookback period."
+            )
+
         m_type = self.config.model_type
         weighting_suffix = self.config.weighting_type
         horizon_suffix = f"h{buy_horizon}d"
@@ -1066,9 +1074,14 @@ class ModelBuilder:
 
         for h in required_horizons:
             X, y = self.prepare_features(data, ticker, target_horizon_days=h)
-            if len(X) < 1:
+
+            # Validate minimum engineered rows (need at least 50 for meaningful training)
+            min_engineered_rows = 50
+            if len(X) < min_engineered_rows:
                 raise ValueError(
-                    f"Insufficient data rows for {ticker} (horizon={h}) after feature engineering."
+                    f"Insufficient data for {ticker} (horizon={h}d): "
+                    f"Only {len(X)} rows after feature engineering (need ≥{min_engineered_rows}). "
+                    f"Raw data had {len(data)} rows; lost {len(data) - len(X)} to rolling windows and NaN."
                 )
 
             # Conditional scaling based on model type
