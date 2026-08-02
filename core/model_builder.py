@@ -67,6 +67,7 @@ class ModelBuilder:
         self.sequence_length = 30
         self._data_cache: dict[str, pd.DataFrame] = {}
         self._market_data: pd.DataFrame | None = None
+        self._finmind_data_cache: dict[str, pd.DataFrame] = {}
         self._price_feature_indices: list[int] = []
         self._volume_feature_indices: list[int] = []
         self._technical_feature_indices: list[int] = []
@@ -869,3 +870,27 @@ class ModelBuilder:
         if len(X) < self.sequence_length:
             return None
         return X[-self.sequence_length :]
+
+    def get_data_cache_snapshot(self) -> dict[str, pd.DataFrame]:
+        """Return a shallow copy of the current data cache for worker reuse."""
+        return dict(self._data_cache)
+
+    def set_data_cache_snapshot(self, data_cache: dict[str, pd.DataFrame]) -> None:
+        """Replace the local cache with a shallow copy of a shared snapshot."""
+        self._data_cache = dict(data_cache)
+
+    def set_cached_market_data(self, market_data: pd.DataFrame | None) -> None:
+        """Prime the market data cache from an existing DataFrame snapshot."""
+        self._market_data = market_data
+
+    def get_finmind_cache_snapshot(self) -> dict[str, pd.DataFrame]:
+        """Return a shallow copy of the current per-ticker FinMind cache."""
+        return {ticker: df.copy() for ticker, df in self._finmind_data_cache.items()}
+
+    def set_finmind_cache_snapshot(
+        self, finmind_cache: dict[str, pd.DataFrame]
+    ) -> None:
+        """Prime the local per-ticker FinMind cache from a shared snapshot."""
+        self._finmind_data_cache = {
+            ticker: df.copy() for ticker, df in finmind_cache.items()
+        }
