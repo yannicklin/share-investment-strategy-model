@@ -140,22 +140,37 @@ def render_sidebar(config: Config):
         # Super Star Index Choice
         st.sidebar.subheader("Index Selection")
         index_data = load_index_constituents()
+        # Safety check: ensure index_data is a valid dict
+        if not isinstance(index_data, dict):
+            st.sidebar.error("❌ Failed to load index data. Using defaults.")
+            index_data = {}
+
         index_choice = st.sidebar.selectbox(
             "Select Index to Scan",
-            list(index_data.keys()),
+            list(index_data.keys()) if index_data else [],
             help="USA Stock 50: Blue Chips. USA Stock 200: Benchmark index.",
         )
 
         if st.sidebar.button("🔄 Update Index Constituents"):
             with st.spinner("Fetching latest market data..."):
                 results = update_index_data()
-                st.sidebar.success("Updated!")
-                for idx, msg in results.items():
-                    st.sidebar.caption(f"{idx}: {msg}")
-                # Reload data immediately after update
-                index_data = load_index_constituents()
+                if results:
+                    st.sidebar.success("Updated!")
+                    for idx, msg in results.items():
+                        st.sidebar.caption(f"{idx}: {msg}")
+                    # Reload data immediately after update
+                    index_data = load_index_constituents()
+                    if not isinstance(index_data, dict):
+                        st.sidebar.error("Failed to reload index data. Using cache.")
+                        index_data = {}
+                else:
+                    st.sidebar.error("Failed to fetch index data. Using cached data.")
 
-        config.target_stock_codes = index_data.get(index_choice, [])
+        # Safely get target stock codes
+        if index_data and index_choice:
+            config.target_stock_codes = index_data.get(index_choice, [])
+        else:
+            config.target_stock_codes = []
 
     config.backtest_years = st.sidebar.slider(
         "Backtest Years", 1, 10, config.backtest_years
