@@ -25,7 +25,6 @@ def run_super_star_worker(
     ticker: str,
     config: Config,
     data_cache: dict,
-    finmind_cache: dict | None,
     market_data: pd.DataFrame | None,
     models: list[str],
     tie_breaker: str | None = None,
@@ -36,12 +35,12 @@ def run_super_star_worker(
 
         worker_config = deepcopy(config)
         worker_config.target_stock_codes = [ticker]
-        worker_config.model_types = list(models)
+        worker_config.model_types = (
+            list(models) if models is not None else list(config.model_types)
+        )
 
         worker_builder = ModelBuilder(worker_config)
         worker_builder.set_data_cache_snapshot(data_cache)
-        if finmind_cache is not None:
-            worker_builder.set_finmind_cache_snapshot(finmind_cache)
         worker_builder.set_cached_market_data(market_data)
 
         _worker_logger.info(f"[WORKER] Running backtest for {ticker}")
