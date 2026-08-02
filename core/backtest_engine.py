@@ -749,7 +749,11 @@ class BacktestEngine:
                 # Clip to safe range for expm1 to avoid overflow
                 # expm1(x) = exp(x) - 1; safe range is approximately [-1, 700]
                 raw_preds = np.clip(raw_preds, -1, 700)
-                raw_preds = np.expm1(raw_preds).astype(np.float32)
+                # Handle any remaining edge cases (NaN, inf) before expm1
+                raw_preds = np.nan_to_num(raw_preds, nan=0.0, posinf=700, neginf=-1)
+                # Suppress overflow warning - we've already clipped to safe range
+                with np.errstate(over="ignore", invalid="ignore"):
+                    raw_preds = np.expm1(raw_preds).astype(np.float32)
             # Pad the beginning with zeros (no predictions for first seq_len days)
             all_preds = np.zeros(len(df), dtype=np.float32)
             all_preds[seq_len:] = raw_preds
