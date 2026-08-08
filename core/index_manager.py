@@ -7,10 +7,8 @@ Author: Yannick
 Copyright (c) 2026 Yannick
 """
 
-import pandas as pd
 import json
 import os
-from typing import List, Dict
 
 CACHE_FILE = "data/models/index_cache_twn.json"
 
@@ -186,7 +184,7 @@ DEFAULT_INDEX_DATA = {
 }
 
 
-def load_index_constituents() -> Dict[str, List[str]]:
+def load_index_constituents() -> dict[str, list[str]]:
     """Loads constituents from local cache or defaults."""
     # Always start with defaults to ensure new indices are available
     data = DEFAULT_INDEX_DATA.copy()
@@ -202,12 +200,17 @@ def load_index_constituents() -> Dict[str, List[str]]:
     return data
 
 
-import requests
 import re
 
+import requests
 
-def update_index_data() -> Dict[str, str]:
-    """Updates index data via online sync from formal sources (TWSE, etc.)."""
+
+def update_index_data() -> dict[str, str]:
+    """Updates index data via online sync from formal sources (TWSE, etc.).
+
+    NOTE: TWSE API endpoints are currently returning 404 errors. Using fallback
+    to default cached data. When TWSE API becomes available, sync will resume.
+    """
     results = {}
     new_data = DEFAULT_INDEX_DATA.copy()
 
@@ -215,60 +218,80 @@ def update_index_data() -> Dict[str, str]:
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
 
-    # 1. Sync Taiwan 50 (TWSE Official)
+    # 1. Sync Taiwan 50 (TWSE Official) - Currently unavailable
     try:
         # TWSE API for Index Constituents
         # TWTB4U is the code for Taiwan 50
         tw50_url = "https://www.twse.com.tw/zh/api/getInduCmp?index=TWTB4U"
         resp = requests.get(tw50_url, headers=headers, timeout=10)
-        if resp.status_code == 200 and resp.text.strip():
+        # Check if response is JSON (starts with '{') instead of HTML error page
+        if resp.status_code == 200 and resp.text.strip().startswith("{"):
             try:
                 data = resp.json()
-                tickers = [f"{row[0]}.TW" for row in data.get("data", []) if len(row) > 0]
+                tickers = [
+                    f"{row[0]}.TW" for row in data.get("data", []) if len(row) > 0
+                ]
                 if len(tickers) >= 45:  # Safety check
                     new_data["台股50 (Taiwan 50)"] = tickers
                     results["台股50 (Taiwan 50)"] = (
                         f"✅ Synced {len(tickers)} stocks from TWSE"
                     )
                 else:
-                    results["台股50 (Taiwan 50)"] = "⚠️ Sync failed: Incomplete data"
-            except (json.JSONDecodeError, ValueError) as je:
-                results["台股50 (Taiwan 50)"] = f"⚠️ Sync Error: Invalid JSON response"
+                    results["台股50 (Taiwan 50)"] = (
+                        "📦 TWSE returned incomplete data, using cache"
+                    )
+            except (json.JSONDecodeError, ValueError):
+                results["台股50 (Taiwan 50)"] = (
+                    "📦 TWSE API unavailable, using cached data"
+                )
         else:
-            results["台股50 (Taiwan 50)"] = f"⚠️ Sync failed: HTTP {resp.status_code}"
+            results["台股50 (Taiwan 50)"] = "📦 TWSE API unavailable, using cached data"
     except requests.exceptions.Timeout:
-        results["台股50 (Taiwan 50)"] = "⚠️ Sync Error: Request timeout"
+        results["台股50 (Taiwan 50)"] = "📦 Request timeout, using cached data"
     except requests.exceptions.ConnectionError:
-        results["台股50 (Taiwan 50)"] = "⚠️ Sync Error: Network unreachable"
+        results["台股50 (Taiwan 50)"] = "📦 Network unreachable, using cached data"
     except Exception as e:
-        results["台股50 (Taiwan 50)"] = f"⚠️ Sync Error: {type(e).__name__}"
+        results["台股50 (Taiwan 50)"] = (
+            f"📦 Error ({type(e).__name__}), using cached data"
+        )
 
-    # 2. Sync Taiwan Mid 100 (TWSE Official)
+    # 2. Sync Taiwan Mid 100 (TWSE Official) - Currently unavailable
     try:
         # TWTB4V is the code for Mid 100
         mid100_url = "https://www.twse.com.tw/zh/api/getInduCmp?index=TWTB4V"
         resp = requests.get(mid100_url, headers=headers, timeout=10)
-        if resp.status_code == 200 and resp.text.strip():
+        # Check if response is JSON (starts with '{') instead of HTML error page
+        if resp.status_code == 200 and resp.text.strip().startswith("{"):
             try:
                 data = resp.json()
-                tickers = [f"{row[0]}.TW" for row in data.get("data", []) if len(row) > 0]
+                tickers = [
+                    f"{row[0]}.TW" for row in data.get("data", []) if len(row) > 0
+                ]
                 if len(tickers) >= 90:  # Safety check
                     new_data["台股中型100 (Mid 100)"] = tickers
                     results["台股中型100 (Mid 100)"] = (
                         f"✅ Synced {len(tickers)} stocks from TWSE"
                     )
                 else:
-                    results["台股中型100 (Mid 100)"] = "⚠️ Sync failed: Incomplete data"
-            except (json.JSONDecodeError, ValueError) as je:
-                results["台股中型100 (Mid 100)"] = f"⚠️ Sync Error: Invalid JSON response"
+                    results["台股中型100 (Mid 100)"] = (
+                        "📦 TWSE returned incomplete data, using cache"
+                    )
+            except (json.JSONDecodeError, ValueError):
+                results["台股中型100 (Mid 100)"] = (
+                    "📦 TWSE API unavailable, using cached data"
+                )
         else:
-            results["台股中型100 (Mid 100)"] = f"⚠️ Sync failed: HTTP {resp.status_code}"
+            results["台股中型100 (Mid 100)"] = (
+                "📦 TWSE API unavailable, using cached data"
+            )
     except requests.exceptions.Timeout:
-        results["台股中型100 (Mid 100)"] = "⚠️ Sync Error: Request timeout"
+        results["台股中型100 (Mid 100)"] = "📦 Request timeout, using cached data"
     except requests.exceptions.ConnectionError:
-        results["台股中型100 (Mid 100)"] = "⚠️ Sync Error: Network unreachable"
+        results["台股中型100 (Mid 100)"] = "📦 Network unreachable, using cached data"
     except Exception as e:
-        results["台股中型100 (Mid 100)"] = f"⚠️ Sync Error: {type(e).__name__}"
+        results["台股中型100 (Mid 100)"] = (
+            f"📦 Error ({type(e).__name__}), using cached data"
+        )
 
     # 3. Sync MSCI Taiwan (Via iShares EWT as reliable proxy)
     try:
@@ -276,7 +299,12 @@ def update_index_data() -> Dict[str, str]:
         # For MSCI, formal lists are often paywalled, so we use the ETF holdings
         msci_url = "https://www.blackrock.com/us/individual/products/239682/ishares-msci-taiwan-etf/1464253357814.ajax?fileType=csv&fileName=EWT_holdings&dataType=fund"
         resp = requests.get(msci_url, headers=headers, timeout=15)
-        if resp.status_code == 200 and resp.text.strip():
+        # Check response is CSV content (not HTML error page)
+        if (
+            resp.status_code == 200
+            and resp.text.strip()
+            and not resp.text.strip().startswith("<")
+        ):
             # Extract 4-digit codes from the CSV content
             content = resp.text
             # Look for patterns like "2330", "2317" which are common Taiwan stock IDs
@@ -293,25 +321,31 @@ def update_index_data() -> Dict[str, str]:
                 )
             else:
                 results["MSCI台股指數 (MSCI Taiwan)"] = (
-                    "⚠️ Sync failed: Could not parse CSV"
+                    "📦 BlackRock returned incomplete data, using cache"
                 )
         else:
-            results["MSCI台股指數 (MSCI Taiwan)"] = f"⚠️ Sync failed: HTTP {resp.status_code}"
+            results["MSCI台股指數 (MSCI Taiwan)"] = (
+                "📦 BlackRock API unavailable, using cached data"
+            )
     except requests.exceptions.Timeout:
-        results["MSCI台股指數 (MSCI Taiwan)"] = "⚠️ Sync Error: Request timeout"
+        results["MSCI台股指數 (MSCI Taiwan)"] = "📦 Request timeout, using cached data"
     except requests.exceptions.ConnectionError:
-        results["MSCI台股指數 (MSCI Taiwan)"] = "⚠️ Sync Error: Network unreachable"
+        results["MSCI台股指數 (MSCI Taiwan)"] = (
+            "📦 Network unreachable, using cached data"
+        )
     except Exception as e:
-        results["MSCI台股指數 (MSCI Taiwan)"] = f"⚠️ Sync Error: {type(e).__name__}"
+        results["MSCI台股指數 (MSCI Taiwan)"] = (
+            f"📦 Error ({type(e).__name__}), using cached data"
+        )
 
-    # Save to cache if any sync was successful
+    # Save to cache if any sync was actually successful
     if any("✅" in v for v in results.values()):
         os.makedirs("data/models", exist_ok=True)
         with open(CACHE_FILE, "w") as f:
             json.dump(new_data, f)
 
-    # Fill in failures with static status if they weren't synced
-    for k in DEFAULT_INDEX_DATA.keys():
+    # Ensure all index keys have a status message
+    for k in DEFAULT_INDEX_DATA:
         if k not in results:
             results[k] = "📦 Using local cache (sync was not attempted)"
 
