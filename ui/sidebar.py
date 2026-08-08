@@ -156,8 +156,9 @@ def render_sidebar(config: Config):
         )
 
         if st.sidebar.button(
-            "🔄 Update Index Constituents",
-            help="Sync latest index constituents from TWSE (Taiwan Stock Exchange)",
+            "🔄 Update Index Constituents (Unavailable)",
+            help="Data sources currently blocked. Using local cache.",
+            disabled=True,
         ):
             with st.spinner("Fetching latest market data from TWSE..."):
                 results = update_index_data()
