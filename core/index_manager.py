@@ -201,13 +201,14 @@ def load_index_constituents() -> dict[str, list[str]]:
 
 
 import re
-import requests
+
 import pandas as pd
+import requests
 
 
 def update_index_data() -> dict[str, str]:
     """Updates index data via online sync from multiple reliable sources.
-    
+
     Priority order:
     1. Yahoo Finance for Taiwan 50 (direct web scraping)
     2. BlackRock iShares CSV for MSCI Taiwan (direct download)
@@ -227,38 +228,61 @@ def update_index_data() -> dict[str, str]:
     try:
         url = "https://finance.yahoo.com/quote/%5ETSE50/components/"
         resp = requests.get(url, headers=headers, timeout=10)
-        
+
         # Extract table data via pandas
         try:
             import io
+
             tables = pd.read_html(io.StringIO(resp.text))
             if tables and len(tables) > 0:
                 df = tables[0]
                 # Get the first column (Symbol), convert to TW format
-                if 'Symbol' in df.columns:
-                    tickers = [f"{sym}.TW" for sym in df['Symbol'].unique() if isinstance(sym, str)]
+                if "Symbol" in df.columns:
+                    tickers = [
+                        f"{sym}.TW"
+                        for sym in df["Symbol"].unique()
+                        if isinstance(sym, str)
+                    ]
                 elif len(df.columns) > 0:
                     # Fallback to first column
-                    tickers = [f"{sym}.TW" for sym in df.iloc[:, 0].unique() if isinstance(sym, str)]
-                
+                    tickers = [
+                        f"{sym}.TW"
+                        for sym in df.iloc[:, 0].unique()
+                        if isinstance(sym, str)
+                    ]
+
                 if len(tickers) >= 45:  # Safety check
                     new_data["台股50 (Taiwan 50)"] = tickers
-                    results["台股50 (Taiwan 50)"] = f"✅ Synced {len(tickers)} stocks from Yahoo Finance"
+                    results["台股50 (Taiwan 50)"] = (
+                        f"✅ Synced {len(tickers)} stocks from Yahoo Finance"
+                    )
                 else:
-                    results["台股50 (Taiwan 50)"] = "📦 Yahoo Finance incomplete, trying fallback..."
+                    results["台股50 (Taiwan 50)"] = (
+                        "📦 Yahoo Finance incomplete, trying fallback..."
+                    )
             else:
-                results["台股50 (Taiwan 50)"] = "📦 Yahoo Finance unavailable, trying fallback..."
+                results["台股50 (Taiwan 50)"] = (
+                    "📦 Yahoo Finance unavailable, trying fallback..."
+                )
         except Exception:
-            results["台股50 (Taiwan 50)"] = "📦 Yahoo Finance parse error, trying fallback..."
+            results["台股50 (Taiwan 50)"] = (
+                "📦 Yahoo Finance parse error, trying fallback..."
+            )
     except requests.exceptions.Timeout:
         results["台股50 (Taiwan 50)"] = "📦 Yahoo Finance timeout, trying fallback..."
     except requests.exceptions.ConnectionError:
-        results["台股50 (Taiwan 50)"] = "📦 Yahoo Finance unreachable, trying fallback..."
+        results["台股50 (Taiwan 50)"] = (
+            "📦 Yahoo Finance unreachable, trying fallback..."
+        )
     except Exception as e:
-        results["台股50 (Taiwan 50)"] = f"📦 Yahoo error ({type(e).__name__}), trying fallback..."
+        results["台股50 (Taiwan 50)"] = (
+            f"📦 Yahoo error ({type(e).__name__}), trying fallback..."
+        )
 
     # If Yahoo Finance failed, try TWSE API as fallback for Taiwan 50
-    if "台股50 (Taiwan 50)" not in results or "Synced" not in results.get("台股50 (Taiwan 50)", ""):
+    if "台股50 (Taiwan 50)" not in results or "Synced" not in results.get(
+        "台股50 (Taiwan 50)", ""
+    ):
         try:
             tw50_url = "https://www.twse.com.tw/zh/api/getInduCmp?index=TWTB4U"
             resp = requests.get(tw50_url, headers=headers, timeout=10)
@@ -270,9 +294,13 @@ def update_index_data() -> dict[str, str]:
                     ]
                     if len(tickers) >= 45:
                         new_data["台股50 (Taiwan 50)"] = tickers
-                        results["台股50 (Taiwan 50)"] = f"✅ Synced {len(tickers)} stocks from TWSE API"
+                        results["台股50 (Taiwan 50)"] = (
+                            f"✅ Synced {len(tickers)} stocks from TWSE API"
+                        )
                     else:
-                        results["台股50 (Taiwan 50)"] = "📦 TWSE incomplete, using cache"
+                        results["台股50 (Taiwan 50)"] = (
+                            "📦 TWSE incomplete, using cache"
+                        )
                 except (json.JSONDecodeError, ValueError):
                     results["台股50 (Taiwan 50)"] = "📦 TWSE parse error, using cache"
             else:
@@ -317,19 +345,28 @@ def update_index_data() -> dict[str, str]:
         # Direct CSV download from iShares
         msci_url = "https://www.ishares.com/us/products/239682/ishares-msci-taiwan-etf/1464253357814.ajax?fileType=csv&fileName=EWT_holdings&dataType=fund"
         resp = requests.get(msci_url, headers=headers, timeout=15)
-        
-        if resp.status_code == 200 and resp.text.strip() and not resp.text.strip().startswith("<"):
+
+        if (
+            resp.status_code == 200
+            and resp.text.strip()
+            and not resp.text.strip().startswith("<")
+        ):
             try:
                 import io
+
                 # Parse CSV with pandas, skip BlackRock metadata lines
                 df = pd.read_csv(io.StringIO(resp.text), skiprows=9)
-                if 'Ticker' in df.columns:
+                if "Ticker" in df.columns:
                     # Extract 4-digit Taiwan stock codes, convert to TW format
                     tickers = []
-                    for ticker in df['Ticker'].unique():
-                        if isinstance(ticker, str) and len(ticker) == 4 and ticker.isdigit():
+                    for ticker in df["Ticker"].unique():
+                        if (
+                            isinstance(ticker, str)
+                            and len(ticker) == 4
+                            and ticker.isdigit()
+                        ):
                             tickers.append(f"{ticker}.TW")
-                    
+
                     tickers = sorted(list(set(tickers)))
                     if len(tickers) >= 70:
                         new_data["MSCI台股指數 (MSCI Taiwan)"] = tickers
@@ -337,44 +374,68 @@ def update_index_data() -> dict[str, str]:
                             f"✅ Synced {len(tickers)} stocks from BlackRock iShares CSV"
                         )
                     else:
-                        results["MSCI台股指數 (MSCI Taiwan)"] = "📦 BlackRock incomplete, trying fallback..."
+                        results["MSCI台股指數 (MSCI Taiwan)"] = (
+                            "📦 BlackRock incomplete, trying fallback..."
+                        )
                 else:
-                    results["MSCI台股指數 (MSCI Taiwan)"] = "📦 BlackRock CSV structure unknown, trying fallback..."
+                    results["MSCI台股指數 (MSCI Taiwan)"] = (
+                        "📦 BlackRock CSV structure unknown, trying fallback..."
+                    )
             except Exception:
-                results["MSCI台股指數 (MSCI Taiwan)"] = "📦 BlackRock parse error, trying fallback..."
+                results["MSCI台股指數 (MSCI Taiwan)"] = (
+                    "📦 BlackRock parse error, trying fallback..."
+                )
         else:
-            results["MSCI台股指數 (MSCI Taiwan)"] = "📦 BlackRock unavailable, trying fallback..."
+            results["MSCI台股指數 (MSCI Taiwan)"] = (
+                "📦 BlackRock unavailable, trying fallback..."
+            )
     except requests.exceptions.Timeout:
-        results["MSCI台股指數 (MSCI Taiwan)"] = "📦 BlackRock timeout, trying fallback..."
+        results["MSCI台股指數 (MSCI Taiwan)"] = (
+            "📦 BlackRock timeout, trying fallback..."
+        )
     except requests.exceptions.ConnectionError:
-        results["MSCI台股指數 (MSCI Taiwan)"] = "📦 BlackRock unreachable, trying fallback..."
+        results["MSCI台股指數 (MSCI Taiwan)"] = (
+            "📦 BlackRock unreachable, trying fallback..."
+        )
     except Exception as e:
-        results["MSCI台股指數 (MSCI Taiwan)"] = f"📦 BlackRock error ({type(e).__name__}), trying fallback..."
+        results["MSCI台股指數 (MSCI Taiwan)"] = (
+            f"📦 BlackRock error ({type(e).__name__}), trying fallback..."
+        )
 
     # If BlackRock failed, try legacy TWSE endpoint as fallback for MSCI
-    if "MSCI台股指數 (MSCI Taiwan)" not in results or "Synced" not in results.get("MSCI台股指數 (MSCI Taiwan)", ""):
+    if "MSCI台股指數 (MSCI Taiwan)" not in results or "Synced" not in results.get(
+        "MSCI台股指數 (MSCI Taiwan)", ""
+    ):
         try:
             # Legacy BlackRock URL from old code
             legacy_url = "https://www.blackrock.com/us/individual/products/239682/ishares-msci-taiwan-etf/1464253357814.ajax?fileType=csv&fileName=EWT_holdings&dataType=fund"
             resp = requests.get(legacy_url, headers=headers, timeout=15)
-            
-            if resp.status_code == 200 and resp.text.strip() and not resp.text.strip().startswith("<"):
+
+            if (
+                resp.status_code == 200
+                and resp.text.strip()
+                and not resp.text.strip().startswith("<")
+            ):
                 content = resp.text
                 # Extract 4-digit codes using regex
                 potential_tickers = re.findall(r"(\d{4})\s", content)
                 tickers = sorted(
                     list(set([f"{t}.TW" for t in potential_tickers if t.isdigit()]))
                 )
-                
+
                 if len(tickers) >= 70:
                     new_data["MSCI台股指數 (MSCI Taiwan)"] = tickers
                     results["MSCI台股指數 (MSCI Taiwan)"] = (
                         f"✅ Synced {len(tickers)} stocks from BlackRock (legacy)"
                     )
                 else:
-                    results["MSCI台股指數 (MSCI Taiwan)"] = "📦 BlackRock incomplete, using cache"
+                    results["MSCI台股指數 (MSCI Taiwan)"] = (
+                        "📦 BlackRock incomplete, using cache"
+                    )
             else:
-                results["MSCI台股指數 (MSCI Taiwan)"] = "📦 BlackRock unavailable, using cache"
+                results["MSCI台股指數 (MSCI Taiwan)"] = (
+                    "📦 BlackRock unavailable, using cache"
+                )
         except Exception:
             results["MSCI台股指數 (MSCI Taiwan)"] = "📦 BlackRock error, using cache"
 
