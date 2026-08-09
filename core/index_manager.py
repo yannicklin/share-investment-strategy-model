@@ -10,6 +10,7 @@ Copyright (c) 2026 Yannick
 
 import json
 import os
+import re
 
 import pandas as pd
 import requests
@@ -178,8 +179,96 @@ def load_index_constituents() -> dict[str, list[str]]:
     return DEFAULT_INDEX_DATA
 
 
+def _extract_tickers_from_tables(
+    tables: list[pd.DataFrame], index_name: str
+) -> list[str]:
+    """Dynamically extract tickers from pandas tables.
+
+    Searches through tables to find columns containing valid ticker symbols.
+    Prioritizes tables with the right size range for each index.
+    """
+    if not tables:
+        return []
+
+    tickers = []
+
+    # Target ranges for each index (strict matching to avoid false positives)
+    target_ranges = {
+        "Dow 30": (25, 35),  # Dow Jones has ~30 components
+        "Nasdaq 100": (70, 130),  # Nasdaq-100 has ~100 components (may have some noise)
+        "S&P 500": (450, 550),  # S&P 500 has 500+ components
+    }
+
+    target_min, target_max = target_ranges.get(index_name, (0, float("inf")))
+
+    # Search through tables for one containing ticker-like strings
+    for table_idx, df in enumerate(tables):
+        if df.empty or len(df) < 5:
+            continue
+
+        # Try each column in the table
+        for col_idx, col in enumerate(df.columns):
+            col_data = df.iloc[:, col_idx].astype(str).tolist()
+
+            # Filter for valid ticker symbols (1-5 chars, uppercase, letters/numbers)
+            potential_tickers = [
+                t.strip()
+                for t in col_data
+                if t
+                and isinstance(t, str)
+                and t.strip() != "nan"
+                and re.match(r"^[A-Z][A-Z0-9\.\-]{0,4}$", t.strip())
+            ]
+
+            # Check if this column has the right amount of tickers
+            if target_min <= len(potential_tickers) <= target_max:
+                tickers = potential_tickers
+                break
+
+        if tickers:
+            break
+
+    return tickers
+
+
+def _extract_tickers_alternative(html_text: str, index_name: str) -> list[str]:
+    """Alternative extraction using regex patterns on raw HTML.
+
+    Fallback when pandas table parsing fails.
+    """
+    # Look for patterns like: &#34;AAL&#34; or >AAL< in Wikipedia tables
+    # This handles cases where pandas can't properly parse the table structure
+
+    patterns = [
+        r">([A-Z]{1,5})<",  # >TICKER<
+        r"&#34;([A-Z]{1,5})&#34;",  # Encoded quotes
+        r"'([A-Z]{1,5})'",  # Single quotes
+        r'"([A-Z]{1,5})"',  # Double quotes
+    ]
+
+    found_tickers = set()
+    for pattern in patterns:
+        matches = re.findall(pattern, html_text)
+        found_tickers.update(matches)
+
+    # Filter for valid tickers (1-5 chars, uppercase)
+    valid_tickers = sorted(
+        list(
+            set(
+                [t for t in found_tickers if len(t) > 0 and len(t) <= 5 and t.isupper()]
+            )
+        )
+    )
+
+    return valid_tickers
+
+
 def update_index_data() -> dict[str, str]:
-    """Fetches latest constituents from Wikipedia tables and updates cache."""
+    """Fetches latest constituents from Wikipedia tables and updates cache.
+
+    Note: Nasdaq-100 has a complex page structure and may not update as frequently.
+    Fallback to DEFAULT_INDEX_DATA when Wikipedia parsing is unreliable.
+    """
     updated_counts = {}
     new_data = {}
 
@@ -198,17 +287,12 @@ def update_index_data() -> dict[str, str]:
             # Pass the HTML content directly instead of URL to avoid requests without headers
             tables = pd.read_html(response.text)
 
-            if name == "Dow 30":
-                df = tables[1]  # Usually the second table
-                tickers = df.iloc[:, 1].tolist()  # Symbol column
-            elif name == "Nasdaq 100":
-                df = tables[4]  # Usually the components table
-                tickers = df.iloc[:, 1].tolist()
-            elif name == "S&P 500":
-                df = tables[0]
-                tickers = df.iloc[:, 0].tolist()
-            else:
-                tickers = []
+            # Dynamically find the right table and column for each index
+            tickers = _extract_tickers_from_tables(tables, name)
+
+            if not tickers:
+                # Fallback: try alternative parsing
+                tickers = _extract_tickers_alternative(response.text, name)
 
             # Clean tickers
             clean_tickers = sorted(
@@ -227,11 +311,25 @@ def update_index_data() -> dict[str, str]:
                 )
             )
 
-            if len(clean_tickers) > 5:
-                new_data[name] = clean_tickers
-                updated_counts[name] = f"Updated {len(clean_tickers)} tickers"
+            # For Nasdaq-100, be lenient but prefer defaults if Wikipedia extraction is incomplete
+            min_acceptable = 25 if name == "Nasdaq 100" else 20
+
+            if len(clean_tickers) > min_acceptable:
+                # For Nasdaq-100, prefer defaults if Wikipedia gives too few tickers
+                if name == "Nasdaq 100" and len(clean_tickers) < 80:
+                    # Wikipedia likely didn't have a proper ticker list
+                    default_count = len(DEFAULT_INDEX_DATA.get(name, []))
+                    new_data[name] = DEFAULT_INDEX_DATA.get(name, [])
+                    updated_counts[name] = (
+                        f"Using defaults ({default_count} tickers) - Wikipedia incomplete"
+                    )
+                else:
+                    new_data[name] = clean_tickers
+                    updated_counts[name] = f"Updated {len(clean_tickers)} tickers"
             else:
-                updated_counts[name] = "Failed: No tickers found"
+                # Use cache/defaults when extraction fails
+                default_count = len(DEFAULT_INDEX_DATA.get(name, []))
+                updated_counts[name] = f"Using defaults ({default_count} tickers)"
                 new_data[name] = DEFAULT_INDEX_DATA.get(name, [])
 
         except requests.exceptions.HTTPError as e:
