@@ -8,12 +8,11 @@ Author: Yannick
 Copyright (c) 2026 Yannick
 """
 
-import pandas as pd
 import json
 import os
-import re
+
+import pandas as pd
 import requests
-from typing import List, Dict
 
 CACHE_FILE = "data/models/index_cache.json"
 
@@ -168,7 +167,7 @@ DEFAULT_INDEX_DATA = {
 }
 
 
-def load_index_constituents() -> Dict[str, List[str]]:
+def load_index_constituents() -> dict[str, list[str]]:
     """Loads constituents from local cache or defaults."""
     if os.path.exists(CACHE_FILE):
         try:
@@ -179,15 +178,25 @@ def load_index_constituents() -> Dict[str, List[str]]:
     return DEFAULT_INDEX_DATA
 
 
-def update_index_data() -> Dict[str, str]:
+def update_index_data() -> dict[str, str]:
     """Fetches latest constituents from Wikipedia tables and updates cache."""
     updated_counts = {}
     new_data = {}
 
+    # Add proper User-Agent to avoid 403 Forbidden from Wikipedia
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
+
     for name, url in SOURCE_URLS.items():
         try:
+            # Fetch Wikipedia page with proper headers to avoid 403 Forbidden
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()  # Raise exception for bad status codes
+
             # For US indices on Wikipedia, pandas read_html is very effective
-            tables = pd.read_html(url)
+            # Pass the HTML content directly instead of URL to avoid requests without headers
+            tables = pd.read_html(response.text)
 
             if name == "Dow 30":
                 df = tables[1]  # Usually the second table
@@ -225,8 +234,17 @@ def update_index_data() -> Dict[str, str]:
                 updated_counts[name] = "Failed: No tickers found"
                 new_data[name] = DEFAULT_INDEX_DATA.get(name, [])
 
+        except requests.exceptions.HTTPError as e:
+            if "403" in str(e):
+                updated_counts[name] = "Failed: Access denied (403). Using cache."
+            else:
+                updated_counts[name] = f"Failed: HTTP Error - {e!s}"
+            new_data[name] = DEFAULT_INDEX_DATA.get(name, [])
+        except requests.exceptions.RequestException as e:
+            updated_counts[name] = f"Failed: Network error - {e!s}"
+            new_data[name] = DEFAULT_INDEX_DATA.get(name, [])
         except Exception as e:
-            updated_counts[name] = f"Failed: {str(e)}"
+            updated_counts[name] = f"Failed: {e!s}"
             new_data[name] = DEFAULT_INDEX_DATA.get(name, [])
 
     # Save to cache
