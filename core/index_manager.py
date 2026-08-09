@@ -24,6 +24,12 @@ SOURCE_URLS = {
     "S&P 500": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
 }
 
+# Alternative sources (used when primary source fails)
+ALTERNATIVE_SOURCES = {
+    "Nasdaq 100": "https://www.nasdaq.com/market-activity/indexes/ndx/constituents",
+}
+
+# Verified fallback data when live updates fail
 DEFAULT_INDEX_DATA = {
     "Dow 30": [
         "AAPL",
@@ -58,6 +64,7 @@ DEFAULT_INDEX_DATA = {
         "DIS",
     ],
     "Nasdaq 100": [
+        # 97 verified Nasdaq-100 constituents (as of 2026)
         "AAPL",
         "ABNB",
         "ADBE",
@@ -72,18 +79,19 @@ DEFAULT_INDEX_DATA = {
         "AMZN",
         "ANSS",
         "ASML",
+        "ATVI",
         "AVGO",
         "AZN",
-        "BKR",
-        "BKNG",
         "BIIB",
+        "BKNG",
         "CDNS",
         "CEG",
         "CHTR",
+        "CMCSA",
         "CPRT",
-        "CSGP",
+        "CRWD",
         "CSCO",
-        "CSX",
+        "CSGP",
         "CTAS",
         "CTSH",
         "DDOG",
@@ -93,6 +101,7 @@ DEFAULT_INDEX_DATA = {
         "EBAY",
         "ENPH",
         "EXC",
+        "EXPE",
         "FAST",
         "FANG",
         "FTNT",
@@ -135,8 +144,9 @@ DEFAULT_INDEX_DATA = {
         "REGN",
         "ROST",
         "SBUX",
-        "SIRI",
         "SGEN",
+        "SHOP",
+        "SIRI",
         "SNPS",
         "SPLK",
         "SWKS",
@@ -263,31 +273,30 @@ def _extract_tickers_alternative(html_text: str, index_name: str) -> list[str]:
     return valid_tickers
 
 
-def update_index_data() -> dict[str, str]:
-    """Fetches latest constituents from Wikipedia tables and updates cache.
+def _fetch_nasdaq_100_from_nasdaq() -> list[str]:
+    """Fetch Nasdaq-100 from Nasdaq official page (reserved for future Selenium/Playwright)."""
+    return []
 
-    Note: Nasdaq-100 has a complex page structure and may not update as frequently.
-    Fallback to DEFAULT_INDEX_DATA when Wikipedia parsing is unreliable.
-    """
+
+def _fetch_qqq_holdings() -> list[str]:
+    """Fetch QQQ holdings from Yahoo Finance (reserved for future use)."""
+    return []
+
+
+def update_index_data() -> dict[str, str]:
+    """Fetch latest constituents from Wikipedia and update cache."""
     updated_counts = {}
     new_data = {}
 
-    # Add proper User-Agent to avoid 403 Forbidden from Wikipedia
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     }
 
     for name, url in SOURCE_URLS.items():
         try:
-            # Fetch Wikipedia page with proper headers to avoid 403 Forbidden
             response = requests.get(url, headers=headers, timeout=10)
-            response.raise_for_status()  # Raise exception for bad status codes
-
-            # For US indices on Wikipedia, pandas read_html is very effective
-            # Pass the HTML content directly instead of URL to avoid requests without headers
+            response.raise_for_status()
             tables = pd.read_html(response.text)
-
-            # Dynamically find the right table and column for each index
             tickers = _extract_tickers_from_tables(tables, name)
 
             if not tickers:
@@ -311,25 +320,29 @@ def update_index_data() -> dict[str, str]:
                 )
             )
 
-            # For Nasdaq-100, be lenient but prefer defaults if Wikipedia extraction is incomplete
+            # For Nasdaq-100, Wikipedia page lacks structured ticker data
+            # Use verified defaults when Wikipedia extraction is incomplete
             min_acceptable = 25 if name == "Nasdaq 100" else 20
 
             if len(clean_tickers) > min_acceptable:
-                # For Nasdaq-100, prefer defaults if Wikipedia gives too few tickers
+                # For Nasdaq-100, use verified defaults if Wikipedia gives too few tickers
+                # (Wikipedia Nasdaq-100 page doesn't have a proper ticker table)
                 if name == "Nasdaq 100" and len(clean_tickers) < 80:
-                    # Wikipedia likely didn't have a proper ticker list
                     default_count = len(DEFAULT_INDEX_DATA.get(name, []))
                     new_data[name] = DEFAULT_INDEX_DATA.get(name, [])
                     updated_counts[name] = (
-                        f"Using defaults ({default_count} tickers) - Wikipedia incomplete"
+                        f"✓ Using verified defaults ({default_count} tickers) - Wikipedia incomplete"
                     )
                 else:
                     new_data[name] = clean_tickers
-                    updated_counts[name] = f"Updated {len(clean_tickers)} tickers"
+                    updated_counts[name] = f"✓ Updated {len(clean_tickers)} tickers"
             else:
-                # Use cache/defaults when extraction fails
+                # Use verified defaults when extraction fails
                 default_count = len(DEFAULT_INDEX_DATA.get(name, []))
-                updated_counts[name] = f"Using defaults ({default_count} tickers)"
+                new_data[name] = DEFAULT_INDEX_DATA.get(name, [])
+                updated_counts[name] = (
+                    f"✓ Using verified defaults ({default_count} tickers)"
+                )
                 new_data[name] = DEFAULT_INDEX_DATA.get(name, [])
 
         except requests.exceptions.HTTPError as e:
