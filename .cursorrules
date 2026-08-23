@@ -1,278 +1,149 @@
-# Cursor AI Rules for ASX AI Trading System
+# Cursor AI Rules for Share Investment Strategy Model
+
+## 🚀 START HERE: [.agents/README.md](.agents/README.md)
+
+**This is a Cursor-specific rules file.** For all agent types (Claude, Copilot, Cline, OpenCode), start with [.agents/README.md](.agents/README.md)—it has the universal setup.
+
+**All agents must read (in order)**:
+1. [SOUL.md](SOUL.md) - Philosophy & values
+2. [CONTEXT.md](CONTEXT.md) - Domain language
+3. [AGENTS.md](AGENTS.md) - Workflows
+4. This file (`.cursorrules`) - Cursor-specific rules
+
+---
 
 ## 🎯 MANDATORY: Read SOUL.md First
 
 **Before making ANY code changes, read SOUL.md to understand:**
-- Project philosophy and core values (Data-Driven, Realism, Transparency)
+
+- Project philosophy and core values (Data-Driven Objectivity, Grounded Realism, Transparency)
 - Architectural principles (Modularity, Factory Pattern, Consensus Logic)
 - Security-first mindset and financial safety standards
 - Development journey and lessons learned
-- Code attribution requirements
+- Code ownership and attribution standards
 
 **All contributions MUST align with SOUL.md principles. Non-compliance = rejected work.**
 
 ---
 
-## Project Context
+## Project Overview
 
-**Name**: ASX AI Trading Strategy System  
-**Type**: Python/Streamlit Machine Learning Application  
-**Purpose**: Multi-model AI trading strategy analysis with realistic backtesting
+This is a Python-based research infrastructure for AI-driven trading strategies:
 
-**Stack**:
-- **Backend**: Python 3.x, pandas, scikit-learn, yfinance
-- **ML Models**: Random Forest, NGBoost, CatBoost, Prophet, LSTM (5 algorithms)
-- **Frontend**: Streamlit dashboard with segmented views
-- **Data**: Yahoo Finance (ASX tickers with .AX suffix)
+- **Type**: Backtesting framework with multiple AI models
+- **Stack**: Python 3.x, pandas, scikit-learn, yfinance, Alpaca, streamlit
+- **Focus**: Realistic accounting (fees, taxes, slippage) + Multi-model consensus
+- **Goal**: Produce cold, objective research that doesn't lie
 
 ---
 
-## Development Workflow
+## Critical Development Rules
 
 ### 1. Documentation-First Development
 
-**ALWAYS follow this sequence:**
+- **ALWAYS** update `CONTEXT.md` before coding
+- **NEVER** implement features without documentation updates
+- Specs must be codified before TDD begins
 
-1. **UPDATE REQUIREMENTS**: Modify `asx_ai_trading_system_requirements.md` first
-2. **ANALYZE CHANGES**: Understand impact on existing features
-3. **IMPLEMENT**: Code with proper documentation
-4. **TEST**: Validate with real ASX ticker data
-5. **DOCUMENT HEADERS**: Add copyright headers to new files
+### 2. Financial Safety
 
-**NEVER start coding without updating requirements documentation first.**
+- **NEVER** skip fee calculations in backtest logic
+- **NEVER** use unadjusted price data (always use `auto_adjust=True`)
+- **NEVER** skip tax implications in hurdle rate calculation
+- **NEVER** hardcode market-specific logic (use config.py)
+- **NEVER** commit API keys or secrets (use .env files)
 
----
+### 3. Model & Backtest Integrity
 
-## Core Mandates
+- **ALWAYS** use TDD for backtest logic
+- **NEVER** modify consensus voting without regression tests
+- **NEVER** change fee structures without updating CONTEXT.md glossary
+- **NEVER** use theoretical assumptions; only realistic numbers
 
-### 1. Preserve Backtesting Realism
+### 4. Data Quality
 
-**CRITICAL**: Never compromise realistic constraints for better-looking results
-
-**Must Include**:
-- ✅ CMC Markets fees: max($11, 0.10% × trade value)
-- ✅ ATO 2024-25 tax brackets with 50% CGT discount
-- ✅ Price gap handling for stop-loss (open price check)
-- ✅ T+1 reinvestment logic (no same-day reallocation)
-- ✅ 2-decimal precision for ROI/Win Rate (no false precision)
-
-**Forbidden**:
-- ❌ Removing fee calculations
-- ❌ Ignoring tax implications
-- ❌ Perfect fills at exact stop-loss prices
-- ❌ Immediate capital reinvestment
-- ❌ Excessive decimal precision (>2 places)
+- **ALWAYS** validate data before use (NaN checks, shape checks)
+- **NEVER** train models on < 100 data points without warning
+- **ALWAYS** use 90-day warmup period before backtest start
+- **NEVER** skip trading calendar validation (weekends, holidays)
 
 ---
 
-### 2. Maintain Multi-Model Consensus
+## Mandatory Workflows
 
-**Architecture**: Factory pattern with 5 independent models
+### For New Features/Strategies
+```
+1. /grill-with-docs  → understand requirement
+2. /to-spec          → codify acceptance criteria
+3. /tdd              → red → green → refactor
+4. /code-review      → standards + spec check
+5. Commit            → only after user approval
+```
 
-**Must Preserve**:
-- ✅ Majority vote consensus (≥3/5 models for signal)
-- ✅ Tie-breaker mechanism (user-selectable model)
-- ✅ Individual model availability checks (NGBoost/CatBoost/Prophet/LSTM optional)
-- ✅ Standardized prediction interface across all models
+### For Bugs
+```
+1. /diagnosing-bugs  → isolate → hypothesize → fix
+2. /tdd              → regression test
+3. /code-review      → impact assessment
+4. Commit            → only after approval
+```
 
-**Forbidden**:
-- ❌ Hardcoding single model
-- ❌ Removing consensus logic
-- ❌ Breaking model availability checks
-- ❌ Inconsistent prediction formats
-
----
-
-### 3. Data Integrity Standards
-
-**Yahoo Finance Integration**:
-- ✅ Use `.AX` suffix for all ASX tickers
-- ✅ Use `auto_adjust=True` for historical data
-- ✅ Use `Close` column (not `Adj Close`) for all calculations
-- ✅ Implement RSI, MACD, Moving Averages as standard features
-
-**Preprocessing**:
-- ✅ Support both `StandardScaler` and `RobustScaler`
-- ✅ Handle missing data gracefully
-- ✅ Validate ticker format before API calls
-
----
-
-### 4. Security & Safety
-
-**CRITICAL**:
-- ❌ NEVER commit API keys or credentials
-- ❌ NEVER make financial claims without disclaimers
-- ✅ ALWAYS validate user inputs
-- ✅ ALWAYS implement safe defaults
-- ✅ ALWAYS test with real ASX data
-
-**Disclaimers**:
-```python
-# Example for UI components
-st.warning("⚠️ For educational purposes only. Not financial advice.")
+### For Architecture
+```
+1. /improve-codebase-architecture  → scan for issues
+2. /domain-modeling                → sharpen terminology
+3. /codebase-design                → deep modules, simple interfaces
 ```
 
 ---
 
-### 5. Code Attribution
+## Code Review Standards
 
-**All new Python files MUST include copyright header:**
-
-```python
-"""
-ASX AI Trading System - [Module Name]
-
-Purpose: [Brief description of module's functionality]
-
-Author: Yannick
-Created: January 2026
-Copyright (c) 2026 Yannick
-"""
-```
-
-**See**: `CODE_HEADERS.md` for detailed templates
+### Always Check
+- [ ] Naming follows Python conventions (snake_case)
+- [ ] No hardcoded values (use config.py)
+- [ ] Functions under 50 lines
+- [ ] Docstrings on all public methods
+- [ ] Type hints on function signatures
+- [ ] No commented-out code
+- [ ] No debug print statements
+- [ ] Error handling is explicit
+- [ ] Financial calculations verified
+- [ ] Spec compliance confirmed
 
 ---
 
-## File Structure Rules
+## When to Ask the User
 
-```
-share-investment-strategy-model/
-├── ASX_AImodel.py          # Main Streamlit app (DO NOT refactor heavily)
-├── core/                   # Business logic
-│   ├── config.py          # Configuration dataclass
-│   ├── model_builder.py   # AI model factory
-│   ├── backtest_engine.py # Backtesting engine
-│   └── index_manager.py   # Index constituent management
-├── ui/                     # Streamlit components
-│   ├── sidebar.py         # Mode selection + parameters
-│   ├── algo_view.py       # Models comparison view
-│   ├── strategy_view.py   # Time-span comparison view
-│   ├── stars_view.py      # Super stars scanner view
-│   └── components.py      # Reusable UI components
-└── tests/                  # Unit tests
-```
+✅ **Always ask**:
+- "Should I proceed with TDD implementation?"
+- "Does this edge case change the fee structure?"
+- "Should I add this as a new model or modify consensus?"
 
-**Separation Rules**:
-- ✅ Keep business logic in `core/`
-- ✅ Keep UI logic in `ui/`
-- ❌ Don't mix UI and business logic
-- ❌ Don't create new top-level directories without justification
+❌ **Never ask**:
+- "Should I write tests?" → Yes, always
+- "Should I add type hints?" → Yes, always
+- "Should I review the code?" → Yes, always
 
 ---
 
-## Code Style
+## Workflow & Automation Rules (Strict)
 
-### Python Standards
-
-- **PEP 8**: Follow Python style guidelines
-- **Type Hints**: Use for function signatures
-- **Docstrings**: Required for all public functions
-- **Imports**: Organize (stdlib → third-party → local)
-
-**Example**:
-```python
-from typing import List, Dict, Optional
-import pandas as pd
-
-def calculate_roi(
-    initial_capital: float,
-    final_capital: float
-) -> float:
-    """
-    Calculate return on investment as percentage.
-    
-    Args:
-        initial_capital: Starting capital (AUD)
-        final_capital: Ending capital (AUD)
-    
-    Returns:
-        ROI as percentage (2 decimal precision)
-    """
-    return round(((final_capital - initial_capital) / initial_capital) * 100, 2)
-```
+1. **Manual Commits Only**: NEVER run `git commit` or `git add` unless the user explicitly requests a commit. Do not assume a successful change implies a checkpoint is wanted.
+2. **No Automatic Background Tasks**: NEVER start the dashboard or tests in the background (e.g., `make run &`) automatically after an edit. Wait for the user to request the start.
+3. **Respect Local Environment**: Do not attempt to install system-level libraries (e.g., `brew install`). Stick strictly to `requirements.txt` via the local virtual environment.
+4. **Code-Only Implementation**: Focus on editing the requested files. Do not chain multiple shell operations (like build or run) unless they are part of a verification step requested by the user.
 
 ---
 
-## Testing Requirements
+## Key Files
 
-**Before Committing**:
-1. ✅ Test with real ASX tickers (e.g., CBA.AX, BHP.AX)
-2. ✅ Verify all 3 modes work (Models, Time-Span, Super Stars)
-3. ✅ Check performance with ASX 50/200 indices
-4. ✅ Validate fee/tax calculations produce realistic results
-5. ✅ Ensure consensus logic produces sensible recommendations
-
-**Unit Tests**:
-```bash
-pytest tests/test_core.py
-```
+- [SOUL.md](SOUL.md) - Philosophy & values
+- [CONTEXT.md](CONTEXT.md) - Domain language & terminology
+- [AGENTS.md](AGENTS.md) - Workflows & Matt Pocock skills
+- [.agents/README.md](.agents/README.md) - Universal entry point for all agents
 
 ---
 
-## Common Tasks
-
-### Adding New Model Algorithm
-
-1. **Update** `asx_ai_trading_system_requirements.md` (new model section)
-2. **Import** with availability check in `model_builder.py`
-3. **Add** to `Config.model_types` default list
-4. **Implement** factory method following existing pattern
-5. **Test** with real ASX ticker data
-6. **Update** README.md features list
-
-### Adding New Technical Indicator
-
-1. **Update** `asx_ai_trading_system_requirements.md` (indicators section)
-2. **Add** calculation in `ModelBuilder._compute_features()`
-3. **Ensure** consistent naming (lowercase_snake_case)
-4. **Test** with various market conditions
-5. **Document** in docstring
-
-### Modifying Backtesting Logic
-
-1. **CRITICAL**: Review SOUL.md "Lessons Learned" first
-2. **Maintain** all realistic constraints (fees, taxes, gaps, T+1)
-3. **Test** edge cases (stop-loss triggering, zero trades, etc.)
-4. **Verify** performance metrics accuracy (ROI, Win Rate)
-5. **Document** changes in requirements doc
-
----
-
-## References
-
-- **[SOUL.md](SOUL.md)** - Project philosophy and values (READ FIRST)
-- **[AUTHORS.md](AUTHORS.md)** - Contributors and credits
-- **[CODE_HEADERS.md](CODE_HEADERS.md)** - Attribution templates
-- **[AGENTS.md](AGENTS.md)** - AI development guidelines
-- **[asx_ai_trading_system_requirements.md](asx_ai_trading_system_requirements.md)** - Technical specifications
-
----
-
-## Anti-Patterns to Avoid
-
-❌ **Don't**:
-- Remove fee/tax calculations
-- Hardcode single model predictions
-- Ignore consensus logic
-- Mix UI and business logic
-- Commit without testing with real data
-- Add dependencies without justification
-- Make financial claims without disclaimers
-- Violate SOUL.md principles
-
-✅ **Do**:
-- Update requirements documentation first
-- Preserve backtesting realism
-- Test with real ASX tickers
-- Add proper copyright headers
-- Follow existing architectural patterns
-- Validate user inputs
-- Include safety disclaimers
-
----
-
-**Last Updated**: January 29, 2026  
-**Copyright**: (c) 2026 Yannick  
-**License**: MIT
+**Last Updated**: August 23, 2026  
+**Golden rule**: When in doubt, ask. Speculation kills backtesting systems.

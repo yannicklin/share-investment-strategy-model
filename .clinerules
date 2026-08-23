@@ -1,137 +1,138 @@
-# Cline AI Rules for ASX AI Trading System
+# Cline AI Rules for Share Investment Strategy Model
+
+## 🚀 START HERE: [.agents/README.md](.agents/README.md)
+
+**This is a Cline-specific rules file.** For all agent types (Claude, Copilot, Cursor, OpenCode), start with [.agents/README.md](.agents/README.md)—it has the universal setup.
+
+**All agents must read (in order)**:
+1. [SOUL.md](SOUL.md) - Philosophy & values
+2. [CONTEXT.md](CONTEXT.md) - Domain language
+3. [AGENTS.md](AGENTS.md) - Workflows
+4. This file (`.clinerules`) - Cline-specific rules
+
+---
 
 ## 🎯 MANDATORY: Read SOUL.md First
 
 **Before making ANY code changes, read SOUL.md to understand:**
-- Project philosophy and core values (Data-Driven, Realism, Transparency)
+
+- Project philosophy and core values (Data-Driven Objectivity, Grounded Realism, Transparency)
 - Architectural principles (Modularity, Factory Pattern, Consensus Logic)
 - Security-first mindset and financial safety standards
 - Development journey and lessons learned
-- Code attribution requirements
+- Code ownership and attribution standards
 
 **All contributions MUST align with SOUL.md principles. Non-compliance = rejected work.**
-
----
-
-## Project Overview
-
-**Name**: ASX AI Trading Strategy System  
-**Type**: Python/Streamlit Machine Learning Application  
-**Stack**: Python 3.x, pandas, scikit-learn, yfinance, ngboost, catboost, prophet, tensorflow, streamlit
 
 ---
 
 ## Critical Development Rules
 
 ### 1. Documentation-First Development
-- **ALWAYS** update `asx_ai_trading_system_requirements.md` before coding
+
+- **ALWAYS** update `CONTEXT.md` before coding
 - **NEVER** implement features without documentation updates
-- **VERIFY** changes align with existing requirements
+- Specs must be codified before TDD begins
 
-### 2. Preserve Backtesting Realism
-- **MUST** include CMC Markets fees: max($11, 0.10% × trade value)
-- **MUST** apply ATO 2024-25 tax brackets with 50% CGT discount
-- **MUST** handle price gaps for stop-loss (use open price)
-- **MUST** implement T+1 reinvestment logic (no same-day reallocation)
-- **MUST** use 2-decimal precision for ROI/Win Rate
+### 2. Financial Safety
 
-### 3. Multi-Model Consensus Architecture
-- **MAINTAIN** factory pattern with 5 algorithms (Random Forest, NGBoost, CatBoost, Prophet, LSTM)
-- **PRESERVE** majority vote consensus (≥3/5 models for signal)
-- **KEEP** tie-breaker mechanism (user-selectable model)
-- **ENSURE** model availability checks (NGBoost/CatBoost/Prophet/LSTM optional)
+- **NEVER** skip fee calculations in backtest logic
+- **NEVER** use unadjusted price data (always use `auto_adjust=True`)
+- **NEVER** skip tax implications in hurdle rate calculation
+- **NEVER** hardcode market-specific logic (use config.py)
+- **NEVER** commit API keys or secrets (use .env files)
 
-### 4. Data Integrity
-- **USE** `.AX` suffix for all ASX tickers
-- **USE** `auto_adjust=True` and `Close` column for calculations
-- **IMPLEMENT** RSI, MACD, Moving Averages as standard features
-- **SUPPORT** both `StandardScaler` and `RobustScaler`
+### 3. Model & Backtest Integrity
 
-### 5. Security & Safety
-- **NEVER** commit API keys or credentials
-- **NEVER** make financial claims without disclaimers
-- **ALWAYS** validate user inputs
-- **ALWAYS** test with real ASX ticker data
+- **ALWAYS** use TDD for backtest logic
+- **NEVER** modify consensus voting without regression tests
+- **NEVER** change fee structures without updating CONTEXT.md glossary
+- **NEVER** use theoretical assumptions; only realistic numbers
 
-### 6. Code Attribution
-**All new Python files MUST include copyright header:**
-```python
-"""
-ASX AI Trading System - [Module Name]
+### 4. Data Quality
 
-Purpose: [Brief description]
+- **ALWAYS** validate data before use (NaN checks, shape checks)
+- **NEVER** train models on < 100 data points without warning
+- **ALWAYS** use 90-day warmup period before backtest start
+- **NEVER** skip trading calendar validation (weekends, holidays)
 
-Author: Yannick
-Created: January 2026
-Copyright (c) 2026 Yannick
-"""
+---
+
+## Mandatory Workflows
+
+### For New Features/Strategies
+```
+1. /grill-with-docs  → understand requirement
+2. /to-spec          → codify acceptance criteria
+3. /tdd              → red → green → refactor
+4. /code-review      → standards + spec check
+5. Commit            → only after user approval
+```
+
+### For Bugs
+```
+1. /diagnosing-bugs  → isolate → hypothesize → fix
+2. /tdd              → regression test
+3. /code-review      → impact assessment
+4. Commit            → only after approval
+```
+
+### For Architecture
+```
+1. /improve-codebase-architecture  → scan for issues
+2. /domain-modeling                → sharpen terminology
+3. /codebase-design                → deep modules, simple interfaces
 ```
 
 ---
 
-## File Structure
+## Code Review Standards
 
-```
-share-investment-strategy-model/
-├── ASX_AImodel.py          # Main Streamlit app
-├── core/                   # Business logic (config, models, backtesting, indices)
-├── ui/                     # Streamlit components (sidebar, views, components)
-└── tests/                  # Unit tests
-```
-
-**Separation Rules**:
-- Keep business logic in `core/`
-- Keep UI logic in `ui/`
-- Don't mix UI and business logic
-
----
-
-## Code Style
-
-- **PEP 8**: Follow Python style guidelines
-- **Type Hints**: Use for function signatures
-- **Docstrings**: Required for all public functions
-- **Imports**: Organize (stdlib → third-party → local)
+### Always Check
+- [ ] Naming follows Python conventions (snake_case)
+- [ ] No hardcoded values (use config.py)
+- [ ] Functions under 50 lines
+- [ ] Docstrings on all public methods
+- [ ] Type hints on function signatures
+- [ ] No commented-out code
+- [ ] No debug print statements
+- [ ] Error handling is explicit
+- [ ] Financial calculations verified
+- [ ] Spec compliance confirmed
 
 ---
 
-## Testing Requirements
+## When to Ask the User
 
-**Before Committing**:
-1. Test with real ASX tickers (e.g., CBA.AX, BHP.AX)
-2. Verify all 3 modes work (Models, Time-Span, Super Stars)
-3. Check performance with ASX 50/200 indices
-4. Validate fee/tax calculations produce realistic results
-5. Ensure consensus logic produces sensible recommendations
+✅ **Always ask**:
+- "Should I proceed with TDD implementation?"
+- "Does this edge case change the fee structure?"
+- "Should I add this as a new model or modify consensus?"
 
----
-
-## References
-
-- **[SOUL.md](SOUL.md)** - Project philosophy (READ FIRST)
-- **[AUTHORS.md](AUTHORS.md)** - Contributors
-- **[CODE_HEADERS.md](CODE_HEADERS.md)** - Attribution templates
-- **[AGENTS.md](AGENTS.md)** - AI development guidelines
+❌ **Never ask**:
+- "Should I write tests?" → Yes, always
+- "Should I add type hints?" → Yes, always
+- "Should I review the code?" → Yes, always
 
 ---
 
-## Anti-Patterns to Avoid
+## Workflow & Automation Rules (Strict)
 
-❌ **Don't**:
-- Remove fee/tax calculations
-- Hardcode single model predictions
-- Ignore consensus logic
-- Mix UI and business logic
-- Commit without testing with real data
-
-✅ **Do**:
-- Update requirements documentation first
-- Preserve backtesting realism
-- Test with real ASX tickers
-- Add proper copyright headers
-- Follow existing architectural patterns
+1. **Manual Commits Only**: NEVER run `git commit` or `git add` unless the user explicitly requests a commit. Do not assume a successful change implies a checkpoint is wanted.
+2. **No Automatic Background Tasks**: NEVER start the dashboard or tests in the background (e.g., `make run &`) automatically after an edit. Wait for the user to request the start.
+3. **Respect Local Environment**: Do not attempt to install system-level libraries (e.g., `brew install`). Stick strictly to `requirements.txt` via the local virtual environment.
+4. **Code-Only Implementation**: Focus on editing the requested files. Do not chain multiple shell operations (like build or run) unless they are part of a verification step requested by the user.
 
 ---
 
-**Last Updated**: January 29, 2026  
-**Copyright**: (c) 2026 Yannick
+## Key Files
+
+- [SOUL.md](SOUL.md) - Philosophy & values
+- [CONTEXT.md](CONTEXT.md) - Domain language & terminology
+- [AGENTS.md](AGENTS.md) - Workflows & Matt Pocock skills
+- [.agents/README.md](.agents/README.md) - Universal entry point for all agents
+
+---
+
+**Last Updated**: August 23, 2026  
+**Golden rule**: When in doubt, ask. Speculation kills backtesting systems.
