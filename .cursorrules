@@ -1,0 +1,149 @@
+# Cursor AI Rules for Share Investment Strategy Model
+
+## 🚀 START HERE: [.agents/README.md](.agents/README.md)
+
+**This is a Cursor-specific rules file.** For all agent types (Claude, Copilot, Cline, OpenCode), start with [.agents/README.md](.agents/README.md)—it has the universal setup.
+
+**All agents must read (in order)**:
+1. [SOUL.md](SOUL.md) - Philosophy & values
+2. [CONTEXT.md](CONTEXT.md) - Domain language
+3. [AGENTS.md](AGENTS.md) - Workflows
+4. This file (`.cursorrules`) - Cursor-specific rules
+
+---
+
+## 🎯 MANDATORY: Read SOUL.md First
+
+**Before making ANY code changes, read SOUL.md to understand:**
+
+- Project philosophy and core values (Data-Driven Objectivity, Grounded Realism, Transparency)
+- Architectural principles (Modularity, Factory Pattern, Consensus Logic)
+- Security-first mindset and financial safety standards
+- Development journey and lessons learned
+- Code ownership and attribution standards
+
+**All contributions MUST align with SOUL.md principles. Non-compliance = rejected work.**
+
+---
+
+## Project Overview
+
+This is a Python-based research infrastructure for AI-driven trading strategies:
+
+- **Type**: Backtesting framework with multiple AI models
+- **Stack**: Python 3.x, pandas, scikit-learn, yfinance, Alpaca, streamlit
+- **Focus**: Realistic accounting (fees, taxes, slippage) + Multi-model consensus
+- **Goal**: Produce cold, objective research that doesn't lie
+
+---
+
+## Critical Development Rules
+
+### 1. Documentation-First Development
+
+- **ALWAYS** update `CONTEXT.md` before coding
+- **NEVER** implement features without documentation updates
+- Specs must be codified before TDD begins
+
+### 2. Financial Safety
+
+- **NEVER** skip fee calculations in backtest logic
+- **NEVER** use unadjusted price data (always use `auto_adjust=True`)
+- **NEVER** skip tax implications in hurdle rate calculation
+- **NEVER** hardcode market-specific logic (use config.py)
+- **NEVER** commit API keys or secrets (use .env files)
+
+### 3. Model & Backtest Integrity
+
+- **ALWAYS** use TDD for backtest logic
+- **NEVER** modify consensus voting without regression tests
+- **NEVER** change fee structures without updating CONTEXT.md glossary
+- **NEVER** use theoretical assumptions; only realistic numbers
+
+### 4. Data Quality
+
+- **ALWAYS** validate data before use (NaN checks, shape checks)
+- **NEVER** train models on < 100 data points without warning
+- **ALWAYS** use 90-day warmup period before backtest start
+- **NEVER** skip trading calendar validation (weekends, holidays)
+
+---
+
+## Mandatory Workflows
+
+### For New Features/Strategies
+```
+1. /grill-with-docs  → understand requirement
+2. /to-spec          → codify acceptance criteria
+3. /tdd              → red → green → refactor
+4. /code-review      → standards + spec check
+5. Commit            → only after user approval
+```
+
+### For Bugs
+```
+1. /diagnosing-bugs  → isolate → hypothesize → fix
+2. /tdd              → regression test
+3. /code-review      → impact assessment
+4. Commit            → only after approval
+```
+
+### For Architecture
+```
+1. /improve-codebase-architecture  → scan for issues
+2. /domain-modeling                → sharpen terminology
+3. /codebase-design                → deep modules, simple interfaces
+```
+
+---
+
+## Code Review Standards
+
+### Always Check
+- [ ] Naming follows Python conventions (snake_case)
+- [ ] No hardcoded values (use config.py)
+- [ ] Functions under 50 lines
+- [ ] Docstrings on all public methods
+- [ ] Type hints on function signatures
+- [ ] No commented-out code
+- [ ] No debug print statements
+- [ ] Error handling is explicit
+- [ ] Financial calculations verified
+- [ ] Spec compliance confirmed
+
+---
+
+## When to Ask the User
+
+✅ **Always ask**:
+- "Should I proceed with TDD implementation?"
+- "Does this edge case change the fee structure?"
+- "Should I add this as a new model or modify consensus?"
+
+❌ **Never ask**:
+- "Should I write tests?" → Yes, always
+- "Should I add type hints?" → Yes, always
+- "Should I review the code?" → Yes, always
+
+---
+
+## Workflow & Automation Rules (Strict)
+
+1. **Manual Commits Only**: NEVER run `git commit` or `git add` unless the user explicitly requests a commit. Do not assume a successful change implies a checkpoint is wanted.
+2. **No Automatic Background Tasks**: NEVER start the dashboard or tests in the background (e.g., `make run &`) automatically after an edit. Wait for the user to request the start.
+3. **Respect Local Environment**: Do not attempt to install system-level libraries (e.g., `brew install`). Stick strictly to `requirements.txt` via the local virtual environment.
+4. **Code-Only Implementation**: Focus on editing the requested files. Do not chain multiple shell operations (like build or run) unless they are part of a verification step requested by the user.
+
+---
+
+## Key Files
+
+- [SOUL.md](SOUL.md) - Philosophy & values
+- [CONTEXT.md](CONTEXT.md) - Domain language & terminology
+- [AGENTS.md](AGENTS.md) - Workflows & Matt Pocock skills
+- [.agents/README.md](.agents/README.md) - Universal entry point for all agents
+
+---
+
+**Last Updated**: August 23, 2026  
+**Golden rule**: When in doubt, ask. Speculation kills backtesting systems.
