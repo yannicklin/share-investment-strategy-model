@@ -1,5 +1,5 @@
 # AI Trading System - Git Ignore
-# Updated: 2026-01-23 for Streamlit + AI architecture
+# Updated: 2026-02-09
 
 # Python
 __pycache__/
@@ -41,7 +41,7 @@ data/models/*.pkl
 data/models/*.h5
 data/models/*.keras
 data/models/*.joblib
-data/models/index_cache.json
+data/models/*.json
 data/downloads/
 data/ledgers/*.csv
 *.log
