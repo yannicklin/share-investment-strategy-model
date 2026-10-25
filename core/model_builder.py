@@ -10,6 +10,8 @@ Copyright (c) 2026 Yannick
 import logging
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 from typing import Any
 
 import joblib
@@ -853,6 +855,23 @@ class ModelBuilder:
         ticker: str = None,
         target_horizon_days: int | None = None,
     ):
+        # --- FEATURE CACHE CHECK (Phase 1) ---
+        cache_dir = Path("data/cache")
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        ticker_name = ticker if ticker else "UNKNOWN"
+        cache_key = f"features_{ticker_name}_{len(data)}_{target_horizon_days or self.target_horizon_days}"
+        cache_file = cache_dir / f"{cache_key}.parquet"
+        
+        if cache_file.exists():
+            try:
+                features_cached = pd.read_parquet(cache_file)
+                X_cached = features_cached.drop(columns=["Target"]).values
+                y_cached = features_cached["Target"].values
+                logging.debug(f"Loaded features for {ticker_name} from cache")
+                return X_cached, y_cached
+            except Exception as e:
+                logging.debug(f"Failed to load feature cache for {ticker_name}: {e}")
+        
         df = data.copy()
         horizon_days = max(1, int(target_horizon_days or self.target_horizon_days))
 
@@ -980,6 +999,15 @@ class ModelBuilder:
         # Map features to scaler groups for multi-scaler training
         self._get_feature_group_indices(features)
 
+        # --- FEATURE CACHE SAVE (Phase 1) ---
+        try:
+            features_df = pd.DataFrame(X, columns=features)
+            features_df["Target"] = y
+            features_df.to_parquet(cache_file, compression="snappy")
+            logging.debug(f"Cached features for {ticker_name} to {cache_file}")
+        except Exception as e:
+            logging.debug(f"Failed to cache features for {ticker_name}: {e}")
+
         return X, y
 
     def _create_sequences(self, data_scaled, target):
@@ -988,6 +1016,114 @@ class ModelBuilder:
             X_seq.append(data_scaled[i : i + self.sequence_length])
             y_seq.append(target[i + self.sequence_length])
         return np.array(X_seq), np.array(y_seq)
+
+    def _get_config_hash(self, ticker: str) -> str:
+        """Generate a hash of config parameters that affect model training (Phase 1).
+        
+        Different configs get different hashes, ensuring models aren't
+        re-used incorrectly when settings change.
+        """
+        import hashlib
+        import json
+        
+        config_dict = {
+            "ticker": ticker,
+            "model_type": self.config.model_type,
+            "weighting_type": self.config.weighting_type,
+            "backtest_years": self.config.backtest_years,
+            "recency_multiplier": self.config.recency_half_life_multiplier,
+        }
+        config_json = json.dumps(config_dict, sort_keys=True)
+        return hashlib.md5(config_json.encode()).hexdigest()[:8]
+
+    def _train_single_model_parallel(self, ticker: str, model_type: str, 
+                                      target_horizon_days: int) -> tuple[str, str]:
+        """Train a single model type for a ticker (Phase 2 - for parallel execution in threads).
+        
+        Args:
+            ticker: Stock ticker symbol
+            model_type: Model type ("random_forest", "ngboost", "catboost", "lstm")
+            target_horizon_days: Prediction horizon in days
+            
+        Returns:
+            Tuple of (model_type, status_message)
+        """
+        original_model_type = self.config.model_type
+        try:
+            self.config.model_type = model_type
+            self.train(ticker, target_horizon_days=target_horizon_days)
+            status = f"{model_type}_trained"
+            return (model_type, status)
+        except Exception as e:
+            logging.error(f"Failed to train {model_type} for {ticker}: {e}")
+            return (model_type, f"{model_type}_failed: {str(e)}")
+        finally:
+            self.config.model_type = original_model_type
+
+    def load_or_build_parallel(self, ticker: str, target_horizon_days: int = 1) -> dict[str, str]:
+        """Load or build models in parallel (Phase 2 - one per model type).
+        
+        Trains all model types concurrently for faster execution. Models that
+        are already cached are skipped. Only missing models are trained.
+        
+        Args:
+            ticker: Stock ticker symbol
+            target_horizon_days: Prediction horizon in days (1 for exit, N for buy)
+            
+        Returns:
+            Dictionary mapping model_type -> status_message
+        """
+        if target_horizon_days is not None:
+            self.target_horizon_days = max(1, int(target_horizon_days))
+        
+        results = {}
+        models_to_train = []
+        models_to_skip = []
+        
+        # Check which models need training (avoid redundant work)
+        for model_type in self.config.model_types:
+            weighting_suffix = self.config.weighting_type
+            horizon_suffix = f"h{self.target_horizon_days}d"
+            config_hash = self._get_config_hash(ticker)
+            model_filename = os.path.join(
+                self.config.model_path,
+                f"{ticker}_{model_type}_{weighting_suffix}_{horizon_suffix}_{config_hash}_model.joblib",
+            )
+            
+            if os.path.exists(model_filename):
+                models_to_skip.append(model_type)
+            else:
+                models_to_train.append(model_type)
+        
+        # Train missing models in parallel using ThreadPoolExecutor
+        if models_to_train:
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                futures = {}
+                for model_type in models_to_train:
+                    future = executor.submit(
+                        self._train_single_model_parallel,
+                        ticker,
+                        model_type,
+                        target_horizon_days
+                    )
+                    futures[model_type] = future
+                
+                # Collect results as they complete
+                for model_type, future in futures.items():
+                    try:
+                        _, status = future.result(timeout=120)  # Max 2 min per model
+                        results[model_type] = status
+                    except TimeoutError:
+                        results[model_type] = f"{model_type}_timeout"
+                        logging.error(f"Training {model_type} for {ticker} timed out")
+                    except Exception as e:
+                        results[model_type] = f"{model_type}_error: {e}"
+        
+        # Models already cached
+        for model_type in models_to_skip:
+            results[model_type] = "loaded_from_cache"
+        
+        return results
 
     @staticmethod
     def _get_lstm_horizon_path(bundle_path: str, target_horizon_days: int) -> str:
@@ -1182,9 +1318,10 @@ class ModelBuilder:
         # Bundle filename is keyed by the BUY horizon
         weighting_suffix = self.config.weighting_type
         horizon_suffix = f"h{self.target_horizon_days}d"
+        config_hash = self._get_config_hash(ticker)  # NEW: Config hash for cache validation (Phase 1)
         model_filename = os.path.join(
             self.config.model_path,
-            f"{ticker}_{self.config.model_type}_{weighting_suffix}_{horizon_suffix}_model.joblib",
+            f"{ticker}_{self.config.model_type}_{weighting_suffix}_{horizon_suffix}_{config_hash}_model.joblib",
         )
 
         # Train if bundle missing
