@@ -449,13 +449,14 @@ class ModelBuilder:
         self._market_data = market_df.ffill().fillna(0)
 
     def prepare_features(
-        self, data: pd.DataFrame, target_horizon_days: int | None = None
+        self, data: pd.DataFrame, target_horizon_days: int | None = None, ticker: str | None = None
     ):
         """Prepare features and target for model training.
 
         Args:
             data: DataFrame with OHLCV columns
             target_horizon_days: Days ahead for target (default: self.target_horizon_days or 1)
+            ticker: Stock ticker symbol (required for feature cache identification)
 
         Returns:
             X, y tuple for training
@@ -468,7 +469,9 @@ class ModelBuilder:
         # --- FEATURE CACHE CHECK (NEW) ---
         cache_dir = Path("data/cache")
         cache_dir.mkdir(parents=True, exist_ok=True)
-        ticker = self.config.target_stock_codes[0] if self.config.target_stock_codes else "UNKNOWN"
+        # BUG FIX: Use actual ticker parameter, not config[0]
+        if ticker is None:
+            ticker = self.config.target_stock_codes[0] if self.config.target_stock_codes else "UNKNOWN"
         cache_key = f"features_{ticker}_{len(data)}_{target_horizon_days}"
         cache_file = cache_dir / f"{cache_key}.parquet"
 
@@ -672,7 +675,7 @@ class ModelBuilder:
             }
 
         for h in required_horizons:
-            X, y = self.prepare_features(data, target_horizon_days=h)
+            X, y = self.prepare_features(data, target_horizon_days=h, ticker=ticker)
 
             # Validate minimum engineered rows (need at least 50 for meaningful training)
             min_engineered_rows = 50
@@ -1124,13 +1127,49 @@ class ModelBuilder:
                     pred = float(self.target_scaler.inverse_transform([[pred]])[0][0])
                 return pred
             return 0.0
+        # Tree models (RF/CatBoost/NGBoost): scale-invariant, no scaler needed
         X_input = (
             current_data[-1].reshape(1, -1)
             if len(current_data.shape) == 2
             else current_data.reshape(1, -1)
         )
-        X_scaled = self.scaler.transform(X_input)
-        return float(self.model.predict(X_scaled)[0])
+        return float(self.model.predict(X_input)[0])
+
+    def predict_with_confidence(self, current_data: np.ndarray, date: pd.Timestamp | None = None) -> tuple[float, float, float]:
+        """
+        Generate prediction with confidence intervals (for NGBoost models).
+        
+        Returns:
+            Tuple of (prediction, lower_95, upper_95)
+            For non-NGBoost models: lower_95 and upper_95 are None
+        """
+        if self.model is None:
+            raise ValueError("Model not loaded.")
+        
+        m_type = self.config.model_type
+        X_input = (
+            current_data[-1].reshape(1, -1)
+            if len(current_data.shape) == 2
+            else current_data.reshape(1, -1)
+        )
+        
+        # NGBoost: extract confidence intervals
+        if m_type == "ngboost":
+            try:
+                dist = self.model.pred_dist(X_input)
+                pred_mean = float(dist.loc[0])
+                pred_std = float(dist.scale[0])
+                lower_95 = pred_mean - 1.96 * pred_std
+                upper_95 = pred_mean + 1.96 * pred_std
+                return pred_mean, lower_95, upper_95
+            except Exception as e:
+                logging.warning(f"NGBoost pred_dist failed: {e}, falling back to point prediction")
+                pred = float(self.model.predict(X_input)[0])
+                return pred, None, None
+        
+        # Other models: point prediction only
+        pred = float(self.model.predict(X_input)[0])
+        return pred, None, None
 
     def get_latest_features(self, ticker: str) -> np.ndarray | None:
         data = self.fetch_data(ticker, 1)
