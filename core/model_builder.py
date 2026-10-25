@@ -1523,6 +1523,42 @@ class ModelBuilder:
             pred = np.expm1(pred)
         return pred
 
+    def predict_with_confidence(self, current_data: np.ndarray, date: pd.Timestamp | None = None, target_horizon_days: int | None = None) -> tuple[float, float, float]:
+        """
+        Generate prediction with confidence intervals (for NGBoost models).
+        
+        Returns:
+            Tuple of (prediction, lower_95, upper_95)
+            For non-NGBoost models: lower_95 and upper_95 are None
+        """
+        if self.model is None:
+            raise ValueError("Model not loaded.")
+        
+        m_type = self.config.model_type
+        X_input = (
+            current_data[-1].reshape(1, -1)
+            if len(current_data.shape) == 2
+            else current_data.reshape(1, -1)
+        )
+        
+        # NGBoost: extract confidence intervals
+        if m_type == "ngboost":
+            try:
+                dist = self.model.pred_dist(X_input)
+                pred_mean = float(dist.loc[0])
+                pred_std = float(dist.scale[0])
+                lower_95 = pred_mean - 1.96 * pred_std
+                upper_95 = pred_mean + 1.96 * pred_std
+                return pred_mean, lower_95, upper_95
+            except Exception as e:
+                logging.warning(f"NGBoost pred_dist failed: {e}, falling back to point prediction")
+                pred = float(self.model.predict(X_input)[0])
+                return pred, None, None
+        
+        # Other models: point prediction only
+        pred = float(self.model.predict(X_input)[0])
+        return pred, None, None
+
     def get_latest_features(self, ticker: str) -> np.ndarray | None:
         data = self.fetch_data(ticker, 1)
         if data.empty:
