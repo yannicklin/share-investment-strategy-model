@@ -127,6 +127,13 @@ def render_app():
         sidebar_res
     )
 
+    # NEW: Warn about LSTM performance
+    if "lstm" in config.model_types:
+        st.warning(
+            "⚠️ **Performance Notice**: LSTM model adds ~25 seconds per ticker. "
+            "For faster 'Find Super Stars' analysis, consider deselecting LSTM in the model selection."
+        )
+
     # --- 1. ACTION: RUN BACKTEST ANALYSIS ---
     if run_analysis:
         # Clear previous results
@@ -241,16 +248,18 @@ def render_app():
                     ) as status:
                         try:
                             st.write("Preparing AI Models...")
-                            for m_type in config.model_types:
-                                config.model_type = m_type
-                                try:
-                                    result = builder.load_or_build(ticker)
-                                    status_emoji = "🆕" if "train" in result else "💾"
-                                    st.write(
-                                        f"{status_emoji} **{m_type.upper()}**: {result.replace('_', ' ').title()}"
-                                    )
-                                except Exception as e:
-                                    error_msg = str(e)
+                            # Train all models in parallel for faster execution
+                            results = builder.load_or_build_parallel(ticker)
+                            
+                            for m_type, result in results.items():
+                                status_emoji = "🆕" if "train" in result else "💾"
+                                st.write(
+                                    f"{status_emoji} **{m_type.upper()}**: {result.replace('_', ' ').title()}"
+                                )
+                                
+                                # Track errors for reporting
+                                if "error" in result or "failed" in result or "timeout" in result:
+                                    error_msg = result
                                     st.error(f"❌ Model Error ({m_type}): {error_msg}")
                                     ticker_results[f"{m_type}_error"] = error_msg
 
